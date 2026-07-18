@@ -49,28 +49,46 @@ flowchart TD
 ```
 
 ## Training method (encode → process → decode, per node)
-Same architecture skeleton for every model — only the **processor** block differs.
-The **loss is identical across all models and both experiments**: a weighted MSE
-over all four outputs (see below).
+This is the shared skeleton in `models.py` (`BasePFGNN.forward`), ported from
+ENGAGE's GCN/ARMA design with the four PowerGraph models slotted into the same
+skeleton. **The entire path below runs on every forward pass — during both training
+and evaluation.** Read the diagram top-to-bottom as one forward pass; the only
+train-vs-eval difference is the last step (the dashed branch).
+
+Terminology, since these names trip people up:
+- **Encoder** = a small MLP that lifts the raw 7-dim node vector into a 64-dim
+  latent so the GNN has capacity to work with (nothing to do with autoencoders).
+- **Edge encoder** = a *separate, tiny* module (**not** the GNN) that turns the 4
+  edge attributes into something the GNN layer can consume. The label in parentheses
+  says *which kind* each model uses: a scalar weight (GCN/ARMA), a vector embedding
+  (GAT/GIN/Transformer), or a per-edge weight-matrix net (NNConv).
+- **Processor** = **the GNN we actually train** — the message-passing layers. This is
+  the *only* block that differs across the six architectures.
+- **Skip-concat** = re-attach the raw `x` (residual connection) so the decoder keeps
+  direct access to the original features, incl. the known boundary values. Shared by all.
+- **Decoder** = a small MLP that projects the 64-dim latent back down toward the answer.
+- **Readout** = the final `Linear(64→4)` giving the four outputs **per bus** (node-level,
+  *not* graph pooling).
+
+The **loss is identical for every model and both experiments**: weighted MSE over
+all four outputs.
 ```mermaid
-flowchart LR
-    subgraph IN["inputs (per graph)"]
-      X["x (N,7)<br/>[Slack?,PV?,PQ?,p,q,vm,va]<br/>unknowns = NaN→0"]
-      EA["edge_attr (2E,4)<br/>[trafo?,r_pu,x_pu,sc_V]"]
-    end
-    X --> ENC["ENCODER<br/>node MLP: Linear(7→64)→Linear(64→64)"]
-    EA --> EE["edge encoder<br/>scalar (GCN/ARMA) ·<br/>vector (GAT/GIN/Transformer) ·<br/>edge-net 64×64 (NNConv)"]
-    ENC --> MP["PROCESSOR (_mp): message passing<br/>GCN · ARMA · GAT · GIN · Transformer · NNConv"]
-    EE --> MP
-    MP --> SK["skip: concat raw x → (N, 64+7)"]
-    X -.-> SK
-    SK --> DEC["DECODER<br/>MLP: Linear(71→64)→Linear(64→64)"]
-    DEC --> RO["readout Linear(64→4)<br/>pred [P,Q,V,θ]"]
-    RO --> TR{{"training?"}}
-    TR -->|train| L["weighted_mse_loss(pred, y)<br/>over ALL 4 outputs, weight 1/‖y‖<br/>Adam + early stopping"]
-    TR -->|eval| RI["known-value re-injection<br/>slack→V,θ · PV→P,V · PQ→P,Q"]
-    RI --> OUT["reported pred → NRMSE (per-quantity + aggregate)"]
+flowchart TD
+    X["x (N,7): [Slack?,PV?,PQ?,p,q,vm,va]<br/>unknowns NaN→0"] --> ENC["ENCODER — node MLP<br/>Linear(7→64) → Linear(64→64)"]
+    EA["edge_attr (2E,4): [trafo?,r_pu,x_pu,sc_V]"] --> EE["EDGE ENCODER (small module, NOT the GNN)<br/>scalar weight (GCN/ARMA) · vector embed (GAT/GIN/Transformer) · edge-net 64×64 (NNConv)"]
+    ENC --> MP["PROCESSOR = the GNN we train (message passing)<br/>the ONLY block that differs: GCN · ARMA · GAT · GIN · Transformer · NNConv"]
+    EE -->|edge weight / embedding| MP
+    MP --> SK["SKIP-CONCAT: [ raw x ‖ node_emb ] → (N, 7+64)<br/>(shared by all models)"]
+    X -.->|residual| SK
+    SK --> DEC["DECODER — MLP<br/>Linear(71→64) → Linear(64→64)"]
+    DEC --> RO["READOUT (per bus) — Linear(64→4)<br/>pred = [P, Q, V, θ]"]
+    RO --> TRAIN["TRAINING step: weighted_mse_loss(pred, y)<br/>over ALL 4 outputs, weight 1/‖y‖ · Adam + early stopping"]
+    RO -.->|EVAL ONLY| RI["known-value re-injection<br/>slack→V,θ · PV→P,V · PQ→P,Q"]
+    RI -.-> OUT["reported pred → NRMSE (per-quantity + aggregate)"]
 ```
+*The solid path (down to the TRAINING box) is what happens every training step. The
+dashed branch is applied only at evaluation: it overwrites the known quantities with
+their true inputs before scoring, so re-injection never leaks into the loss.*
 
 ## Repository layout
 ```
