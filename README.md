@@ -29,6 +29,49 @@ Node-level AC PF state estimation — predict per-bus `[P, Q, V, θ]`.
 ## Model zoo
 `GCN`, `ARMA_GNN` (ENGAGE) plus `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph), all under one ENGAGE-style interface (edge-aware, with per-bus-type known-value re-injection).
 
+## Pipeline flow (what the code does, file by file)
+```mermaid
+flowchart TD
+    A["PowerGraph-Node<br/>System.m + hourlyDemandBus.mat<br/>(IEEE24/39/118/UK)"] -->|Octave| B["transmission/convert_cases.m<br/>Step 1: .m → .mat"]
+    B --> C["transmission_grids.py<br/>Step 2: load case + demand → pandapower net<br/>(per-unit, base PF sanity)"]
+    C --> D["transmission_graph_gen.py<br/>Step 3: for each (demand snapshot, contingency)"]
+    H["contingency_harvest.py<br/>(optional) real PowerGraph outage sets"] -.->|--contingency_source harvested| D
+    D --> D1["apply N-k outage → runpp (AC PF solve)"]
+    D1 --> D2["engage_contract.py<br/>build x (masked by bus type), edge_attr, y, dc_pf"]
+    D2 --> E["data/&lt;grid&gt;/&lt;split&gt;/dataset.pt<br/>(800 train / 100 val / 100 test per grid)"]
+    E --> F["experiments.py<br/>Step 5: train + evaluate"]
+    M["models.py<br/>MODELS = gcn, arma_gnn, gat, gin, transformer, nnconv"] --> F
+    T["training_utils.py<br/>weighted-MSE loss, NRMSE, DC baseline"] --> F
+    X["mmd_utils.py<br/>degree/Laplacian MMD"] --> F
+    F --> R1["results/*.csv<br/>transfer_matrix_*, cross_context, ood,<br/>mmd_*, gscore*, ood_distance, dc_baseline"]
+    F --> R2["models/*.pt<br/>cc_&lt;model&gt;_&lt;grid&gt; · ood_&lt;model&gt;_heldout_&lt;grid&gt;"]
+    E --> V["validate.py<br/>Step 6: contract/masking/topology/MMD gates"]
+```
+
+## Training method (encode → process → decode, per node)
+Same architecture skeleton for every model — only the **processor** block differs.
+The **loss is identical across all models and both experiments**: a weighted MSE
+over all four outputs (see below).
+```mermaid
+flowchart LR
+    subgraph IN["inputs (per graph)"]
+      X["x (N,7)<br/>[Slack?,PV?,PQ?,p,q,vm,va]<br/>unknowns = NaN→0"]
+      EA["edge_attr (2E,4)<br/>[trafo?,r_pu,x_pu,sc_V]"]
+    end
+    X --> ENC["ENCODER<br/>node MLP: Linear(7→64)→Linear(64→64)"]
+    EA --> EE["edge encoder<br/>scalar (GCN/ARMA) ·<br/>vector (GAT/GIN/Transformer) ·<br/>edge-net 64×64 (NNConv)"]
+    ENC --> MP["PROCESSOR (_mp): message passing<br/>GCN · ARMA · GAT · GIN · Transformer · NNConv"]
+    EE --> MP
+    MP --> SK["skip: concat raw x → (N, 64+7)"]
+    X -.-> SK
+    SK --> DEC["DECODER<br/>MLP: Linear(71→64)→Linear(64→64)"]
+    DEC --> RO["readout Linear(64→4)<br/>pred [P,Q,V,θ]"]
+    RO --> TR{{"training?"}}
+    TR -->|train| L["weighted_mse_loss(pred, y)<br/>over ALL 4 outputs, weight 1/‖y‖<br/>Adam + early stopping"]
+    TR -->|eval| RI["known-value re-injection<br/>slack→V,θ · PV→P,V · PQ→P,Q"]
+    RI --> OUT["reported pred → NRMSE (per-quantity + aggregate)"]
+```
+
 ## Repository layout
 ```
 eval_gnn_generalization_pg/

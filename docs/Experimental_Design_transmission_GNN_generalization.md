@@ -19,6 +19,29 @@ A single aggregate NRMSE **overstates** performance, because the four targets ar
 - **The DC-PF baseline** (`training_utils.test_dc_pf`), and ideally a warm-started single Newton step, so "the GNN beats trivial physics" is *demonstrated*, not assumed.
 - **Topological distance via MMD** (degree + Laplacian). Because power engineers reason in **electrical distance** (impedance-weighted), optionally complement MMD with an electrical measure (e.g. X/R or short-circuit-ratio distribution distance, or a PTDF-based distance) to strengthen power-systems credibility. MMD stays the primary distance for the g-score; the electrical measure is a corroborating cross-check.
 
+## Experimental design at a glance
+```mermaid
+flowchart TD
+    G["4 grids: IEEE24, IEEE39, IEEE118, UK<br/>each = distribution of topologies<br/>(demand snapshots × N-k contingencies)"] --> DS["per grid: 800 train / 100 val / 100 test graphs"]
+
+    DS --> CC["EXP 1 — Cross-Context (CC)<br/>train on ONE grid → test on ALL grids"]
+    DS --> OOD["EXP 2 — Out-of-Distribution (OOD)<br/>train on 3 grids → test on held-out grid<br/>(leave-one-grid-out)"]
+
+    CC --> CCM["4×4 transfer matrix per model<br/>diag = within-grid · off-diag = single-grid transfer"]
+    OOD --> OODM["1 held-out NRMSE per grid per model"]
+
+    MMD["MMD topological distance<br/>(degree + Laplacian histograms)<br/>grid ↔ grid, model-independent"] --> GS
+    CCM --> GS["g-score = NRMSE vs MMD<br/>CC: per training grid (small-N)<br/>OOD: per model over held-out grids (better-posed)"]
+    OODM --> GS
+    MMD --> OODD["ood_distance.csv<br/>held-out grid → mean MMD to its 3 training grids<br/>(the OOD g-score x-axis)"]
+    OODD --> GS
+
+    DC["DC-PF baseline (per grid)"] --> REP
+    CCM --> REP["Reporting: per-quantity P/Q/V/θ NRMSE,<br/>transfer matrices, generalizability curves,<br/>g-score tables, DC comparison"]
+    OODM --> REP
+    GS --> REP
+```
+
 ---
 
 # The two-layer approach (and why it is split this way)
