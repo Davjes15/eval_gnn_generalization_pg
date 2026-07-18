@@ -130,14 +130,60 @@ for n, cls in MODELS.items():
     print(n, tuple(out.shape), torch.isfinite(out).all().item())
 PY
 ```
-### Step 5 — Run the experiments (cross-context + out-of-distribution)  ⏳ `step-5-experiments`
-### Step 6 — Validation gates  ⏳ `step-6-validation`
+### Step 5 — Run the experiments  ✅ available on `step-5-experiments`
+Trains every architecture and produces the study's outputs: the cross-context
+**transfer matrix** (train on one grid → test on all), **leave-one-grid-out OOD**,
+the **g-score** (NRMSE vs topological distance via MMD), **per-quantity errors
+(P, Q, V, θ)**, and the **DC-PF baseline**.
+```bash
+pip install -r requirements.txt
+# quick smoke test (few epochs, two models, two grids):
+python3 experiments.py --experiment both --models gcn gat --epochs 20 \
+    --grids IEEE24 IEEE39 --data_dir data --out results
+# full run (all grids + all models):
+python3 experiments.py --experiment both --data_dir data --out results
+```
+Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
+(incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
+`gscore.csv`, `ood.csv`. Supporting code: `training_utils.py` (training loop +
+metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
+version).
 
+### Step 6 — Validation gates  ⏳ `step-6-validation`
 Each `⏳` section will be filled in with exact commands, expected output, and
 troubleshooting as its branch lands.
 
+## End-to-end walkthrough (no prior experience needed)
+```bash
+# 0. Clone this repo and PowerGraph-Node side by side
+git clone https://github.com/Davjes15/eval_gnn_generalization_pg.git
+git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git
+cd eval_gnn_generalization_pg
+git checkout step-5-experiments          # latest step branch
+
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Point at PowerGraph-Node's power-system folder (has the hourly demand files)
+export POWERGRAPH_NODE_DIR="$(pwd)/../PowerGraph-Node/13_Power_system"
+
+# 3. (Optional) re-convert the grids — the .mat files are already committed,
+#    so you can skip this unless you changed the source cases. Needs Octave.
+#    octave --no-gui --eval "cd transmission; convert_cases"
+
+# 4. Generate the datasets (contingencies + AC power-flow re-solve)
+python3 transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --out_dir data
+
+# 5. Run the experiments
+python3 experiments.py --experiment both --data_dir data --out results
+
+# 6. Read the results
+ls results/         # transfer_matrix_*.csv, gscore.csv, ood.csv, dc_baseline.csv, ...
+```
+
 ## Status
-Early stage — **Step 1 (grid conversion) implemented**; Steps 2–6 in progress.
+**Steps 1–5 implemented** (grid conversion → loader → data generation → model
+zoo → experiments); Step 6 (validation gates) in progress.
 See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
 the full plan and the reasoning behind each step.
 
