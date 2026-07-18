@@ -273,6 +273,19 @@ transformer         UK         3      0.1477     0.0359     0.1927   0.1806
      nnconv         UK         3      0.3770     0.2389     0.1927   0.5954
 
 ==============================================================================
+5c. OOD topological distance (held-out grid -> its training grids)
+==============================================================================
+
+This is the x-axis the OOD g-score uses: for each leave-one-grid-out split
+the held-out grid's distance = mean Laplacian-MMD to the 3 training grids
+(min/max also shown). Derived from the Section-1 pairwise MMD matrix.
+held_out_grid           train_grids  mmd_to_train_mean  mmd_to_train_min  mmd_to_train_max
+       IEEE24     IEEE39+IEEE118+UK             0.8213            0.7282            0.9960
+       IEEE39     IEEE24+IEEE118+UK             0.9355            0.7848            1.1169
+      IEEE118      IEEE24+IEEE39+UK             0.9374            0.7741            1.2190
+           UK IEEE24+IEEE39+IEEE118             1.1263            1.0520            1.2447
+
+==============================================================================
 6. OOD g-score (per model, over held-out grids; no trim) [better-posed at N=4]
 ==============================================================================
 

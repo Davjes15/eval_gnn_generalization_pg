@@ -43,6 +43,8 @@ mmd_degree.csv           4x4 degree-histogram MMD between grids
 dc_baseline.csv          DC-PF baseline per grid (aggregate + per-quantity)
 gscore.csv               ORIGINAL ENGAGE g-score (bounds=2) -- degenerate at N=3 (see note)
 gscore_smallN.csv        cross-context small-N g-score (no percentile trim, all unseen grids)
+ood_distance.csv         per held-out grid: mean/min/max Laplacian-MMD to its training grids
+                         (the explicit x-axis the OOD g-score uses)
 gscore_ood.csv           OOD g-score per model over held-out grids (no trim) -- better-posed at N=4;
                          distance = mean Laplacian-MMD from each held-out grid to its training grids
 transfer_matrix_<model>.csv   per-model aggregate NRMSE transfer matrix
