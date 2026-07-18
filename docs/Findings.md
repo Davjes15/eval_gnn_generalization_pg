@@ -109,6 +109,29 @@ Aggregate NRMSE on a grid's own held-out test split (train_grid = test_grid):
   the substantive learned quantities are P, Q, and θ. (This is exactly the
   "metric-inflation-by-V" caveat the design anticipated — always read per-quantity.)
 
+### Is the flat voltage a data problem? No — it is physically correct.
+Measured directly from the generated `y` (bus voltage magnitude `vm_pu`) on the test splits:
+
+| grid | V min | V max | V mean | V std | V range | for contrast: θ range | P range |
+|---|---|---|---|---|---|---|---|
+| IEEE24 | 0.903 | 1.051 | 1.011 | 0.031 | 0.148 | 93.8° | 2174 MW |
+| IEEE39 | 0.801 | 1.079 | 0.982 | 0.060 | 0.278 | 122.1° | 2938 MW |
+| IEEE118 | 0.806 | 1.052 | 0.982 | 0.027 | 0.246 | 179.8° | 6202 MW |
+| UK | 0.960 | 1.000 | 0.998 | 0.005 | 0.040 | 185.2° | 48895 MW |
+
+- **This is exactly how real transmission grids behave.** Voltage magnitude is an
+  actively **regulated** quantity: generators (PV buses) and the slack hold their
+  buses at a fixed setpoint, and the grid is operated inside the normal band
+  (~0.95–1.05 pu). So `vm_pu` genuinely clusters near 1.0 — a std of 0.005–0.06 pu,
+  versus **angles spanning ~90–185°** and **power spanning thousands of MW**.
+- The near-flatness is therefore **a property of the physics, not a bug** in the data
+  or the solver. It also means voltage carries little information relative to θ/P/Q —
+  which is *why* range-normalized V-NRMSE looks huge (tiny denominator) even though the
+  absolute error is small. UK is the flattest (std 0.005) because its known-value
+  re-injection + tightly regulated reduced model leaves almost no V variation to predict.
+- **Recommendation (already in the caveats):** report **absolute pu V error**
+  alongside range-normalized V-NRMSE so this isn't misread as a voltage failure.
+
 ---
 
 ## 3. DC power-flow baseline
@@ -327,6 +350,45 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 - **A universal CC pattern:** models trained on the large, dense **IEEE118** blow up
   on smaller grids; multi-source **OOD training removes this** by supplying
   size/topology diversity — the core argument for training on several grids.
+
+---
+
+## 7ter. ENGAGE-style result figures
+
+Regenerate with `full_run/results/make_figures.py`; PNGs live in `docs/figures/`.
+
+**MMD range across the 12 cross-grid pairs** (degree + Laplacian, sorted). Shows the
+distances are non-degenerate and spread — UK pairs are the largest.
+
+![MMD range](figures/fig_mmd_range.png)
+
+**Grid-to-grid MMD heatmaps** (rows = train, cols = test). Diagonal ≈ 0 (within-grid),
+off-diagonal large; UK is the farthest column/row.
+
+![MMD heatmaps](figures/fig_mmd_heatmap.png)
+
+**Performance analysis.** Left: mean NRMSE per model in the three regimes (log scale) —
+**within-grid is low for all; single-grid CC transfer blows up; OOD sits in between
+and is much more stable.** Right: OOD NRMSE distribution per model — tight for the
+attention models, with `nnconv`'s IEEE39 outlier clearly visible.
+
+![Performance](figures/fig_performance.png)
+
+**Generalizability curves — MMD vs NRMSE** (log-y; Pearson/Spearman annotated).
+Unlike ENGAGE's distribution grids (clear positive CC correlation), here the
+correlation is **weak** (CC Pearson ≈ 0.05, OOD ≈ −0.01): with only 4 transmission
+grids, error is driven far more by **which grid was the source** (IEEE118-trained
+models overfit and blow up on smaller grids) than by raw topological distance. This is
+itself a finding — *at this scale MMD does not linearly predict transfer error*, so we
+lead with the transfer matrix + OOD NRMSE and treat the g-score as supporting.
+
+![Generalizability curve](figures/fig_generalizability_curve.png)
+
+**OOD g-score by model** (lower = better; no trim, NaN cells dropped). `transformer`
+best; `gat`/`gin`/`gcn` close; `nnconv` disqualified by its IEEE39 outlier;
+`arma_gnn`'s bar is optimistic (its diverged UK point was dropped).
+
+![OOD g-score](figures/fig_gscore_ood.png)
 
 ---
 
