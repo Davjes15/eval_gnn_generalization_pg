@@ -1,0 +1,101 @@
+grid,t_idx,k,out_lines,source
+IEEE24,4438,0,[],random
+IEEE24,34873,0,[],random
+IEEE24,32703,1,[4],random
+IEEE24,4554,1,[32],random
+IEEE24,5327,0,[],random
+IEEE24,7728,1,[27],random
+IEEE24,26465,0,[],random
+IEEE24,22064,2,"[16, 21]",random
+IEEE24,185,0,[],random
+IEEE24,2078,2,"[3, 15]",random
+IEEE24,24645,1,[29],random
+IEEE24,17055,0,[],random
+IEEE24,3432,1,[11],random
+IEEE24,13740,1,[7],random
+IEEE24,18527,2,"[12, 29]",random
+IEEE24,8400,2,"[17, 30]",random
+IEEE24,17795,2,"[11, 21]",random
+IEEE24,17111,1,[28],random
+IEEE24,19725,0,[],random
+IEEE24,22037,1,[0],random
+IEEE24,7861,1,[4],random
+IEEE24,5610,1,[15],random
+IEEE24,5930,0,[],random
+IEEE24,25694,0,[],random
+IEEE24,1459,2,"[1, 19]",random
+IEEE24,8800,2,"[11, 27]",random
+IEEE24,11236,2,"[20, 32]",random
+IEEE24,680,0,[],random
+IEEE24,16,2,"[1, 27]",random
+IEEE24,6160,2,"[6, 13]",random
+IEEE24,12789,1,[22],random
+IEEE24,1163,1,[28],random
+IEEE24,27103,1,[4],random
+IEEE24,15299,0,[],random
+IEEE24,34085,1,[18],random
+IEEE24,20827,2,"[4, 19]",random
+IEEE24,22534,1,[15],random
+IEEE24,20860,2,"[1, 22]",random
+IEEE24,21366,2,"[26, 27]",random
+IEEE24,26480,1,[25],random
+IEEE24,6365,1,[14],random
+IEEE24,18907,1,[5],random
+IEEE24,13981,1,[27],random
+IEEE24,15131,1,[11],random
+IEEE24,25723,1,[0],random
+IEEE24,4007,1,[2],random
+IEEE24,10946,0,[],random
+IEEE24,12030,0,[],random
+IEEE24,20668,1,[11],random
+IEEE24,33916,0,[],random
+IEEE24,19394,2,"[21, 31]",random
+IEEE24,4092,2,"[3, 17]",random
+IEEE24,22179,1,[30],random
+IEEE24,8067,0,[],random
+IEEE24,20586,0,[],random
+IEEE24,30117,0,[],random
+IEEE24,3600,1,[1],random
+IEEE24,11806,1,[31],random
+IEEE24,24476,0,[],random
+IEEE24,17603,1,[22],random
+IEEE24,2433,1,[28],random
+IEEE24,16356,2,"[2, 31]",random
+IEEE24,22143,2,"[18, 21]",random
+IEEE24,19273,1,[27],random
+IEEE24,8118,1,[20],random
+IEEE24,17911,1,[1],random
+IEEE24,9455,1,[15],random
+IEEE24,27519,0,[],random
+IEEE24,13305,2,"[0, 11]",random
+IEEE24,3178,1,[19],random
+IEEE24,29949,1,[16],random
+IEEE24,29876,2,"[5, 6]",random
+IEEE24,15857,1,[17],random
+IEEE24,30445,0,[],random
+IEEE24,20926,1,[22],random
+IEEE24,16408,0,[],random
+IEEE24,31693,2,"[1, 10]",random
+IEEE24,28529,2,"[19, 26]",random
+IEEE24,34341,2,"[20, 23]",random
+IEEE24,27652,0,[],random
+IEEE24,9877,0,[],random
+IEEE24,10331,0,[],random
+IEEE24,12062,0,[],random
+IEEE24,22750,0,[],random
+IEEE24,10520,0,[],random
+IEEE24,22320,2,"[1, 24]",random
+IEEE24,31774,0,[],random
+IEEE24,3454,1,[19],random
+IEEE24,10935,0,[],random
+IEEE24,14973,2,"[5, 10]",random
+IEEE24,11534,2,"[14, 31]",random
+IEEE24,4600,0,[],random
+IEEE24,18958,1,[12],random
+IEEE24,34878,2,"[4, 27]",random
+IEEE24,6106,2,"[16, 32]",random
+IEEE24,1416,2,"[13, 28]",random
+IEEE24,28660,2,"[2, 4]",random
+IEEE24,20971,1,[10],random
+IEEE24,23323,0,[],random
+IEEE24,30082,0,[],random

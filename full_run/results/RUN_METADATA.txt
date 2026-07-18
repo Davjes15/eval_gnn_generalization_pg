@@ -1,0 +1,57 @@
+FULL RUN METADATA
+=================
+
+Repo: https://github.com/Davjes15/eval_gnn_generalization_pg
+Branch of code used: step-7-harvest-contingencies (latest; includes steps 1-7)
+
+--- Dataset generation (already delivered as datasets.tar.gz) ---
+Command:
+  POWERGRAPH_NODE_DIR=/.../PowerGraph-Node-main/13_Power_system \
+  python3 -u transmission_graph_gen.py \
+    --grid all --n_train 800 --n_val 100 --n_test 100 \
+    --max_k 2 --out_dir /home/ubuntu/full_run/data
+Contingency source: random (default) N-1/N-2 line outages + demand snapshots.
+Per grid: 800 train / 100 val / 100 test  (4 grids -> 4,400 graphs).
+Seeding: stable per-grid offset (IEEE24=1, IEEE39=2, IEEE118=3, UK=4), base seed default.
+
+--- Experiments ---
+Command:
+  python3 -u experiments.py --experiment both \
+    --data_dir /home/ubuntu/full_run/data \
+    --out /home/ubuntu/full_run/results --epochs 200
+Models: gcn, arma_gnn, gat, gin, transformer, nnconv (all edge-aware).
+Training: Adam lr=1e-3, weighted-MSE loss, early stopping patience=50, epochs<=200.
+Device: CPU.
+Cross-context: 6 models x 16 (train,test) pairs = 96 cells.
+OOD: 6 models x 4 held-out grids = 24 cells.
+
+--- Environment versions ---
+python 3
+torch        2.13.0+cu130
+torch_geometric 2.8.0
+pandapower   3.5.4
+numpy        2.2.1
+scipy        1.14.1
+pandas       2.3.3
+networkx     3.4.2
+
+--- Files in this package ---
+cross_context.csv        96 rows: model, train_grid, test_grid, unseen, nrmse + per-quantity (P,Q,V,theta)
+ood.csv                  24 rows: model, held_out_grid, nrmse + per-quantity
+mmd_laplacian.csv        4x4 Laplacian-spectrum MMD between grids
+mmd_degree.csv           4x4 degree-histogram MMD between grids
+dc_baseline.csv          DC-PF baseline per grid (aggregate + per-quantity)
+gscore.csv               ORIGINAL ENGAGE g-score (bounds=2) -- degenerate at N=3 (see note)
+gscore_smallN.csv        RECOMMENDED small-N g-score (no percentile trim, all unseen grids)
+transfer_matrix_<model>.csv   per-model aggregate NRMSE transfer matrix
+results_report.txt       human-readable consolidation of everything above
+summary.json             row counts
+
+--- Known caveats in the numbers ---
+* arma_gnn OOD held_out=UK -> NaN (ARMA diverged on that split; a real instability, not a data bug).
+* Per-quantity NRMSE for V/theta can be large (>1) for some transfers because V is
+  tightly bounded (small target range -> range-normalized error inflates); read P/Q/theta
+  alongside V. Aggregate nrmse is the [P,Q,V,theta] combined range-NRMSE.
+* Cross-grid transfer to a *single* grid degrades a lot (esp. IEEE118->others);
+  OOD (train on 3 grids) generalizes to the held-out grid far better -> multi-grid
+  training is the key generalization lever.

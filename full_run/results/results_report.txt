@@ -1,0 +1,273 @@
+TRANSMISSION GNN GENERALIZATION - FULL RUN RESULTS REPORT
+Task: AC power-flow node regression [P, Q, V, theta] (per-unit).
+Grids: IEEE24, IEEE39, IEEE118, UK.  6 architectures.
+Datasets: 800 train / 100 val / 100 test per grid (random N-1/N-2 contingencies + demand).
+
+==============================================================================
+1. MMD topological distance (Laplacian-spectrum) between grids
+==============================================================================
+
+         IEEE24  IEEE39  IEEE118      UK
+IEEE24   0.0637  0.7396   0.7282  0.9960
+IEEE39   0.7848  0.1157   0.9049  1.1169
+IEEE118  0.8191  0.7741   0.1007  1.2190
+UK       1.0821  1.0520   1.2447  0.0031
+
+(degree-histogram MMD in mmd_degree.csv)
+
+==============================================================================
+2. DC power-flow baseline (per test grid, per-quantity NRMSE)
+==============================================================================
+
+   grid  dc_nrmse  dc_nrmse_P  dc_nrmse_Q  dc_nrmse_V  dc_nrmse_theta
+ IEEE24    0.0168      0.0118         0.0      0.1426          0.0183
+ IEEE39    0.0096      0.0080         0.0      0.2171          0.0597
+IEEE118    0.0239      0.0179         0.0      0.1088          0.1535
+     UK    0.0165      0.0111         0.0      0.1364          0.0132
+
+==============================================================================
+3. Cross-context transfer (train on one grid, test on all)
+==============================================================================
+
+      model train_grid test_grid  unseen   nrmse  nrmse_P  nrmse_Q    nrmse_V  nrmse_theta
+        gcn     IEEE24    IEEE24   False  0.0438   0.0263   0.0428     0.9747       0.0799
+        gcn     IEEE24    IEEE39    True  0.1222   0.0781   0.1000     2.2530       0.4443
+        gcn     IEEE24   IEEE118    True  0.1031   0.0695   0.0664     0.3323       0.6416
+        gcn     IEEE24        UK    True  0.1472   0.0888   0.1265    82.2331       1.9723
+        gcn     IEEE39    IEEE24    True  0.1730   0.1005   0.1863     1.7332       0.2395
+        gcn     IEEE39    IEEE39   False  0.0510   0.0326   0.0429     1.1045       0.0721
+        gcn     IEEE39   IEEE118    True  0.1149   0.0777   0.0734     3.7341       0.6898
+        gcn     IEEE39        UK    True  0.1447   0.0896   0.1106   124.1049       1.0023
+        gcn    IEEE118    IEEE24    True  1.2023   0.1102   2.0934    39.8993       7.9282
+        gcn    IEEE118    IEEE39    True  1.1876   0.0929   1.3921    24.2624       8.3630
+        gcn    IEEE118   IEEE118   False  0.0105   0.0044   0.0126     0.3651       0.0714
+        gcn    IEEE118        UK    True  1.3011   0.0923   2.4523  1340.7843      60.6130
+        gcn         UK    IEEE24    True  0.6109   0.3549   0.6646    18.0955       0.2949
+        gcn         UK    IEEE39    True  0.2539   0.1969   0.1406    34.3706       0.3795
+        gcn         UK   IEEE118    True  0.3178   0.1507   0.3739     7.6255       0.5766
+        gcn         UK        UK   False  0.0110   0.0056   0.0139    16.9702       0.0955
+   arma_gnn     IEEE24    IEEE24   False  0.1466   0.0959   0.1044     4.2312       0.1048
+   arma_gnn     IEEE24    IEEE39    True  0.1334   0.0890   0.1054     6.5112       0.2727
+   arma_gnn     IEEE24   IEEE118    True  0.1026   0.0695   0.0674     2.5311       0.5466
+   arma_gnn     IEEE24        UK    True  0.1456   0.0892   0.1165   241.3984       1.8727
+   arma_gnn     IEEE39    IEEE24    True  0.1588   0.1013   0.1283     2.5444       0.1495
+   arma_gnn     IEEE39    IEEE39   False  0.0096   0.0032   0.0108     0.5976       0.0440
+   arma_gnn     IEEE39   IEEE118    True  0.1013   0.0689   0.0659     2.1889       0.5303
+   arma_gnn     IEEE39        UK    True  0.1461   0.0899   0.1142    47.0347       1.9544
+   arma_gnn    IEEE118    IEEE24    True  2.7165   0.8032   4.6074    35.4678       9.5053
+   arma_gnn    IEEE118    IEEE39    True  2.8067   0.1800   3.4481    46.5170      10.1443
+   arma_gnn    IEEE118   IEEE118   False  0.0042   0.0014   0.0054     0.3495       0.0289
+   arma_gnn    IEEE118        UK    True  1.2829   0.4110   2.0408  1040.9532      78.3560
+   arma_gnn         UK    IEEE24    True  0.1469   0.0938   0.1165    22.7808       0.2188
+   arma_gnn         UK    IEEE39    True  0.0812   0.0474   0.0700    51.7404       0.4353
+   arma_gnn         UK   IEEE118    True  0.1023   0.0693   0.0673     5.1401       0.5425
+   arma_gnn         UK        UK   False  0.0056   0.0019   0.0093    21.1384       0.0547
+        gat     IEEE24    IEEE24   False  0.0281   0.0161   0.0309     1.1487       0.0502
+        gat     IEEE24    IEEE39    True  0.1377   0.0911   0.1100    10.3144       0.3047
+        gat     IEEE24   IEEE118    True  0.1029   0.0696   0.0683     3.4081       0.5319
+        gat     IEEE24        UK    True  0.1468   0.0906   0.1141   291.9633       1.2179
+        gat     IEEE39    IEEE24    True  0.2195   0.1003   0.3176     3.0345       0.4239
+        gat     IEEE39    IEEE39   False  0.0234   0.0113   0.0238     0.8701       0.0835
+        gat     IEEE39   IEEE118    True  0.1030   0.0696   0.0677     1.9200       0.5733
+        gat     IEEE39        UK    True  0.1634   0.0897   0.1818   208.6561       3.5699
+        gat    IEEE118    IEEE24    True  0.3784   0.1047   0.5816    13.9084       2.8096
+        gat    IEEE118    IEEE39    True  0.2984   0.0915   0.1651    33.8563       5.1353
+        gat    IEEE118   IEEE118   False  0.0147   0.0052   0.0188     1.2125       0.0913
+        gat    IEEE118        UK    True  0.3211   0.0961   0.5379   933.4352      15.6728
+        gat         UK    IEEE24    True  0.1541   0.1024   0.0957     5.3507       0.2152
+        gat         UK    IEEE39    True  0.1355   0.0895   0.1068     4.6259       0.4329
+        gat         UK   IEEE118    True  0.1022   0.0693   0.0666     2.5424       0.5485
+        gat         UK        UK   False  0.0086   0.0028   0.0147    62.4651       0.1334
+        gin     IEEE24    IEEE24   False  0.0110   0.0016   0.0201     0.8646       0.0461
+        gin     IEEE24    IEEE39    True  0.1378   0.0889   0.1132     4.0472       0.3681
+        gin     IEEE24   IEEE118    True  0.1021   0.0697   0.0643     1.5374       0.5662
+        gin     IEEE24        UK    True  0.2788   0.0899   0.4719   763.5919       8.3639
+        gin     IEEE39    IEEE24    True  0.2375   0.1017   0.2910    11.0458       1.8398
+        gin     IEEE39    IEEE39   False  0.0155   0.0020   0.0189     1.2779       0.0550
+        gin     IEEE39   IEEE118    True  0.1051   0.0695   0.0687     5.3943       0.7808
+        gin     IEEE39        UK    True  0.6899   0.0910   0.2422  4161.3281     118.2427
+        gin    IEEE118    IEEE24    True  9.5557   0.3208  18.3372   352.2101       6.1956
+        gin    IEEE118    IEEE39    True  2.7391   0.3582   3.3851    52.9939       2.0205
+        gin    IEEE118   IEEE118   False  0.0086   0.0033   0.0101     0.8230       0.0891
+        gin    IEEE118        UK    True 26.8384   2.4501  52.2011 41147.2695     196.2323
+        gin         UK    IEEE24    True  0.7065   0.1010   1.3300    28.0591       0.1596
+        gin         UK    IEEE39    True  0.1673   0.0797   0.1715   177.4964       0.4146
+        gin         UK   IEEE118    True  0.7116   0.1785   1.0057    96.1938       0.6454
+        gin         UK        UK   False  0.0057   0.0026   0.0083    28.0325       0.0657
+transformer     IEEE24    IEEE24   False  0.0114   0.0012   0.0211     0.8752       0.0434
+transformer     IEEE24    IEEE39    True  0.1452   0.0889   0.1258     3.8089       0.4552
+transformer     IEEE24   IEEE118    True  0.1024   0.0695   0.0674     2.8429       0.5185
+transformer     IEEE24        UK    True  0.0996   0.0574   0.0937   232.0289       3.4078
+transformer     IEEE39    IEEE24    True  0.1606   0.1017   0.1171     4.1719       0.5874
+transformer     IEEE39    IEEE39   False  0.0162   0.0034   0.0193     0.8945       0.0604
+transformer     IEEE39   IEEE118    True  0.1025   0.0694   0.0670     2.0203       0.5614
+transformer     IEEE39        UK    True  0.1490   0.0898   0.1274    87.5449       2.5107
+transformer    IEEE118    IEEE24    True  2.4705   0.1030   4.7333     3.3064       2.4116
+transformer    IEEE118    IEEE39    True  2.2359   0.0897   2.7896    11.0136       2.5904
+transformer    IEEE118   IEEE118   False  0.0049   0.0015   0.0063     0.5016       0.0460
+transformer    IEEE118        UK    True  2.9239   0.2730   5.6798   189.6816      29.9860
+transformer         UK    IEEE24    True  0.1952   0.1200   0.1819    10.4516       0.2113
+transformer         UK    IEEE39    True  0.1397   0.0918   0.1119    13.5068       0.3778
+transformer         UK   IEEE118    True  0.1083   0.0754   0.0633     2.6969       0.5510
+transformer         UK        UK   False  0.0083   0.0027   0.0142    82.8712       0.1432
+     nnconv     IEEE24    IEEE24   False  0.0121   0.0017   0.0221     1.3889       0.0463
+     nnconv     IEEE24    IEEE39    True  0.2341   0.0890   0.2330    38.9953       2.0406
+     nnconv     IEEE24   IEEE118    True  0.1017   0.0694   0.0652     3.8938       0.5182
+     nnconv     IEEE24        UK    True  0.1488   0.0907   0.1169   475.6498       3.7790
+     nnconv     IEEE39    IEEE24    True  0.1582   0.1027   0.1098    22.7208       0.3796
+     nnconv     IEEE39    IEEE39   False  0.0229   0.0113   0.0233     1.6322       0.0649
+     nnconv     IEEE39   IEEE118    True  0.1033   0.0699   0.0667     5.1536       0.6012
+     nnconv     IEEE39        UK    True  0.1480   0.0900   0.1235   258.9604       1.6540
+     nnconv    IEEE118    IEEE24    True  1.5067   0.1039   1.9295    61.8745      18.1944
+     nnconv    IEEE118    IEEE39    True 17.1421   1.8628  21.2643    35.9910      10.9113
+     nnconv    IEEE118   IEEE118   False  0.0060   0.0019   0.0079     0.1985       0.0375
+     nnconv    IEEE118        UK    True  2.2638   0.1027   4.2681  1141.3656     109.9854
+     nnconv         UK    IEEE24    True  0.3364   0.1049   0.5776    64.9329       0.4446
+     nnconv         UK    IEEE39    True  0.6877   0.5754   0.2254    53.8217       0.4889
+     nnconv         UK   IEEE118    True  0.1068   0.0697   0.0799     4.8192       0.5510
+     nnconv         UK        UK   False  0.0111   0.0061   0.0125    39.4445       0.0522
+
+==============================================================================
+3b. Cross-context aggregate-NRMSE transfer matrices (rows=train, cols=test)
+==============================================================================
+
+
+[gcn]
+test_grid   IEEE118  IEEE24  IEEE39      UK
+train_grid                                 
+IEEE118      0.0105  1.2023  1.1876  1.3011
+IEEE24       0.1031  0.0438  0.1222  0.1472
+IEEE39       0.1149  0.1730  0.0510  0.1447
+UK           0.3178  0.6109  0.2539  0.0110
+
+[arma_gnn]
+test_grid   IEEE118  IEEE24  IEEE39      UK
+train_grid                                 
+IEEE118      0.0042  2.7165  2.8067  1.2829
+IEEE24       0.1026  0.1466  0.1334  0.1456
+IEEE39       0.1013  0.1588  0.0096  0.1461
+UK           0.1023  0.1469  0.0812  0.0056
+
+[gat]
+test_grid   IEEE118  IEEE24  IEEE39      UK
+train_grid                                 
+IEEE118      0.0147  0.3784  0.2984  0.3211
+IEEE24       0.1029  0.0281  0.1377  0.1468
+IEEE39       0.1030  0.2195  0.0234  0.1634
+UK           0.1022  0.1541  0.1355  0.0086
+
+[gin]
+test_grid   IEEE118  IEEE24  IEEE39       UK
+train_grid                                  
+IEEE118      0.0086  9.5557  2.7391  26.8384
+IEEE24       0.1021  0.0110  0.1378   0.2788
+IEEE39       0.1051  0.2375  0.0155   0.6899
+UK           0.7116  0.7065  0.1673   0.0057
+
+[transformer]
+test_grid   IEEE118  IEEE24  IEEE39      UK
+train_grid                                 
+IEEE118      0.0049  2.4705  2.2359  2.9239
+IEEE24       0.1024  0.0114  0.1452  0.0996
+IEEE39       0.1025  0.1606  0.0162  0.1490
+UK           0.1083  0.1952  0.1397  0.0083
+
+[nnconv]
+test_grid   IEEE118  IEEE24   IEEE39      UK
+train_grid                                  
+IEEE118      0.0060  1.5067  17.1421  2.2638
+IEEE24       0.1017  0.0121   0.2341  0.1488
+IEEE39       0.1033  0.1582   0.0229  0.1480
+UK           0.1068  0.3364   0.6877  0.0111
+
+==============================================================================
+4. Out-of-distribution (leave-one-grid-out; train on 3, test on held-out)
+==============================================================================
+
+      model held_out_grid  nrmse  nrmse_P  nrmse_Q  nrmse_V  nrmse_theta
+        gcn        IEEE24 0.1124   0.0433   0.1747   0.8798       0.4009
+        gcn        IEEE39 0.1415   0.0581   0.1452  11.3563       0.9457
+        gcn       IEEE118 0.1198   0.0853   0.0577   0.1105       0.6946
+        gcn            UK 0.2152   0.0898   0.3075  30.3117      11.2659
+   arma_gnn        IEEE24 0.1571   0.1019   0.1140   1.1691       0.2597
+   arma_gnn        IEEE39 0.1122   0.0640   0.1038   0.5462       0.3282
+   arma_gnn       IEEE118 0.1024   0.0694   0.0670   0.1811       0.5482
+   arma_gnn            UK    NaN      NaN      NaN      NaN          NaN
+        gat        IEEE24 0.1693   0.1018   0.1670   1.2549       0.2664
+        gat        IEEE39 0.1305   0.0937   0.0893   1.9968       0.3335
+        gat       IEEE118 0.1032   0.0696   0.0680   0.1024       0.5848
+        gat            UK 0.1595   0.0904   0.1661  73.6832       2.8259
+        gin        IEEE24 0.1586   0.1023   0.1114   0.2393       0.4444
+        gin        IEEE39 0.1346   0.0890   0.1060   0.2371       0.4245
+        gin       IEEE118 0.1061   0.0697   0.0694   0.1263       0.8306
+        gin            UK 0.1700   0.0891   0.1868  64.0276       8.5929
+transformer        IEEE24 0.1566   0.1018   0.1080   0.5907       0.3703
+transformer        IEEE39 0.1358   0.0906   0.1020   1.7289       0.6244
+transformer       IEEE118 0.1061   0.0695   0.0669   0.0876       0.9097
+transformer            UK 0.1488   0.0897   0.1236  26.6710       3.7003
+     nnconv        IEEE24 0.1636   0.1014   0.1152   0.3024       0.8108
+     nnconv        IEEE39 3.0726   2.3199   1.8898   0.3746       1.9548
+     nnconv       IEEE118 0.1027   0.0695   0.0668   0.1672       0.5899
+     nnconv            UK 0.1541   0.0906   0.1452   7.7876       2.4571
+
+==============================================================================
+5. g-score -- ORIGINAL (ENGAGE percentile trim, bounds=2)
+==============================================================================
+
+NOTE: with only 3 unseen grids the 2/98 percentile trim keeps 1 point,
+so std_nrmse=mmd_range=0. This is the documented small-sample fragility.
+      model train_grid  mean_nrmse  std_nrmse  mmd_range  g_score
+        gcn     IEEE24      0.1222        0.0        0.0   0.1222
+        gcn     IEEE39      0.1447        0.0        0.0   0.1447
+        gcn    IEEE118      1.2023        0.0        0.0   1.2023
+        gcn         UK      0.3178        0.0        0.0   0.3178
+   arma_gnn     IEEE24      0.1334        0.0        0.0   0.1334
+   arma_gnn     IEEE39      0.1461        0.0        0.0   0.1461
+   arma_gnn    IEEE118      2.7165        0.0        0.0   2.7165
+   arma_gnn         UK      0.1023        0.0        0.0   0.1023
+        gat     IEEE24      0.1377        0.0        0.0   0.1377
+        gat     IEEE39      0.1634        0.0        0.0   0.1634
+        gat    IEEE118      0.3211        0.0        0.0   0.3211
+        gat         UK      0.1355        0.0        0.0   0.1355
+        gin     IEEE24      0.1378        0.0        0.0   0.1378
+        gin     IEEE39      0.2375        0.0        0.0   0.2375
+        gin    IEEE118      9.5557        0.0        0.0   9.5557
+        gin         UK      0.7065        0.0        0.0   0.7065
+transformer     IEEE24      0.1024        0.0        0.0   0.1024
+transformer     IEEE39      0.1490        0.0        0.0   0.1490
+transformer    IEEE118      2.4705        0.0        0.0   2.4705
+transformer         UK      0.1397        0.0        0.0   0.1397
+     nnconv     IEEE24      0.1488        0.0        0.0   0.1488
+     nnconv     IEEE39      0.1480        0.0        0.0   0.1480
+     nnconv    IEEE118      2.2638        0.0        0.0   2.2638
+     nnconv         UK      0.3364        0.0        0.0   0.3364
+
+==============================================================================
+5b. g-score -- SMALL-N (no trim, all 3 unseen grids) [recommended here]
+==============================================================================
+
+      model train_grid  n_unseen  mean_nrmse  std_nrmse  mmd_range  g_score
+        gcn     IEEE24         3      0.1242     0.0180     0.2678   0.1401
+        gcn     IEEE39         3      0.1442     0.0237     0.3321   0.1647
+        gcn    IEEE118         3      1.2303     0.0504     0.4449   1.2720
+        gcn         UK         3      0.3942     0.1554     0.1927   0.5364
+   arma_gnn     IEEE24         3      0.1272     0.0181     0.2678   0.1432
+   arma_gnn     IEEE39         3      0.1354     0.0246     0.3321   0.1567
+   arma_gnn    IEEE118         3      2.2687     0.6980     0.4449   2.8461
+   arma_gnn         UK         3      0.1101     0.0274     0.1927   0.1352
+        gat     IEEE24         3      0.1291     0.0189     0.2678   0.1459
+        gat     IEEE39         3      0.1620     0.0476     0.3321   0.2031
+        gat    IEEE118         3      0.3326     0.0337     0.4449   0.3605
+        gat         UK         3      0.1306     0.0215     0.1927   0.1503
+        gin     IEEE24         3      0.1729     0.0763     0.2678   0.2405
+        gin     IEEE39         3      0.3442     0.2504     0.3321   0.5603
+        gin    IEEE118         3     13.0444    10.1430     0.4449  21.4353
+        gin         UK         3      0.5285     0.2554     0.1927   0.7620
+transformer     IEEE24         3      0.1157     0.0208     0.2678   0.1342
+transformer     IEEE39         3      0.1374     0.0251     0.3321   0.1590
+transformer    IEEE118         3      2.5434     0.2856     0.4449   2.7797
+transformer         UK         3      0.1477     0.0359     0.1927   0.1806
+     nnconv     IEEE24         3      0.1615     0.0548     0.2678   0.2101
+     nnconv     IEEE39         3      0.1365     0.0238     0.3321   0.1571
+     nnconv    IEEE118         3      6.9709     7.1988     0.4449  12.9261
+     nnconv         UK         3      0.3770     0.2389     0.1927   0.5954
