@@ -72,7 +72,24 @@ octave --no-gui --eval "cd transmission; convert_cases"
 Full details, expected output, and a verification snippet: see
 [`transmission/README.md`](transmission/README.md).
 
-### Step 2 — Load grids into pandapower  ⏳ coming on `step-2-grid-loader`
+### Step 2 — Load grids into pandapower  ✅ available on `step-2-grid-loader`
+Loads the converted `.mat` cases as re-solvable pandapower networks and loads the
+per-bus hourly demand profiles. This is the bridge between Step 1's files and the
+data generator in Step 3.
+```bash
+pip install pandapower scipy numpy          # (numba optional, for speed)
+export POWERGRAPH_NODE_DIR=/absolute/path/to/PowerGraph-Node/13_Power_system
+python3 transmission_grids.py               # self-test: loads + runs base power flow
+```
+Expected output (one line per grid), each `converged=True`:
+```
+IEEE24   buses=  24 loads=  17 gens= 10 ext_grid=1 lines= 33 trafos=  5 converged=True demand=(24, 35040)
+IEEE39   buses=  39 loads=  21 gens=  9 ext_grid=1 lines= 35 trafos= 11 converged=True demand=(39, 35040)
+IEEE118  buses= 118 loads=  91 gens= 53 ext_grid=1 lines=175 trafos=  9 converged=True demand=(118, 35040)
+UK       buses=  29 loads=  29 gens= 23 ext_grid=1 lines= 86 trafos=  4 converged=True demand=(29, 35040)
+```
+Key functions (`transmission_grids.py`): `get_transmission_grid_codes()`,
+`load_case(code)`, `load_hourly_demand(code, variant="new")`.
 ### Step 3 — Generate the datasets (contingencies + AC power-flow re-solve)  ⏳ `step-3-data-generation`
 ### Step 4 — The model zoo  ⏳ `step-4-model-zoo`
 ### Step 5 — Run the experiments (cross-context + out-of-distribution)  ⏳ `step-5-experiments`
