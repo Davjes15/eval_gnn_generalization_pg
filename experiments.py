@@ -147,6 +147,28 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
     return rows
 
 
+def ood_distances(lap_mmd, grids):
+    """Per held-out grid, its topological distance to the TRAINING grids.
+
+    This is the exact distance the OOD g-score uses: for a leave-one-grid-out
+    split the training set is all the other grids, so the held-out grid's
+    distance is summarized as the mean Laplacian-MMD to each of them (min/max
+    reported too). Model-independent (topology only) -- written to
+    ood_distance.csv so a reader can see the OOD g-score's x-axis directly
+    instead of back-computing it from the pairwise mmd_laplacian matrix.
+    """
+    rows = []
+    for held in grids:
+        train_grids = [g for g in grids if g != held]
+        ds = [float(lap_mmd.loc[held, g]) for g in train_grids]
+        rows.append({"held_out_grid": held,
+                     "train_grids": "+".join(train_grids),
+                     "mmd_to_train_mean": float(np.mean(ds)),
+                     "mmd_to_train_min": float(np.min(ds)),
+                     "mmd_to_train_max": float(np.max(ds))})
+    return rows
+
+
 def compute_ood_gscores(ood_records, lap_mmd, model_names, grids):
     """OOD g-score per model over the held-out grids.
 
@@ -254,6 +276,10 @@ def main():
                       save_dir=save_dir)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
+        ood_dist = ood_distances(lap_mmd, grids)
+        pd.DataFrame(ood_dist).to_csv(os.path.join(args.out, "ood_distance.csv"), index=False)
+        print("\n-- OOD topological distance (held-out grid → its training grids) --")
+        print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
         ood_gs = compute_ood_gscores(ood, lap_mmd, args.models, grids)
         pd.DataFrame(ood_gs).to_csv(os.path.join(args.out, "gscore_ood.csv"), index=False)
         print("\n-- OOD g-scores (over held-out grids, no trim) --")
