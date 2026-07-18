@@ -18,6 +18,48 @@ are in `full_run/results/` (`results_report.txt` consolidates them).
 
 ---
 
+## 0. How the models are trained, and what "masking" means
+
+**Architecture shape — encode → process → decode (not a seq2seq encoder–decoder).**
+Every model shares one wrapper (`BasePFGNN`) and only swaps the middle stack:
+1. **Encoder:** a node MLP (`input_dim 7 → 64 → 64`) plus an **edge encoder**
+   (a scalar edge weight for GCN/ARMA, or a vector edge embedding for
+   GAT/GIN/Transformer, or an edge-network for NNConv).
+2. **Processor:** the message-passing stack `_mp` — this is the only part that
+   differs between the 6 architectures.
+3. **Decoder:** a post-MLP with a **skip connection** (re-concatenates the raw
+   inputs `x`) → readout `→ 4` outputs `[P, Q, V, θ]`.
+
+So it is the standard GNN "encode–process–decode" pattern, applied **per node**
+(node-level regression), not an autoregressive text-style encoder–decoder.
+
+**Training loss.** `weighted_mse_loss`: MSE over **all 4 outputs at every bus**,
+weighted per node by `1/‖target‖` (so buses with small target magnitudes aren't
+ignored). Adam, early stopping on validation loss, best weights restored. The
+loss is **not** masked — during training the model predicts all four quantities
+everywhere.
+
+**What "masking" means here (two distinct mechanisms, neither is loss masking):**
+- **Input masking = the AC power-flow boundary conditions.** Which of `[P,Q,V,θ]`
+  are *given* vs *unknown* depends on bus type: **slack** knows V,θ; **PV** knows
+  P,V; **PQ** knows P,Q. Unknown entries are `NaN` in the input `x` (zeroed via
+  `nan_to_num` in `forward`), and each bus carries a one-hot type
+  `[Slack?, PV?, PQ?]`. So the network is *told* which quantities are boundary
+  conditions and which it must infer.
+- **Known-value re-injection at inference (`inference()`).** At **eval only**
+  (`if not self.training`), each prediction is overwritten with the physically
+  known input for that bus type (slack→V,θ; PV→P,V; PQ→P,Q). This enforces
+  physical consistency and means the **reported NRMSE reflects only the genuinely
+  unknown quantities** — known ones are exact by construction. Concretely, since
+  most transmission buses are PQ, in practice the network is mainly predicting
+  **V and θ at PQ buses**, Q,θ at PV buses, and P,Q at the slack.
+
+This is why V-NRMSE (Section 2) is the model *actually predicting* voltage at PQ
+buses (re-injected/exact elsewhere), and why P/Q are near-perfect in aggregate —
+they are exact wherever they are boundary conditions.
+
+---
+
 ## 1. Topological distances between grids (MMD)
 
 Laplacian-spectrum MMD (primary), `mmd_laplacian.csv`:
@@ -188,6 +230,103 @@ Off-diagonal transfer NRMSE, summarized per model:
 **edge-aware attention models (`transformer`, `gat`) are the safe choice.**
 `gin`, `nnconv`, and `arma_gnn` can match them within a grid but are prone to
 severe instabilities out of distribution.
+
+---
+
+## 7bis. Per-model deep dive — architecture ↔ CC/OOD results
+
+The single most predictive property is **how each model aggregates neighbour
+messages**, because that determines what happens when the graph's size/degree
+distribution changes (exactly the OOD condition). Attention/softmax and symmetric
+normalization are *scale-invariant* → they degrade gracefully; **sum** aggregation,
+**edge-network** weights, and **recursive** filters are *scale-sensitive* → they
+blow up off-distribution. Numbers below: within-grid diagonal (agg NRMSE), CC
+off-diagonal mean/max, OOD per held-out grid, OOD g-score.
+
+### `gcn` — 8× GCNConv, **scalar** edge weight, symmetric-normalized aggregation
+- Within-grid 0.011–0.051 (weakest on the small IEEE24/39). CC mean 0.47 / max 1.30.
+  OOD 0.112/0.141/0.120/**0.215 (UK)**; g-score 0.183 (noisiest, std 0.041).
+- **Why:** GCNConv's `D^-1/2 A D^-1/2` normalization is inherently **scale-robust**,
+  so CC never explodes catastrophically (max only 1.3) — but its edge model is a
+  single learned **scalar** per line, too weak to encode UK's distinct impedance
+  structure, so UK OOD is its worst cell. 8 layers also risks over-smoothing on the
+  tiny IEEE24 (24 buses), explaining the weak diagonal there.
+- **In practice:** a dependable, unspectacular baseline — safe but limited edge
+  expressiveness; expect mediocre accuracy on electrically distinct grids.
+
+### `arma_gnn` — ARMAConv (5 stacks × 8 layers), **scalar** edge weight, recursive filter
+- Within-grid **excellent on meshed grids** (IEEE39/118/UK 0.004–0.010) but poor on
+  IEEE24 (0.147). CC mean 0.66 / max 2.81. OOD 0.157/0.112/0.102/**NaN (UK)**;
+  g-score 0.146 but only 3 points (UK dropped).
+- **Why:** ARMA is a **rational (auto-regressive) graph filter** with a wide
+  receptive field — great at capturing the global spectral structure of large
+  looped networks (hence its IEEE118/39 dominance), but the recursion is
+  **numerically fragile**. On UK (the farthest, smallest-support target) the filter
+  **diverged to NaN** — a textbook instability of recursive filters, not a bug. The
+  weak IEEE24 diagonal is the same wide-receptive filter being ill-conditioned on a
+  tiny graph.
+- **In practice:** highest ceiling on large meshed grids, but **not safe to deploy
+  on an unfamiliar/small grid** — it can silently diverge. Its "best" g-score is an
+  artifact of dropping the failed UK point.
+
+### `gat` — 3× GATv2, 4 heads, **vector** edge embedding, softmax-attention aggregation
+- Within-grid 0.009–0.028. **CC most robust of all: mean 0.19, max 0.38, zero
+  blow-ups.** OOD 0.169/0.130/**0.103**/**0.159**; g-score 0.163.
+- **Why:** attention weights are a **softmax over neighbours**, so total incoming
+  message magnitude is normalized regardless of how node degree/size changes — the
+  key to graceful transfer. Vector edge features let it *down-weight* lines by
+  impedance, and only 3 layers avoids over-smoothing. This is precisely the profile
+  that should transfer well, and it does — the single most robust model under the
+  hardest (single-grid) transfer test.
+- **In practice:** the **safest choice when you cannot retrain per grid**; robust,
+  no catastrophic failure modes, best-in-class UK generalization.
+
+### `gin` — 3× GINEConv, **vector** edge embedding, **SUM** aggregation
+- Within-grid **best-tier (0.006–0.016)** but **CC worst: mean 3.52, max 26.8
+  (IEEE118→UK)**. OOD fine (0.106–0.170); g-score 0.164.
+- **Why:** GIN's **sum** aggregation is maximally expressive (WL-discriminative) →
+  it fits a fixed grid superbly, but the sum **scales with node count and degree**,
+  so moving from dense IEEE118 to a differently-sized grid changes aggregated
+  magnitudes wildly → predictions explode. It is the clearest example of
+  **expressiveness ≠ transferability / scale-invariance**. OOD is okay only because
+  training on 3 grids of different sizes lets it *calibrate* to size diversity.
+- **In practice:** great when you retrain in-distribution; **dangerous for
+  single-source transfer** — never deploy a GIN trained on one grid onto a
+  different-sized grid without recalibration.
+
+### `transformer` — 3× TransformerConv, 4 heads, **vector** edge embedding, softmax-attention
+- Within-grid best-tier (0.005–0.016). CC mean 0.74 (IEEE118-trained rows blow up
+  like the others), but **OOD best and most stable: 0.106–0.157, UK 0.149, lowest
+  std 0.019 → g-score 0.154 (winner)**.
+- **Why:** like GAT it uses **scale-robust softmax attention**, but multi-head
+  Transformer attention is more expressive, so once it sees several grids it
+  captures grid-invariant power-flow structure best. Its CC blow-ups (single-source)
+  vanish under multi-source OOD training — exactly the regime it's built for.
+- **In practice:** the **top pick for multi-grid training + deployment on a new
+  grid**; best accuracy *and* best stability in the operationally relevant setting.
+
+### `nnconv` — 2× NNConv, **edge-network → 64×64 weight matrix per edge**, mean aggregation
+- Within-grid great (0.006–0.023). But **CC mean 1.91 / max 17.1 (IEEE118→IEEE39)**
+  and an **OOD 3.07 outlier on IEEE39**; g-score 1.98 (disqualified).
+- **Why:** NNConv generates a full **4096-entry weight matrix per edge** from
+  `edge_attr` — by far the most parameters and the most edge-expressive model. That
+  capacity fits a single grid well but **overfits the source topology**, and on an
+  unseen edge-feature distribution the generated weight matrices become large/
+  ill-conditioned → instability. Highest capacity, lowest robustness.
+- **In practice:** powerful but **over-parameterized and unstable out of
+  distribution**; risky choice for generalization despite strong in-grid numbers.
+
+### Cross-cutting synthesis
+- **Aggregation normalization predicts OOD robustness:** softmax-attention (GAT,
+  Transformer) and symmetric-normalized (GCN) are scale-invariant and transfer
+  gracefully; **sum** (GIN), **edge-matrix** (NNConv) and **recursive** (ARMA) are
+  scale-sensitive/unstable.
+- **Edge expressiveness** (scalar < vector < full-matrix) helps *in-distribution*
+  monotonically, but the **most** expressive model (NNConv) is the *least* robust —
+  capacity trades off against transfer.
+- **A universal CC pattern:** models trained on the large, dense **IEEE118** blow up
+  on smaller grids; multi-source **OOD training removes this** by supplying
+  size/topology diversity — the core argument for training on several grids.
 
 ---
 
