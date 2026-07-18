@@ -63,11 +63,15 @@ import torch
 from torch_geometric.data import Data
 
 from engage_contract import get_node_features, get_edge_features
+from contingency_harvest import harvest_contingencies
 from transmission_grids import (
     get_transmission_grid_codes,
     load_case,
     load_hourly_demand,
 )
+
+# Stable per-grid seed offsets (avoids Python's process-randomized hash()).
+_GRID_SEED_OFFSET = {"IEEE24": 1, "IEEE39": 2, "IEEE118": 3, "UK": 4}
 
 
 def _apply_demand(net, demand_col: np.ndarray) -> None:
@@ -88,6 +92,19 @@ def _sample_contingency(rng: np.random.Generator, n_lines: int, k: int) -> list[
         return []
     k = min(k, n_lines)
     return sorted(rng.choice(n_lines, size=k, replace=False).tolist())
+
+
+def _apply_line_contingency(net, out_lines: list[int]) -> None:
+    """Take the given line positions out of service (random N-k source)."""
+    if out_lines:
+        net.line.loc[net.line.index[out_lines], "in_service"] = False
+
+
+def _apply_element_contingency(net, elements: list) -> None:
+    """Take harvested elements out of service. `elements` is a list of
+    (etype, index) where etype is 'line' or 'trafo' (see contingency_harvest)."""
+    for etype, idx in elements:
+        net[etype].at[idx, "in_service"] = False
 
 
 def _is_connected(net) -> bool:
@@ -128,6 +145,8 @@ def generate_dataset(
     vm_min: float = 0.8,
     vm_max: float = 1.2,
     max_tries_factor: int = 50,
+    contingency_source: str = "random",
+    pg_graph_raw: str | None = None,
 ):
     """Generate `n_samples` valid (demand, contingency) operating points for `code`.
 
@@ -145,6 +164,19 @@ def generate_dataset(
     if k_probs is None:
         k_probs = np.ones(len(ks)) / len(ks)
 
+    # Harvest source (D11): load the credible contingency sets once, up front.
+    harvested = None
+    if contingency_source == "harvest":
+        if not pg_graph_raw:
+            raise ValueError("contingency_source='harvest' requires pg_graph_raw.")
+        harvested = harvest_contingencies(base, pg_graph_raw, code, max_k=max_k)
+        if not harvested:
+            raise RuntimeError(
+                f"No harvestable contingencies mapped for {code}; check the "
+                f"PowerGraph-Graph raw data at {pg_graph_raw}."
+            )
+        print(f"  [{code}] harvested {len(harvested)} mapped contingencies")
+
     samples, metas = [], []
     tries = 0
     max_tries = n_samples * max_tries_factor
@@ -156,11 +188,15 @@ def generate_dataset(
         t = int(rng.integers(0, n_time))
         _apply_demand(net, demand[:, t])
 
-        # 2) contingency
-        k = int(rng.choice(ks, p=k_probs))
-        out_lines = _sample_contingency(rng, n_lines, k)
-        if out_lines:
-            net.line.loc[net.line.index[out_lines], "in_service"] = False
+        # 2) contingency -- random N-k, or a harvested PowerGraph-Graph outage set
+        if harvested is not None:
+            elements = harvested[int(rng.integers(0, len(harvested)))]
+            _apply_element_contingency(net, elements)
+            k, out_lines = len(elements), [str(e) for e in elements]
+        else:
+            k = int(rng.choice(ks, p=k_probs))
+            out_lines = _sample_contingency(rng, n_lines, k)
+            _apply_line_contingency(net, out_lines)
 
         # 3) reject islanding before solving
         if not _is_connected(net):
@@ -183,7 +219,8 @@ def generate_dataset(
             continue
 
         samples.append(_build_sample(net))
-        metas.append({"grid": code, "t_idx": t, "k": k, "out_lines": out_lines})
+        metas.append({"grid": code, "t_idx": t, "k": k, "out_lines": out_lines,
+                      "source": contingency_source})
 
     if len(samples) < n_samples:
         print(
@@ -215,6 +252,12 @@ def parse_args():
     p.add_argument("--out_dir", default="data")
     p.add_argument("--seed", type=int, default=12)
     p.add_argument("--max_tries_factor", type=int, default=50)
+    p.add_argument("--contingency_source", choices=["random", "harvest"],
+                   default="random",
+                   help="'random' N-k outages, or 'harvest' real outage sets "
+                        "from PowerGraph-Graph (needs --pg_graph_raw)")
+    p.add_argument("--pg_graph_raw", default=os.environ.get("PG_GRAPH_RAW_DIR"),
+                   help="root of PowerGraph-Graph raw data (<root>/<name>/raw/*.mat)")
     return p.parse_args()
 
 
@@ -225,14 +268,16 @@ def main():
         print(f"[{code}] generating "
               f"(train={args.n_train}, val={args.n_val}, test={args.n_test}, "
               f"max_k={args.max_k}, redispatch={args.redispatch})")
-        # One RNG per grid, seeded deterministically, so runs are reproducible.
-        rng = np.random.default_rng(args.seed + hash(code) % 10_000)
+        # One RNG per grid, seeded deterministically (stable across processes).
+        rng = np.random.default_rng(args.seed * 100 + _GRID_SEED_OFFSET.get(code, 0))
         for split, n in [("train", args.n_train), ("val", args.n_val), ("test", args.n_test)]:
             if n <= 0:
                 continue
             samples, metas = generate_dataset(
                 code, n, rng, max_k=args.max_k, redispatch=args.redispatch,
                 max_tries_factor=args.max_tries_factor,
+                contingency_source=args.contingency_source,
+                pg_graph_raw=args.pg_graph_raw,
             )
             _save_split(args.out_dir, code, split, samples, metas)
 

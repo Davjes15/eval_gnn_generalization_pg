@@ -162,6 +162,29 @@ python3 validate.py --data_dir data    # + contract / masking / topology / MMD
 Expected: `ALL GATES PASSED`, with the MMD gate confirming within-grid MMD <
 cross-grid MMD and cross-grid MMD non-constant.
 
+### Step 7 — Harvest real contingencies from PowerGraph-Graph  ✅ available on `step-7-harvest-contingencies`
+Optional contingency *source* (design decision D11): instead of random N-k
+outages, drive Step 3 with the **actual outage sets** PowerGraph-Graph simulated.
+We reuse only their *topology* (which lines are out — detected as all-zero rows in
+`Ef.mat`, mapped via `blist.mat`) and **re-solve the AC power flow ourselves**, so
+the labels are still ours. Code: `contingency_harvest.py`.
+```bash
+# 1. Download PowerGraph-Graph raw data (~2.7 GB) once:
+wget -O pgg.tar.gz "https://figshare.com/ndownloader/files/46619158" && tar -xf pgg.tar.gz
+export PG_GRAPH_RAW_DIR=/absolute/path/to/extracted/root   # <root>/<name>/raw/*.mat
+pip install mat73        # needed to read MATLAB v7.3 .mat files
+# 2. Generate using harvested contingencies:
+python3 transmission_graph_gen.py --grid IEEE24 --contingency_source harvest \
+    --pg_graph_raw "$PG_GRAPH_RAW_DIR" --n_train 800 --n_val 100 --n_test 100 --out_dir data
+```
+The default remains `--contingency_source random` (no download needed). Harvested
+samples record their outage in `dataset_src.csv` with `source=harvest`.
+
+> Note: the study needs **only** the PowerGraph-Node GitHub repo (grid `System.m`
+> + `hourlyDemandBusnew.mat`, ~45 MB). The large figshare downloads
+> (PowerGraph-Node's 1.08 GB tensors, PowerGraph-Graph's 2.7 GB) are **not**
+> required — the 2.7 GB set is only for this optional harvesting step.
+
 ## End-to-end walkthrough (no prior experience needed)
 ```bash
 # 0. Clone this repo and PowerGraph-Node side by side
@@ -194,8 +217,9 @@ ls results/         # transfer_matrix_*.csv, gscore.csv, ood.csv, dc_baseline.cs
 ```
 
 ## Status
-**Steps 1–6 implemented** (grid conversion → loader → data generation → model
-zoo → experiments → validation gates). The pipeline runs end-to-end.
+**Steps 1–7 implemented** (grid conversion → loader → data generation → model
+zoo → experiments → validation gates → optional PowerGraph-Graph contingency
+harvesting). The pipeline runs end-to-end.
 See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
 the full plan and the reasoning behind each step.
 
