@@ -78,6 +78,7 @@ COL = {m: PASTEL[i % len(PASTEL)] for i, m in enumerate(models)}
 
 
 def offdiag_pairs(dfmat):
+    """All directed off-diagonal MMD values (kept for the correlation stats)."""
     vals = []
     for i in grids:
         for j in grids:
@@ -86,22 +87,39 @@ def offdiag_pairs(dfmat):
     return np.array(vals)
 
 
+def directed_pairs(dfmat):
+    """The 12 directed off-diagonal grid pairs as (label, value). Entry [i,j] is
+    MMD(train-split of i, test-split of j) -- directed, hence 'i->j'."""
+    out = []
+    for i in grids:
+        for j in grids:
+            if i != j:
+                out.append((f"{i}\u2192{j}", dfmat.loc[i, j]))
+    return out
+
+
 # ----------------------------------------------------------------------------
-# 1. MMD range plot (sorted MMDs across the 12 off-diagonal grid pairs)
+# 1. MMD range plot (12 directed train->test grid pairs, sorted, named on x-axis)
 # ----------------------------------------------------------------------------
-fig, axes = plt.subplots(2, 1, sharex=True, figsize=(8, 6.4))
+fig, axes = plt.subplots(2, 1, sharex=False, figsize=(10.5, 8.4))
 for ax, mat, name, c in [(axes[0], deg, "Degree MMD", PASTEL[0]),
                          (axes[1], lap, "Laplacian MMD", PASTEL[5])]:
-    v = np.sort(offdiag_pairs(mat))
+    pairs = sorted(directed_pairs(mat), key=lambda t: t[1])
+    labels = [p[0] for p in pairs]
+    v = np.array([p[1] for p in pairs])
     xs = range(len(v))
     ax.plot(xs, v, color=INK, lw=1.6, zorder=2)
-    ax.scatter(xs, v, s=90, color=c, edgecolor=INK, lw=1.2, zorder=3)
-    boxed(ax, 0, v[0], f"{v[0]:.2f}", dy=-18, va="top")
-    boxed(ax, len(v) - 1, v[-1], f"{v[-1]:.2f}", dy=10)
+    ax.scatter(xs, v, s=95, color=c, edgecolor=INK, lw=1.2, zorder=3)
+    boxed(ax, 0, v[0], f"{v[0]:.2f}", dy=12)
+    boxed(ax, len(v) - 1, v[-1], f"{v[-1]:.2f}", dy=12)
     ax.set_ylabel(name)
+    ax.set_xticks(list(xs))
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.margins(x=0.04, y=0.20)
     style(ax)
-axes[0].set_title("MMD range across the 12 cross-grid pairs (sorted)", loc="left")
-axes[1].set_xlabel("grid-pair (sorted by MMD)")
+axes[0].set_title("MMD across the 12 directed cross-grid pairs (train\u2192test, sorted)",
+                  loc="left")
+axes[1].set_xlabel("cross-grid pair (train\u2192test)")
 fig.tight_layout()
 fig.savefig(f"{FIG}/fig_mmd_range.png", dpi=150)
 plt.close(fig)
