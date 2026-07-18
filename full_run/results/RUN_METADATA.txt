@@ -11,7 +11,7 @@ Command:
     --grid all --n_train 800 --n_val 100 --n_test 100 \
     --max_k 2 --out_dir /home/ubuntu/full_run/data
 Contingency source: random (default) N-1/N-2 line outages + demand snapshots.
-Per grid: 800 train / 100 val / 100 test  (4 grids -> 4,400 graphs).
+Per grid: 800 train / 100 val / 100 test  (4 grids -> 4,000 graphs).
 Seeding: stable per-grid offset (IEEE24=1, IEEE39=2, IEEE118=3, UK=4), base seed default.
 
 --- Experiments ---

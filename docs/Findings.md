@@ -1,7 +1,7 @@
 # Findings — GNN generalization for AC power flow on transmission grids
 
 This report interprets the **full run**: 4 grids (IEEE24, IEEE39, IEEE118, UK),
-800/100/100 train/val/test graphs per grid (4,400 graphs total, each = a demand
+800/100/100 train/val/test graphs per grid (4,000 graphs total, each = a demand
 snapshot + a random N-1/N-2 contingency, AC-re-solved with pandapower), 6
 architectures (`gcn`, `arma_gnn`, `gat`, `gin`, `transformer`, `nnconv`), 200
 epochs with early stopping. Metrics are range-normalized NRMSE (ENGAGE
