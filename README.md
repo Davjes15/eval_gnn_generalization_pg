@@ -149,9 +149,18 @@ Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
 version).
 
-### Step 6 — Validation gates  ⏳ `step-6-validation`
-Each `⏳` section will be filled in with exact commands, expected output, and
-troubleshooting as its branch lands.
+### Step 6 — Validation gates  ✅ available on `step-6-validation`
+Automatic checks that catch the failures that would make the study *invalid*
+(not merely buggy): conversion fidelity, data-contract shapes, masking
+correctness, topology variation, and **MMD non-degeneracy** (the exact bug from
+the earlier attempt). Run it before trusting any results; exit code is non-zero
+if any gate fails (CI-friendly).
+```bash
+python3 validate.py                    # conversion checks only
+python3 validate.py --data_dir data    # + contract / masking / topology / MMD
+```
+Expected: `ALL GATES PASSED`, with the MMD gate confirming within-grid MMD <
+cross-grid MMD and cross-grid MMD non-constant.
 
 ## End-to-end walkthrough (no prior experience needed)
 ```bash
@@ -174,16 +183,19 @@ export POWERGRAPH_NODE_DIR="$(pwd)/../PowerGraph-Node/13_Power_system"
 # 4. Generate the datasets (contingencies + AC power-flow re-solve)
 python3 transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --out_dir data
 
-# 5. Run the experiments
+# 5. (Recommended) validate the generated data before trusting results
+python3 validate.py --data_dir data
+
+# 6. Run the experiments
 python3 experiments.py --experiment both --data_dir data --out results
 
-# 6. Read the results
+# 7. Read the results
 ls results/         # transfer_matrix_*.csv, gscore.csv, ood.csv, dc_baseline.csv, ...
 ```
 
 ## Status
-**Steps 1–5 implemented** (grid conversion → loader → data generation → model
-zoo → experiments); Step 6 (validation gates) in progress.
+**Steps 1–6 implemented** (grid conversion → loader → data generation → model
+zoo → experiments → validation gates). The pipeline runs end-to-end.
 See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
 the full plan and the reasoning behind each step.
 
