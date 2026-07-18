@@ -139,11 +139,17 @@ al. 2012; ggme (O'Bray et al.).
 - **Per-quantity NRMSE** (P, Q, V, θ) — because V is tightly bounded, aggregate
   NRMSE is flattered by V; angles/reactive power are the hard quantities.
 - **DC-PF baseline** for every test grid — the GNN must beat trivial physics.
-- **g-score** = `mean_nrmse + alpha * std_nrmse * log(mmd_range+1)/(mmd_range+eps)`
-  over the unseen grids. NOTE: the default `bounds=2` percentile trim assumes many
-  samples; with only 3 unseen grids it collapses to one point (std=0, range=0), so
-  a small-N variant (no trim, all unseen grids) is the appropriate reading here
-  — see the results report `gscore_smallN.csv`.
+- **g-score** = `mean_nrmse + alpha * std_nrmse * log(mmd_range+1)/(mmd_range+eps)`.
+  Two flavours are produced:
+  - **Cross-context g-score** (`gscore.csv`), computed *per training grid* over its
+    unseen TEST grids (3 points each). NOTE: the default `bounds=2` percentile trim
+    assumes many samples; with only 3 points it collapses (std=0, range=0), so a
+    small-N variant (no trim) is the appropriate reading — see `gscore_smallN.csv`.
+  - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
+    grids (one point per grid → up to 4 points), where the topological distance is
+    the mean Laplacian-MMD from each held-out grid to its TRAINING grids. This is
+    the **better-posed** g-score at small N (no trim; NaN cells dropped) and the
+    one most aligned with "generalization to a new grid after training on several."
 
 ---
 
@@ -159,7 +165,7 @@ al. 2012; ggme (O'Bray et al.).
 | `models.py` | 4 | Six edge-aware GNNs behind one interface | `BasePFGNN`, `GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NN_CONV`, `MODELS` | `Data` batch | `pred (N,4)` |
 | `training_utils.py` | 5 | Training loop + metrics + DC baseline | `train`, `evaluate`, `nrmse_range`, `nrmse_per_quantity`, `test_dc_pf`, `get_generalization_score` | datasets + models | trained model, metrics |
 | `mmd_utils.py` | 5 | Distribution-based MMD | `evaluate_mmd`, `mmd`, `*_histogram` | two datasets | (mmd_degree, mmd_laplacian) |
-| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `dc_baseline` | datasets + `MODELS` | `results/*.csv`, `.pt` checkpoints |
+| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `compute_ood_gscores`, `dc_baseline` | datasets + `MODELS` | `results/*.csv`, `.pt` checkpoints |
 | `validate.py` | 6 | Correctness gates | gate A–E | cases + datasets | pass/fail report |
 
 **Connection summary.** Step 1 is a one-time conversion (outputs are committed).
@@ -221,7 +227,8 @@ python3 validate.py --data_dir data
 python3 experiments.py --experiment both --data_dir data --out results --epochs 200 --save_models models
 ```
 Outputs in `results/`: `cross_context.csv`, `ood.csv`, `transfer_matrix_<model>.csv`,
-`mmd_degree.csv`, `mmd_laplacian.csv`, `dc_baseline.csv`, `gscore.csv`, `summary.json`.
+`mmd_degree.csv`, `mmd_laplacian.csv`, `dc_baseline.csv`, `gscore.csv` (cross-context),
+`gscore_ood.csv` (OOD, better-posed at small N), `summary.json`.
 Checkpoints in `models/`: `cc_<model>_<train_grid>.pt`, `ood_<model>_heldout_<grid>.pt`.
 
 ---
@@ -281,5 +288,8 @@ Relevant CLI flags:
   (large NRMSE) — expected for out-of-distribution structural transfer.
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
   P/Q/θ alongside V rather than the aggregate alone.
-- The g-score is statistically under-powered at only 4 grids; use
-  `gscore_smallN.csv` and treat the transfer matrix + MMD as the headline.
+- The **cross-context** g-score is statistically under-powered at only 4 grids
+  (3 points/training grid); use `gscore_smallN.csv` for it. The **OOD** g-score
+  (`gscore_ood.csv`, up to 4 points/model, no trim) is better-posed and is the
+  more meaningful generalization measure; still treat the transfer matrix + MMD
+  as the headline given N=4.

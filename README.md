@@ -158,7 +158,9 @@ python3 experiments.py --experiment both --data_dir data --out results \
 ```
 Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 (incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
-`gscore.csv`, `ood.csv`. Supporting code: `training_utils.py` (training loop +
+`gscore.csv` (cross-context g-score) + `gscore_smallN.csv`, `gscore_ood.csv`
+(OOD g-score — per model over held-out grids; the better-posed one at N=4),
+`ood.csv`. Supporting code: `training_utils.py` (training loop +
 metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
 version).
 
@@ -250,7 +252,7 @@ python3 validate.py --data_dir data
 python3 experiments.py --experiment both --data_dir data --out results
 
 # 7. Read the results
-ls results/         # transfer_matrix_*.csv, gscore.csv, ood.csv, dc_baseline.csv, ...
+ls results/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
 ```
 
 ## Status

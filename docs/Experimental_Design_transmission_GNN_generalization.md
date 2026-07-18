@@ -82,7 +82,7 @@ Sub-questions:
 
 Sub-questions:
 - **RQ2a:** Does a physically consistent, ENGAGE-format dataset (per-unit, bus-type NaN masking, `dc_pf` baseline) change the architecture ranking vs Layer 1?
-- **RQ2b:** How does each architecture's g-score compare, and does edge-awareness (GAT/GIN/Transformer/NNConv using `edge_attr`) help on transmission grids?
+- **RQ2b:** How does each architecture's g-score compare (both the cross-context g-score and the better-posed **OOD g-score** over held-out grids), and does edge-awareness (GAT/GIN/Transformer/NNConv using `edge_attr`) help on transmission grids?
 - **RQ2c (secondary — scientific stress test):** Out-of-distribution across *different* grids — leave-one-grid-out (train on three grids, test on the fourth, incl. IEEE24↔UK). Reported as a limit test, not the operational headline.
 - **RQ2d:** Per-quantity behaviour — is the apparent accuracy driven by trivially-bounded **V**, and how do the harder **θ** and **Q** generalize?
 
@@ -121,7 +121,10 @@ Caveats: use only their **topology**, then **re-solve AC PF yourself** (step 4) 
 - **Metrics:** `nrmse_range` **broken out per quantity (V, θ, P, Q)** as well as aggregate; degree + Laplacian **MMD** on the **physical** topology with tuned sigmas; **g-score** now well-posed because each grid is a distribution of topologies.
 - **Baselines:** always report the **DC-PF baseline** (`test_dc_pf`), optionally a warm-started single Newton step, so improvement over trivial physics is explicit.
 - **Distance:** MMD is primary; optionally add an **electrical-distance** cross-check (X/R or short-circuit-ratio distribution distance, or PTDF-based) since MMD ignores impedances/loading.
-- **Cross-Context matrix** and **OOD leave-one-out** g-scores per architecture, with seeds → error bars.
+- **Two g-score flavours** (both produced by `experiments.py`):
+  - **Cross-context g-score** (`gscore.csv`) — *per training grid* over its unseen TEST grids. At only 3 points/training grid the ENGAGE 2/98 trim collapses it, so a no-trim `gscore_smallN.csv` is the appropriate reading.
+  - **OOD g-score** (`gscore_ood.csv`, `compute_ood_gscores`) — *per model* over the held-out grids of the leave-one-grid-out experiment (one point per held-out grid, up to 4), with the topological distance = **mean Laplacian-MMD from each held-out grid to its training grids**, no trim, NaN cells dropped. This is the **better-posed** g-score at N=4 and the one most aligned with the operational question (generalize to a new grid after training on several); mirrors ENGAGE reporting a g-score for both its CC and OOD experiments.
+- **Cross-Context matrix** and **OOD leave-one-out** results per architecture, with seeds → error bars.
 - **Benchmark vs PowerGraph:** compare within-topology (PowerGraph regime) to unseen-topology (this study) for the shared architectures, reported as **relative degradation** under our own consistent pipeline (numeric values are not directly comparable across the two masking/normalization conventions).
 
 ## Deliverables
