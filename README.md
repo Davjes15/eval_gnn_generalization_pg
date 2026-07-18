@@ -148,6 +148,10 @@ change needed. **Data generation is CPU-only** (pandapower Newton-Raphson AC
 power-flow solves do not use the GPU).
 
 ## How to run the experiments (step by step)
+> **On Windows with a GPU and no environment yet?** Follow the dedicated
+> copy‑paste guide: [`docs/Reproduce_on_Windows.md`](docs/Reproduce_on_Windows.md)
+> (venv, CUDA PyTorch + PyG, data generation, and running one model at a time).
+
 This guide is built up **incrementally, one implementation step per branch**. Each
 step below is marked with its status so you always know what is runnable today.
 

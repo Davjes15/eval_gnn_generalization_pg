@@ -3,8 +3,14 @@
 Styling: minimal, light-background, pastel palette inspired by clean editorial
 line charts -- off-white canvas, horizontal-only gridlines, no top/right spines,
 boxed value labels, bold markers.
+Results directory (where the *.csv live) is resolved in this order:
+    1. first command-line argument  ->  python make_figures.py C:\\path\\to\\results
+    2. RESULTS_DIR environment variable
+    3. the folder this script lives in (the committed full_run/results copy)
+Figures are written to <results_dir>/figures.
 """
 import os
+import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -13,7 +19,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
-RES = "/home/ubuntu/full_run/results"
+RES = (sys.argv[1] if len(sys.argv) > 1 else
+       os.environ.get("RESULTS_DIR") or os.path.dirname(os.path.abspath(__file__)))
 FIG = os.path.join(RES, "figures")
 os.makedirs(FIG, exist_ok=True)
 
