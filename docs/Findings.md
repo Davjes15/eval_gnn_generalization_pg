@@ -394,6 +394,26 @@ best; `gat`/`gin`/`gcn` close; `nnconv` disqualified by its IEEE39 outlier;
 
 ![OOD g-score](figures/fig_gscore_ood.png)
 
+**Cross-context transfer matrices** (one 4×4 train×test grid per model, log color).
+The light diagonal shows every model solves power flow *within* a grid; the dark
+`IEEE118` rows for `gin` (up to 27) and `nnconv` (up to 17) are the fragility story
+— dense-grid training that fails on smaller grids — while `gat` stays uniformly cool.
+
+![Transfer matrices](figures/fig_transfer_matrix.png)
+
+**Per-quantity within-grid NRMSE.** P, Q, θ are tiny (≈0.002–0.09); V towers at
+5–21 **not** because voltage is badly predicted but because its range-normalization
+denominator is tiny (V ≈ 1.0 pu). This is why the aggregate must be read per quantity.
+
+![Per-quantity NRMSE](figures/fig_per_quantity.png)
+
+**Best within-grid GNN vs the DC-PF baseline, per quantity.** The GNN clearly beats
+DC on **P** (and θ on the larger grids); DC's flat V ≈ 1.0 actually scores *better*
+on the inflated V metric; and DC's **Q ≡ 0** is a bookkeeping artifact (not shown on
+the log axis), not a solved reactive result.
+
+![GNN vs DC-PF](figures/fig_gnn_vs_dc.png)
+
 ---
 
 ## 8. Caveats & threats to validity

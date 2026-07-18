@@ -8,7 +8,7 @@ import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, LogNorm
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
@@ -263,6 +263,101 @@ ax.margins(y=0.15)
 style(ax)
 fig.tight_layout()
 fig.savefig(f"{FIG}/fig_gscore_ood.png", dpi=150)
+plt.close(fig)
+
+# ----------------------------------------------------------------------------
+# 6. Cross-context transfer-matrix heatmaps (one 4x4 train x test per model)
+# ----------------------------------------------------------------------------
+mats = {m: pd.read_csv(f"{RES}/transfer_matrix_{m}.csv", index_col=0).reindex(
+            index=grids, columns=grids) for m in models}
+allvals = np.concatenate([m.values[np.isfinite(m.values)] for m in mats.values()])
+vmin, vmax = max(allvals.min(), 1e-3), allvals.max()
+fig, axes = plt.subplots(2, 3, figsize=(15, 9.6),
+                         gridspec_kw={"hspace": 0.55, "wspace": 0.35})
+for ax, m in zip(axes.ravel(), models):
+    M = mats[m].values
+    im = ax.imshow(M, cmap="RdPu", norm=LogNorm(vmin=vmin, vmax=vmax))
+    ax.set_xticks(range(len(grids)))
+    ax.set_xticklabels(grids, rotation=45, ha="right", fontsize=9)
+    ax.set_yticks(range(len(grids)))
+    ax.set_yticklabels(grids, fontsize=9)
+    for i in range(len(grids)):
+        for j in range(len(grids)):
+            val = M[i, j]
+            txt = "NaN" if not np.isfinite(val) else (f"{val:.2f}" if val < 10 else f"{val:.0f}")
+            ax.text(j, i, txt, ha="center", va="center", fontsize=8,
+                    color="white" if np.isfinite(val) and val > vmax * 0.15 else INK)
+    ax.set_title(m, loc="left")
+    ax.set_ylabel("train grid", fontsize=9)
+    ax.set_xlabel("test grid", fontsize=9)
+    for s in ax.spines.values():
+        s.set_visible(False)
+    ax.tick_params(length=0)
+fig.suptitle("Cross-context transfer NRMSE  (diagonal = within-grid; off-diagonal = "
+             "unseen grid; log color)", x=0.02, ha="left", fontsize=14, fontweight="bold")
+cb = fig.colorbar(im, ax=axes, fraction=0.02, pad=0.02)
+cb.outline.set_visible(False)
+cb.set_label("NRMSE (log)")
+fig.savefig(f"{FIG}/fig_transfer_matrix.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
+
+# ----------------------------------------------------------------------------
+# 7. Per-quantity within-grid NRMSE (P, Q, V, theta) per model
+# ----------------------------------------------------------------------------
+quant = ["nrmse_P", "nrmse_Q", "nrmse_V", "nrmse_theta"]
+qlabel = ["P", "Q", "V", r"$\theta$"]
+qcol = [PASTEL[0], PASTEL[1], PASTEL[2], PASTEL[5]]
+wq = diag.groupby("model")[quant].mean().reindex(models)
+fig, ax = plt.subplots(figsize=(11, 5.4))
+x = np.arange(len(models))
+w = 0.2
+for k, (q, lab, c) in enumerate(zip(quant, qlabel, qcol)):
+    ax.bar(x + (k - 1.5) * w, wq[q].values, w, label=lab, color=c,
+           edgecolor=INK, lw=0.9, zorder=3)
+ax.set_yscale("log")
+ax.set_xticks(x)
+ax.set_xticklabels(models, rotation=30, ha="right")
+ax.set_ylabel("within-grid NRMSE (log)")
+ax.set_title("Per-quantity within-grid NRMSE  (V is inflated by its tiny range, "
+             "not by poor accuracy)", loc="left")
+ax.legend(title="quantity", frameon=False, ncol=4, loc="upper center",
+          bbox_to_anchor=(0.5, 1.0))
+ax.margins(y=0.18)
+style(ax)
+fig.tight_layout()
+fig.savefig(f"{FIG}/fig_per_quantity.png", dpi=150)
+plt.close(fig)
+
+# ----------------------------------------------------------------------------
+# 8. GNN (best within-grid) vs DC-PF baseline, per quantity, per grid
+# ----------------------------------------------------------------------------
+dc = pd.read_csv(f"{RES}/dc_baseline.csv").set_index("grid").reindex(grids)
+# best GNN per grid/quantity = min within-grid per-quantity NRMSE across models
+gnn_best = diag.groupby("test_grid")[quant].min().reindex(grids)
+fig, axes = plt.subplots(1, 4, figsize=(16, 4.6), sharey=False)
+dc_cols = ["dc_nrmse_P", "dc_nrmse_Q", "dc_nrmse_V", "dc_nrmse_theta"]
+for ax, q, dcq, lab in zip(axes, quant, dc_cols, qlabel):
+    xg = np.arange(len(grids))
+    ax.bar(xg - 0.2, gnn_best[q].values, 0.4, label="best GNN", color=PASTEL[0],
+           edgecolor=INK, lw=0.9, zorder=3)
+    ax.bar(xg + 0.2, dc[dcq].values, 0.4, label="DC-PF", color=PASTEL[2],
+           edgecolor=INK, lw=0.9, zorder=3)
+    ax.set_yscale("log")
+    if (dc[dcq].values == 0).all():
+        ax.text(0.5, 0.02, "DC-PF ≡ 0  (not shown on log axis)",
+        transform=ax.transAxes, ha="center", va="bottom", fontsize=9,
+        style="italic", color=INK)
+    ax.set_xticks(xg)
+    ax.set_xticklabels(grids, rotation=45, ha="right", fontsize=9)
+    ax.set_title(lab, loc="left")
+    style(ax)
+axes[0].set_ylabel("NRMSE (log)")
+axes[0].legend(frameon=False, loc="upper left", fontsize=9)
+fig.suptitle("Best within-grid GNN vs DC-PF baseline, per quantity  "
+             "(DC Q-NRMSE=0 is a bookkeeping artifact, not a solved reactive result)",
+             x=0.02, ha="left", fontsize=13, fontweight="bold")
+fig.tight_layout(rect=[0, 0, 1, 0.95])
+fig.savefig(f"{FIG}/fig_gnn_vs_dc.png", dpi=150)
 plt.close(fig)
 
 print("figures written to", FIG)
