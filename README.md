@@ -90,7 +90,25 @@ UK       buses=  29 loads=  29 gens= 23 ext_grid=1 lines= 86 trafos=  4 converge
 ```
 Key functions (`transmission_grids.py`): `get_transmission_grid_codes()`,
 `load_case(code)`, `load_hourly_demand(code, variant="new")`.
-### Step 3 — Generate the datasets (contingencies + AC power-flow re-solve)  ⏳ `step-3-data-generation`
+### Step 3 — Generate the datasets  ✅ available on `step-3-data-generation`
+The heart of the pipeline: turns each grid into a **distribution of topologies**
+by sampling N-1/N-k line contingencies + real hourly demand, **re-solving AC
+power flow** (`pp.runpp`), filtering (convergence / connectivity / voltage
+sanity), and emitting ENGAGE-format `Data` into `data/<CODE>/<split>/dataset.pt`.
+```bash
+pip install torch torch_geometric networkx pandas numba   # numba = big speedup
+export POWERGRAPH_NODE_DIR=/absolute/path/to/PowerGraph-Node/13_Power_system
+# quick smoke test:
+python3 transmission_graph_gen.py --grid IEEE24 --n_train 30 --n_val 6 --n_test 6 --max_k 2 --out_dir data
+# full generation (all four grids):
+python3 transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
+```
+Options: `--max_k` (max simultaneous outages), `--redispatch` (AC OPF instead of
+PF-with-slack), `--seed`, `--max_tries_factor`. Each emitted sample:
+`x (N,7)`, `edge_index (2,2E)`, `edge_attr (2E,4)`, `y (N,4)`, `dc_pf (N,4)`;
+`2E` varies with the contingency depth (that variation is what makes MMD/g-score
+meaningful). Contract details + the vendored ENGAGE extractors are in
+`engage_contract.py`.
 ### Step 4 — The model zoo  ⏳ `step-4-model-zoo`
 ### Step 5 — Run the experiments (cross-context + out-of-distribution)  ⏳ `step-5-experiments`
 ### Step 6 — Validation gates  ⏳ `step-6-validation`
