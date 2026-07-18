@@ -198,7 +198,7 @@ plt.close(fig)
 # ----------------------------------------------------------------------------
 # 4. Generalizability curve: MMD vs NRMSE (CC off-diagonal, and OOD)
 # ----------------------------------------------------------------------------
-fig, axes = plt.subplots(1, 2, figsize=(14, 5.4))
+fig, axes = plt.subplots(1, 2, figsize=(14, 5.8))
 # CC
 xs, ys = [], []
 for m in models:
@@ -215,7 +215,6 @@ axes[0].set_yscale("log")
 axes[0].set_xlabel("MMD (Laplacian) train->test")
 axes[0].set_ylabel("NRMSE (log)")
 axes[0].set_title("CC generalizability curve", loc="left")
-axes[0].legend(fontsize=8, ncol=2, frameon=False)
 style(axes[0])
 # OOD
 xs2, ys2 = [], []
@@ -233,15 +232,18 @@ axes[1].set_yscale("log")
 axes[1].set_xlabel("MMD (Laplacian) held-out->training grids (mean)")
 axes[1].set_ylabel("NRMSE (log)")
 axes[1].set_title("OOD generalizability curve", loc="left")
-axes[1].legend(fontsize=8, ncol=2, frameon=False)
 style(axes[1])
-# correlation annotation in axes-fraction coords (top-right)
+# correlation annotation in axes-fraction coords (bottom-right, clear of points)
 for ax, txt in [(axes[0], f"Pearson={pr:.2f}   Spearman={sr:.2f}"),
                 (axes[1], f"Pearson={pr2:.2f}   Spearman={sr2:.2f}")]:
-    ax.text(0.97, 0.95, txt, transform=ax.transAxes, ha="right", va="top",
+    ax.text(0.97, 0.04, txt, transform=ax.transAxes, ha="right", va="bottom",
             fontsize=10, bbox=BOX, zorder=6)
-fig.tight_layout()
-fig.savefig(f"{FIG}/fig_generalizability_curve.png", dpi=150)
+# single shared legend above the panels (out of the data area)
+handles, labels_ = axes[0].get_legend_handles_labels()
+fig.legend(handles, labels_, loc="upper center", ncol=len(models), frameon=False,
+           bbox_to_anchor=(0.5, 1.02), fontsize=10)
+fig.tight_layout(rect=[0, 0, 1, 0.95])
+fig.savefig(f"{FIG}/fig_generalizability_curve.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 
 # ----------------------------------------------------------------------------
