@@ -72,8 +72,12 @@ def _mmd_matrix(data, grids):
     return deg, lap
 
 
-def run_cross_context(data, grids, model_names, device, epochs, seed):
-    """Train on each grid, test on every grid. Returns records + trained matrices."""
+def run_cross_context(data, grids, model_names, device, epochs, seed, save_dir=None):
+    """Train on each grid, test on every grid. Returns records + trained matrices.
+
+    If save_dir is given, each trained model's state_dict is written to
+    save_dir/cc_<model>_<train_grid>.pt so the exact trained GNNs are reusable.
+    """
     records = []
     for name in model_names:
         for train_grid in grids:
@@ -81,6 +85,9 @@ def run_cross_context(data, grids, model_names, device, epochs, seed):
             model = MODELS[name](input_dim=7).to(device)
             tl, vl = make_loaders(data[train_grid]["train"], data[train_grid]["val"])
             train(model, device, tl, vl, epochs=epochs)
+            if save_dir is not None:
+                torch.save(model.state_dict(),
+                           os.path.join(save_dir, f"cc_{name}_{train_grid}.pt"))
             for test_grid in grids:
                 nrmse, per_q = evaluate(model, device, data[test_grid]["test"])
                 rec = {
@@ -94,8 +101,12 @@ def run_cross_context(data, grids, model_names, device, epochs, seed):
     return records
 
 
-def run_ood(data, grids, model_names, device, epochs, seed):
-    """Leave-one-grid-out: train on the other grids, test on the held-out grid."""
+def run_ood(data, grids, model_names, device, epochs, seed, save_dir=None):
+    """Leave-one-grid-out: train on the other grids, test on the held-out grid.
+
+    If save_dir is given, each trained model's state_dict is written to
+    save_dir/ood_<model>_heldout_<held>.pt.
+    """
     records = []
     for name in model_names:
         for held in grids:
@@ -106,6 +117,9 @@ def run_ood(data, grids, model_names, device, epochs, seed):
             model = MODELS[name](input_dim=7).to(device)
             tl, vl = make_loaders(train_ds, val_ds)
             train(model, device, tl, vl, epochs=epochs)
+            if save_dir is not None:
+                torch.save(model.state_dict(),
+                           os.path.join(save_dir, f"ood_{name}_heldout_{held}.pt"))
             nrmse, per_q = evaluate(model, device, data[held]["test"])
             records.append({
                 "model": name, "held_out_grid": held, "nrmse": nrmse,
@@ -133,6 +147,63 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
     return rows
 
 
+def ood_distances(lap_mmd, grids):
+    """Per held-out grid, its topological distance to the TRAINING grids.
+
+    This is the exact distance the OOD g-score uses: for a leave-one-grid-out
+    split the training set is all the other grids, so the held-out grid's
+    distance is summarized as the mean Laplacian-MMD to each of them (min/max
+    reported too). Model-independent (topology only) -- written to
+    ood_distance.csv so a reader can see the OOD g-score's x-axis directly
+    instead of back-computing it from the pairwise mmd_laplacian matrix.
+    """
+    rows = []
+    for held in grids:
+        train_grids = [g for g in grids if g != held]
+        ds = [float(lap_mmd.loc[held, g]) for g in train_grids]
+        rows.append({"held_out_grid": held,
+                     "train_grids": "+".join(train_grids),
+                     "mmd_to_train_mean": float(np.mean(ds)),
+                     "mmd_to_train_min": float(np.min(ds)),
+                     "mmd_to_train_max": float(np.max(ds))})
+    return rows
+
+
+def compute_ood_gscores(ood_records, lap_mmd, model_names, grids):
+    """OOD g-score per model over the held-out grids.
+
+    Unlike the cross-context g-score (which is per TRAINING grid and has only the
+    unseen TEST grids as points), the OOD g-score has ONE point per held-out grid
+    -- i.e. as many points as grids -- so it is better-posed at small N. For each
+    held-out grid the topological distance is the mean Laplacian-MMD from that
+    grid to its TRAINING grids (the other grids the model was trained on).
+
+    No percentile trim is used (bounds=0): with only a handful of grids the
+    ENGAGE default trim collapses the statistics (see design decision D13).
+    NaN NRMSE cells (e.g. a diverged model) are dropped before scoring.
+    """
+    df = pd.DataFrame(ood_records)
+    rows = []
+    for name in model_names:
+        sub = df[df.model == name]
+        nrmses, mmds = [], []
+        for _, r in sub.iterrows():
+            if not np.isfinite(r["nrmse"]):
+                continue
+            held = r["held_out_grid"]
+            train_grids = [g for g in grids if g != held]
+            mmds.append(float(np.mean([lap_mmd.loc[held, g] for g in train_grids])))
+            nrmses.append(float(r["nrmse"]))
+        if len(nrmses) < 2:
+            continue  # need >=2 points for std / mmd_range
+        mean_n, std_n, mmd_rng, score = get_generalization_score(
+            np.array(mmds), np.array(nrmses), bounds=0)
+        rows.append({"model": name, "n_points": len(nrmses),
+                     "mean_nrmse": mean_n, "std_nrmse": std_n,
+                     "mmd_range": mmd_rng, "g_score": score})
+    return rows
+
+
 def dc_baseline(data, grids):
     rows = []
     for g in grids:
@@ -152,6 +223,8 @@ def parse_args():
                    help="default: all available transmission grids")
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--seed", type=int, default=12)
+    p.add_argument("--save_models", default=None,
+                   help="directory to write trained model state_dicts (.pt)")
     return p.parse_args()
 
 
@@ -161,6 +234,10 @@ def main():
     grids = args.grids or get_transmission_grid_codes()
     device = get_device()
     print(f"device={device} grids={grids} models={args.models} epochs={args.epochs}")
+
+    save_dir = args.save_models
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
 
     data = _load_all(args.data_dir, grids)
     summary = {}
@@ -178,7 +255,8 @@ def main():
 
     if args.experiment in ("cross", "both"):
         print("\n== Cross-context transfer ==")
-        cc = run_cross_context(data, grids, args.models, device, args.epochs, args.seed)
+        cc = run_cross_context(data, grids, args.models, device, args.epochs,
+                                args.seed, save_dir=save_dir)
         cc_df = pd.DataFrame(cc)
         cc_df.to_csv(os.path.join(args.out, "cross_context.csv"), index=False)
         # headline NRMSE transfer matrix (first model shown; all in the CSV)
@@ -194,9 +272,18 @@ def main():
 
     if args.experiment in ("ood", "both"):
         print("\n== Out-of-distribution (leave-one-grid-out) ==")
-        ood = run_ood(data, grids, args.models, device, args.epochs, args.seed)
+        ood = run_ood(data, grids, args.models, device, args.epochs, args.seed,
+                      save_dir=save_dir)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
+        ood_dist = ood_distances(lap_mmd, grids)
+        pd.DataFrame(ood_dist).to_csv(os.path.join(args.out, "ood_distance.csv"), index=False)
+        print("\n-- OOD topological distance (held-out grid → its training grids) --")
+        print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
+        ood_gs = compute_ood_gscores(ood, lap_mmd, args.models, grids)
+        pd.DataFrame(ood_gs).to_csv(os.path.join(args.out, "gscore_ood.csv"), index=False)
+        print("\n-- OOD g-scores (over held-out grids, no trim) --")
+        print(pd.DataFrame(ood_gs).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)
 
     with open(os.path.join(args.out, "summary.json"), "w") as f:
