@@ -147,6 +147,41 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
     return rows
 
 
+def compute_ood_gscores(ood_records, lap_mmd, model_names, grids):
+    """OOD g-score per model over the held-out grids.
+
+    Unlike the cross-context g-score (which is per TRAINING grid and has only the
+    unseen TEST grids as points), the OOD g-score has ONE point per held-out grid
+    -- i.e. as many points as grids -- so it is better-posed at small N. For each
+    held-out grid the topological distance is the mean Laplacian-MMD from that
+    grid to its TRAINING grids (the other grids the model was trained on).
+
+    No percentile trim is used (bounds=0): with only a handful of grids the
+    ENGAGE default trim collapses the statistics (see design decision D13).
+    NaN NRMSE cells (e.g. a diverged model) are dropped before scoring.
+    """
+    df = pd.DataFrame(ood_records)
+    rows = []
+    for name in model_names:
+        sub = df[df.model == name]
+        nrmses, mmds = [], []
+        for _, r in sub.iterrows():
+            if not np.isfinite(r["nrmse"]):
+                continue
+            held = r["held_out_grid"]
+            train_grids = [g for g in grids if g != held]
+            mmds.append(float(np.mean([lap_mmd.loc[held, g] for g in train_grids])))
+            nrmses.append(float(r["nrmse"]))
+        if len(nrmses) < 2:
+            continue  # need >=2 points for std / mmd_range
+        mean_n, std_n, mmd_rng, score = get_generalization_score(
+            np.array(mmds), np.array(nrmses), bounds=0)
+        rows.append({"model": name, "n_points": len(nrmses),
+                     "mean_nrmse": mean_n, "std_nrmse": std_n,
+                     "mmd_range": mmd_rng, "g_score": score})
+    return rows
+
+
 def dc_baseline(data, grids):
     rows = []
     for g in grids:
@@ -219,6 +254,10 @@ def main():
                       save_dir=save_dir)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
+        ood_gs = compute_ood_gscores(ood, lap_mmd, args.models, grids)
+        pd.DataFrame(ood_gs).to_csv(os.path.join(args.out, "gscore_ood.csv"), index=False)
+        print("\n-- OOD g-scores (over held-out grids, no trim) --")
+        print(pd.DataFrame(ood_gs).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)
 
     with open(os.path.join(args.out, "summary.json"), "w") as f:
