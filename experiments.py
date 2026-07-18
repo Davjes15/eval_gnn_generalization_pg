@@ -72,8 +72,12 @@ def _mmd_matrix(data, grids):
     return deg, lap
 
 
-def run_cross_context(data, grids, model_names, device, epochs, seed):
-    """Train on each grid, test on every grid. Returns records + trained matrices."""
+def run_cross_context(data, grids, model_names, device, epochs, seed, save_dir=None):
+    """Train on each grid, test on every grid. Returns records + trained matrices.
+
+    If save_dir is given, each trained model's state_dict is written to
+    save_dir/cc_<model>_<train_grid>.pt so the exact trained GNNs are reusable.
+    """
     records = []
     for name in model_names:
         for train_grid in grids:
@@ -81,6 +85,9 @@ def run_cross_context(data, grids, model_names, device, epochs, seed):
             model = MODELS[name](input_dim=7).to(device)
             tl, vl = make_loaders(data[train_grid]["train"], data[train_grid]["val"])
             train(model, device, tl, vl, epochs=epochs)
+            if save_dir is not None:
+                torch.save(model.state_dict(),
+                           os.path.join(save_dir, f"cc_{name}_{train_grid}.pt"))
             for test_grid in grids:
                 nrmse, per_q = evaluate(model, device, data[test_grid]["test"])
                 rec = {
@@ -94,8 +101,12 @@ def run_cross_context(data, grids, model_names, device, epochs, seed):
     return records
 
 
-def run_ood(data, grids, model_names, device, epochs, seed):
-    """Leave-one-grid-out: train on the other grids, test on the held-out grid."""
+def run_ood(data, grids, model_names, device, epochs, seed, save_dir=None):
+    """Leave-one-grid-out: train on the other grids, test on the held-out grid.
+
+    If save_dir is given, each trained model's state_dict is written to
+    save_dir/ood_<model>_heldout_<held>.pt.
+    """
     records = []
     for name in model_names:
         for held in grids:
@@ -106,6 +117,9 @@ def run_ood(data, grids, model_names, device, epochs, seed):
             model = MODELS[name](input_dim=7).to(device)
             tl, vl = make_loaders(train_ds, val_ds)
             train(model, device, tl, vl, epochs=epochs)
+            if save_dir is not None:
+                torch.save(model.state_dict(),
+                           os.path.join(save_dir, f"ood_{name}_heldout_{held}.pt"))
             nrmse, per_q = evaluate(model, device, data[held]["test"])
             records.append({
                 "model": name, "held_out_grid": held, "nrmse": nrmse,
@@ -152,6 +166,8 @@ def parse_args():
                    help="default: all available transmission grids")
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--seed", type=int, default=12)
+    p.add_argument("--save_models", default=None,
+                   help="directory to write trained model state_dicts (.pt)")
     return p.parse_args()
 
 
@@ -161,6 +177,10 @@ def main():
     grids = args.grids or get_transmission_grid_codes()
     device = get_device()
     print(f"device={device} grids={grids} models={args.models} epochs={args.epochs}")
+
+    save_dir = args.save_models
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
 
     data = _load_all(args.data_dir, grids)
     summary = {}
@@ -178,7 +198,8 @@ def main():
 
     if args.experiment in ("cross", "both"):
         print("\n== Cross-context transfer ==")
-        cc = run_cross_context(data, grids, args.models, device, args.epochs, args.seed)
+        cc = run_cross_context(data, grids, args.models, device, args.epochs,
+                                args.seed, save_dir=save_dir)
         cc_df = pd.DataFrame(cc)
         cc_df.to_csv(os.path.join(args.out, "cross_context.csv"), index=False)
         # headline NRMSE transfer matrix (first model shown; all in the CSV)
@@ -194,7 +215,8 @@ def main():
 
     if args.experiment in ("ood", "both"):
         print("\n== Out-of-distribution (leave-one-grid-out) ==")
-        ood = run_ood(data, grids, args.models, device, args.epochs, args.seed)
+        ood = run_ood(data, grids, args.models, device, args.epochs, args.seed,
+                      save_dir=save_dir)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)
