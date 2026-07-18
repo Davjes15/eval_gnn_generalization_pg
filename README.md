@@ -109,7 +109,27 @@ PF-with-slack), `--seed`, `--max_tries_factor`. Each emitted sample:
 `2E` varies with the contingency depth (that variation is what makes MMD/g-score
 meaningful). Contract details + the vendored ENGAGE extractors are in
 `engage_contract.py`.
-### Step 4 — The model zoo  ⏳ `step-4-model-zoo`
+### Step 4 — The model zoo  ✅ available on `step-4-model-zoo`
+Six architectures behind one interface (`models.py`): `GCN`, `ARMA_GNN` (ENGAGE)
+and `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph). Every model is genuinely
+edge-aware (consumes `edge_attr`) and shares the physics-aware `inference()`
+known-value re-injection (slack V/θ, PV P/V, PQ P/Q) applied at test time.
+```python
+from models import MODELS          # {'gcn','arma_gnn','gat','gin','transformer','nnconv'}
+model = MODELS['gat'](input_dim=7) # forward(data) -> pred (N, 4)
+```
+Quick self-check (forwards every model on a generated batch):
+```bash
+python3 - <<'PY'
+import torch; from torch_geometric.loader import DataLoader; from models import MODELS
+ds = torch.load('data/IEEE24/train/dataset.pt', weights_only=False)
+batch = next(iter(DataLoader(ds, batch_size=4)))
+for n, cls in MODELS.items():
+    m = cls(input_dim=7); m.eval()
+    with torch.no_grad(): out = m(batch)
+    print(n, tuple(out.shape), torch.isfinite(out).all().item())
+PY
+```
 ### Step 5 — Run the experiments (cross-context + out-of-distribution)  ⏳ `step-5-experiments`
 ### Step 6 — Validation gates  ⏳ `step-6-validation`
 
