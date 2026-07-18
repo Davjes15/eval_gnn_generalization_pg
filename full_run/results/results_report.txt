@@ -243,7 +243,7 @@ transformer         UK      0.1397        0.0        0.0   0.1397
      nnconv         UK      0.3364        0.0        0.0   0.3364
 
 ==============================================================================
-5b. g-score -- SMALL-N (no trim, all 3 unseen grids) [recommended here]
+5b. Cross-context g-score -- SMALL-N (no trim, all 3 unseen grids) [recommended here]
 ==============================================================================
 
       model train_grid  n_unseen  mean_nrmse  std_nrmse  mmd_range  g_score
@@ -271,3 +271,19 @@ transformer         UK         3      0.1477     0.0359     0.1927   0.1806
      nnconv     IEEE39         3      0.1365     0.0238     0.3321   0.1571
      nnconv    IEEE118         3      6.9709     7.1988     0.4449  12.9261
      nnconv         UK         3      0.3770     0.2389     0.1927   0.5954
+
+==============================================================================
+6. OOD g-score (per model, over held-out grids; no trim) [better-posed at N=4]
+==============================================================================
+
+Distance = mean Laplacian-MMD from each held-out grid to its training grids.
+One point per held-out grid (up to 4); NaN cells (e.g. arma_gnn/UK) dropped.
+This is the generalization measure most aligned with 'train on several grids,
+deploy on a new one', and unlike the cross-context g-score it is NOT degenerate.
+      model  n_points  mean_nrmse  std_nrmse  mmd_range  g_score
+        gcn         4      0.1472     0.0407     0.3050   0.1827
+   arma_gnn         3      0.1239     0.0238     0.1161   0.1464
+        gat         4      0.1406     0.0259     0.3050   0.1632
+        gin         4      0.1423     0.0245     0.3050   0.1637
+transformer         4      0.1368     0.0192     0.3050   0.1536
+     nnconv         4      0.8733     1.2700     0.3050   1.9817
