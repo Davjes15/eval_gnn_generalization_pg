@@ -19,12 +19,39 @@ Each grid is turned into a **distribution of topologies** by sampling credible N
 IEEE24, IEEE39, IEEE118, and the UK 29-bus system (PowerGraph's own `System.m` cases).
 
 ## Task & data contract
-Node-level AC PF state estimation — predict per-bus `[P, Q, V, θ]`.
-- `x`: `(N, 7)` = `[Slack?, PV?, PQ?, p_mw, q_mvar, vm_pu, va_degree]` (unknown inputs masked by bus type)
-- `edge_index`: `(2, 2E)`
-- `edge_attr`: `(2E, 4)` = `[transformer?, r_pu, x_pu, sc_voltage]`
-- `y`: `(N, 4)` = `[p_mw, q_mvar, vm_pu, va_degree]`
-- `dc_pf`: `(N, 4)` DC power-flow baseline
+Node-level AC power-flow (PF) state estimation — predict the per-bus state
+`[P, Q, V, θ]`. Each grid loading (one demand snapshot + one contingency topology)
+is a single PyTorch-Geometric `Data` graph; buses are **nodes**, lines/transformers
+are **edges**. `N` = number of buses, `E` = number of lines/transformers. Values are
+**per-unit** (pandapower AC PF solution). This is the same ENGAGE contract (which
+adapts PowerGraph's `X/Y/edge_*` layout into a single edge-aware `Data` object).
+
+### Data attributes (each `Data` object in `data/<GRID>/<split>/dataset.pt`)
+- **`x`** — node **input** feature matrix, dim **`(N, 7)`** = `[Slack?, PV?, PQ?, p_mw, q_mvar, vm_pu, va_degree]`:
+  - `Slack?, PV?, PQ?` — one-hot **bus type** (exactly one is 1). Tells the model which
+    two of `[P,Q,V,θ]` are *known* for that bus (slack: V,θ · PV: P,V · PQ: P,Q).
+  - `p_mw` — active power injection (MW); `q_mvar` — reactive power injection (MVar).
+  - `vm_pu` — voltage magnitude (per-unit, ≈ 1.0); `va_degree` — voltage angle (degrees).
+  - **Masking:** entries that are *unknown* for a bus type are `NaN` (→ 0 in `forward`),
+    so only the known boundary conditions are actually given as inputs.
+- **`edge_index`** — connectivity, dim **`(2, 2E)`**. Each line appears in **both**
+  directions (undirected grid stored as directed pairs), hence `2E`.
+- **`edge_attr`** — edge **input** feature matrix, dim **`(2E, 4)`** = `[transformer?, r_pu, x_pu, sc_voltage]`:
+  - `transformer?` — 1 if the branch is a transformer, 0 if a line.
+  - `r_pu` — series resistance (per-unit); `x_pu` — series reactance (per-unit).
+  - `sc_voltage` — transformer short-circuit voltage `vk_percent` (%); `NaN` for
+    lines (→ 0 in `forward`).
+- **`y`** — node **target/label** matrix, dim **`(N, 4)`** = `[p_mw, q_mvar, vm_pu, va_degree]`.
+  The **complete** solved AC PF state (no masking, no NaNs) — the supervision signal.
+- **`dc_pf`** — **DC power-flow baseline**, dim **`(N, 4)`**, same columns as `y`. A
+  linear-approximation reference solution (Q ≡ 0, V ≡ 1.0 by construction) so "the GNN
+  beats trivial physics" is demonstrated, not assumed.
+
+> Note vs PowerGraph: PowerGraph stores separate `X.mat`, `Y_polar.mat`,
+> `edge_index.mat`, `edge_attr.mat` (edges as conductance `G`/susceptance `B`). We use
+> ENGAGE's single `Data` object, bus-type one-hots + masking on `x`, and edges as
+> `[transformer?, r_pu, x_pu, sc_voltage]`. Full field-by-field rationale is in
+> `docs/PowerGraph_to_ENGAGE_design_decisions.md`.
 
 ## Model zoo
 `GCN`, `ARMA_GNN` (ENGAGE) plus `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph), all under one ENGAGE-style interface (edge-aware, with per-bus-type known-value re-injection).
