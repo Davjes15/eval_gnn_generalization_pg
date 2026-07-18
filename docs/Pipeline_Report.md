@@ -150,6 +150,9 @@ al. 2012; ggme (O'Bray et al.).
     the mean Laplacian-MMD from each held-out grid to its TRAINING grids. This is
     the **better-posed** g-score at small N (no trim; NaN cells dropped) and the
     one most aligned with "generalization to a new grid after training on several."
+    The explicit distances it uses are written to **`ood_distance.csv`** (per
+    held-out grid: mean/min/max Laplacian-MMD to its training grids) so the
+    g-score's x-axis is visible without back-computing it from the pairwise matrix.
 
 ---
 
@@ -165,7 +168,7 @@ al. 2012; ggme (O'Bray et al.).
 | `models.py` | 4 | Six edge-aware GNNs behind one interface | `BasePFGNN`, `GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NN_CONV`, `MODELS` | `Data` batch | `pred (N,4)` |
 | `training_utils.py` | 5 | Training loop + metrics + DC baseline | `train`, `evaluate`, `nrmse_range`, `nrmse_per_quantity`, `test_dc_pf`, `get_generalization_score` | datasets + models | trained model, metrics |
 | `mmd_utils.py` | 5 | Distribution-based MMD | `evaluate_mmd`, `mmd`, `*_histogram` | two datasets | (mmd_degree, mmd_laplacian) |
-| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `compute_ood_gscores`, `dc_baseline` | datasets + `MODELS` | `results/*.csv`, `.pt` checkpoints |
+| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `compute_ood_gscores`, `ood_distances`, `dc_baseline` | datasets + `MODELS` | `results/*.csv`, `.pt` checkpoints |
 | `validate.py` | 6 | Correctness gates | gate A–E | cases + datasets | pass/fail report |
 
 **Connection summary.** Step 1 is a one-time conversion (outputs are committed).
@@ -228,7 +231,8 @@ python3 experiments.py --experiment both --data_dir data --out results --epochs 
 ```
 Outputs in `results/`: `cross_context.csv`, `ood.csv`, `transfer_matrix_<model>.csv`,
 `mmd_degree.csv`, `mmd_laplacian.csv`, `dc_baseline.csv`, `gscore.csv` (cross-context),
-`gscore_ood.csv` (OOD, better-posed at small N), `summary.json`.
+`ood_distance.csv` (held-out→train distances), `gscore_ood.csv` (OOD, better-posed at
+small N), `summary.json`.
 Checkpoints in `models/`: `cc_<model>_<train_grid>.pt`, `ood_<model>_heldout_<grid>.pt`.
 
 ---
