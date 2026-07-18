@@ -43,9 +43,12 @@ adapts PowerGraph's `X/Y/edge_*` layout into a single edge-aware `Data` object).
     lines (→ 0 in `forward`).
 - **`y`** — node **target/label** matrix, dim **`(N, 4)`** = `[p_mw, q_mvar, vm_pu, va_degree]`.
   The **complete** solved AC PF state (no masking, no NaNs) — the supervision signal.
-- **`dc_pf`** — **DC power-flow baseline**, dim **`(N, 4)`**, same columns as `y`. A
-  linear-approximation reference solution (Q ≡ 0, V ≡ 1.0 by construction) so "the GNN
-  beats trivial physics" is demonstrated, not assumed.
+- **`dc_pf`** — **DC power-flow baseline**, dim **`(N, 4)`**, same columns as `y`.
+  pandapower's `rundcpp` on the *same* (contingency-applied) net: the linear DC
+  approximation solves real-power flows and angles, holds voltage magnitudes at their
+  controlled setpoints (≈ 1.0, non-controlled buses at 1.0), and carries the DC-solution
+  reactive power. Stored per graph so "the GNN beats a cheap linear solver" is
+  demonstrated, not assumed.
 
 > Note vs PowerGraph: PowerGraph stores separate `X.mat`, `Y_polar.mat`,
 > `edge_index.mat`, `edge_attr.mat` (edges as conductance `G`/susceptance `B`). We use

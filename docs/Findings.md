@@ -150,7 +150,11 @@ Measured directly from the generated `y` (bus voltage magnitude `vm_pu`) on the 
   flat-voltage assumption (V ≈ 1.0) gives a **much smaller V-NRMSE (0.11–0.22)
   than the GNNs' inflated V-NRMSE** — i.e. on voltage magnitude alone, trivially
   assuming V = 1.0 is competitive, which again shows V is near-constant and a poor
-  discriminator. DC does not model reactive power (Q column is 0 by construction).
+  discriminator. Note the DC `Q`-NRMSE is `0.0` **not** because Q is zeroed, but
+  because the stored DC reactive column reproduces the AC reactive injections in the
+  targets exactly (reactive injections are carried through); DC does not physically
+  solve the reactive sub-problem, so this is a bookkeeping artifact, not a meaningful
+  reactive-power result.
 - **The GNN's value is therefore not "beating DC on aggregate within one grid"** —
   it is (a) modelling Q and the nonlinear regime DC ignores, and (b) **generalizing
   across topologies/grids**, which a per-grid DC solve does not address. Judge the
