@@ -78,7 +78,14 @@ Laplacian-spectrum MMD (primary), `mmd_laplacian.csv`:
   IEEE24 the closest to the pack (≈ 0.82). Ordering of "distance to the rest":
   IEEE24 < IEEE39 ≈ IEEE118 < **UK**.
 - The OOD distances the g-score uses (`ood_distance.csv`, held-out grid → its 3
-  training grids): IEEE24 0.82, IEEE39 0.94, IEEE118 0.94, **UK 1.13**.
+  training grids — this is the MMD table **for the OOD experiment**):
+
+  | held-out grid | trained on | mean MMD | min | max |
+  |---|---|---|---|---|
+  | IEEE24 | IEEE39+IEEE118+UK | 0.82 | 0.73 | 1.00 |
+  | IEEE39 | IEEE24+IEEE118+UK | 0.94 | 0.78 | 1.12 |
+  | IEEE118 | IEEE24+IEEE39+UK | 0.94 | 0.77 | 1.22 |
+  | **UK** | IEEE24+IEEE39+IEEE118 | **1.13** | 1.05 | 1.24 |
 
 This ordering matters: it predicts UK should be the **hardest** unseen grid, which
 the OOD errors below confirm.
@@ -222,9 +229,22 @@ Off-diagonal transfer NRMSE, summarized per model:
 
 - **Cross-context g-score** (`gscore.csv`, ENGAGE 2/98 trim): **degenerate at this
   scale** — 3 unseen grids per training grid, so the trim collapses to one point
-  (std = mmd_range = 0). The no-trim `gscore_smallN.csv` is the correct reading;
-  even there, IEEE118-trained rows explode (gin IEEE118 g-score ≈ 21) mirroring the
-  transfer instability above.
+  (std = mmd_range = 0). The no-trim `gscore_smallN.csv` is the correct reading
+  (one g-score per **model × training grid**, lower = better):
+
+  | model | IEEE24 | IEEE39 | IEEE118 | UK |
+  |---|---|---|---|---|
+  | gcn | 0.140 | 0.165 | 1.272 | 0.536 |
+  | arma_gnn | 0.143 | 0.157 | 2.846 | 0.135 |
+  | gat | 0.146 | 0.203 | **0.360** | 0.150 |
+  | gin | 0.241 | 0.560 | **21.44** | 0.762 |
+  | transformer | 0.134 | 0.159 | 2.780 | 0.181 |
+  | nnconv | 0.210 | 0.157 | **12.93** | 0.595 |
+
+  The story is in the **IEEE118 column**: training on the big dense grid and scoring
+  transfer to the small grids explodes for `gin` (21.4) and `nnconv` (12.9), while
+  **`gat` is uniquely stable (max 0.36)** — mirroring the transfer-matrix blow-ups
+  above. This is why single-grid CC is the *pessimistic* regime.
 - **OOD g-score** (`gscore_ood.csv`, better-posed — one point per held-out grid,
   no trim, NaN dropped):
 
