@@ -269,6 +269,61 @@ Off-diagonal transfer NRMSE, summarized per model:
   IEEE39 outlier**; `arma_gnn`'s 0.147 is optimistic because its diverged UK point
   was dropped (it would otherwise be the worst).
 
+### 6.1 ENGAGE-format summary table (per model, aggregated — Table 3 style)
+
+The two tables above are our **finer-grained** readings (CC broken out per training
+grid; OOD per model). The original ENGAGE paper instead reports **one aggregated row
+per model** for *both* experiments (its Table 3: `μ_NRMSE, σ_NRMSE, Δ_MMD, g-score`,
+no grid names). For direct comparability with the paper we reproduce that exact
+format here (`gscore_cc_aggregate.csv` + `gscore_ood.csv`; Laplacian MMD; α=1). The
+**Cross-Context** g-score is now **pooled over all 12 train→test pairs per model**
+(ENGAGE's method — `get_generalization_score(mmd, nrmse)` over every pair, 2/98
+trim), *not* per training grid; the **OOD** column is the same per-model g-score as
+§6 above. `Δ_MMD` = `mmd_range` (spread of the distances entering each score).
+
+| model | **CC** μ_NRMSE | σ_NRMSE | Δ_MMD | **g-score** | · | **OOD** μ_NRMSE | σ_NRMSE | Δ_MMD | **g-score** |
+|---|---|---|---|---|---|---|---|---|---|
+| gcn | 0.427 | 0.408 | 0.505 | 0.758 | · | 0.147 | 0.041 | 0.353 | 0.182 |
+| arma_gnn | 0.504 | 0.814 | 0.517 | 1.160 | · | 0.124 | 0.024 | 0.054 | 0.147¹ |
+| gat | **0.178** | **0.073** | 0.491 | **0.238** | · | 0.141 | 0.026 | 0.353 | 0.163 |
+| gin | 1.533 | 2.775 | 0.505 | **3.779** | · | 0.142 | 0.025 | 0.353 | 0.163 |
+| transformer | 0.581 | 0.888 | 0.517 | 1.297 | · | 0.137 | **0.019** | 0.353 | **0.153** |
+| nnconv | 0.569 | 0.699 | 0.505 | 1.135 | · | 0.873 | 1.270 | 0.353 | 1.961 |
+| dc_pf² | 0.017 | 0.000 | 0.000 | 0.017² | · | 0.017 | 0.000 | 0.000 | 0.017² |
+
+¹ arma_gnn OOD is over **3** grids (its UK split diverged to NaN and was dropped),
+so its low value is optimistic. ² **DC-PF's tiny g-score is an artifact, not a win**:
+its `Δ_MMD=0` (no distance axis, so the variability term vanishes) and its aggregate
+NRMSE is deflated by the **Q≡0 bookkeeping** (DC records reactive-power error as 0).
+DC is a reference bar, not a competitor on this metric — read it with the §2/§8
+per-quantity caveats.
+
+**What this new table shows, vs. the OOD table.** The contrast between the two blocks
+is the headline of the whole study:
+- **CC (single-grid, pessimistic regime):** `gat` is the clear winner (g-score
+  **0.238**, μ 0.178) — the only architecture that transfers well from *one* grid.
+  Everything else is 0.76–3.8, because a single blow-up cell (e.g. `gin` IEEE118→UK
+  ≈ 27) dominates the pooled statistics; `gin` is worst (**3.78**). Notably
+  **`transformer` looks *bad* here (1.30)** — its single-grid transfer is fragile.
+- **OOD (multi-grid regime):** the ranking **flips at the top** — `transformer`
+  becomes best (**0.153**) and every GNN except `nnconv` collapses to a tight
+  0.15–0.18 band. Training on three grids removes almost all the CC fragility.
+- **Combined reading:** **`gat` = the safe choice when you can only train on one
+  grid; `transformer` = the best choice once you can train on several.** `nnconv` is
+  poor in both regimes; `gin` is catastrophic under single-grid transfer but
+  recovers under multi-grid training. This is exactly the architecture verdict in §7,
+  now shown in the paper's own format.
+
+**Why we did it (and kept both).** We added this to be **methodologically comparable
+to ENGAGE's Table 3** (same per-model aggregated layout, same g-score, both
+experiments side by side) so our results can be read against the paper directly. We
+**keep the per-training-grid CC table** (and the per-grid OOD NRMSE) because at N=4
+the single aggregated CC number *hides the source-grid dependence that is our key
+finding* — the aggregate is dominated by a few IEEE118-trained outliers, whereas the
+breakdown shows *which* training grid causes the blow-up. The two views are
+complementary: the aggregated table for paper-comparability, the grid-named tables
+for the mechanism.
+
 ---
 
 ## 7. Architecture verdict

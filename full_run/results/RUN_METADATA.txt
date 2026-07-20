@@ -43,6 +43,8 @@ mmd_degree.csv           4x4 degree-histogram MMD between grids
 dc_baseline.csv          DC-PF baseline per grid (aggregate + per-quantity)
 gscore.csv               ORIGINAL ENGAGE g-score (bounds=2) -- degenerate at N=3 (see note)
 gscore_smallN.csv        cross-context small-N g-score (no percentile trim, all unseen grids)
+gscore_cc_aggregate.csv  cross-context g-score in ENGAGE Table-3 format (ONE aggregated row per
+                         model, pooled over all 12 train->test pairs; for paper-comparability)
 ood_distance.csv         per held-out grid: POOLED degree + Laplacian MMD to the training-grid
                          mixture, MMD(held, A u B u C), ENGAGE-consistent (the OOD g-score x-axis)
 gscore_ood.csv           OOD g-score per model over held-out grids (no trim) -- better-posed at N=4;
