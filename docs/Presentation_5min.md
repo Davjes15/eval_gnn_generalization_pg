@@ -6,17 +6,31 @@ is roughly one slide; suggested visuals reference figures already in the repo
 
 ---
 
-## Beat 1 — The hook (30s)
-> AC power flow is *solved physics*. Give me a grid's topology, impedances, and
-> injections, and Newton–Raphson gives the exact answer. So why train a neural
-> network to approximate something we can already solve exactly? One word:
-> **amortization**. Operators need to screen **thousands** of what-if scenarios —
-> every credible line outage, every demand condition — in seconds. A GNN that has
-> learned power flow does that instantly. But only if it **generalizes** to grids
-> and topologies it was not trained on. That is the question this study answers:
-> *which GNN architectures actually generalize?*
+## Beat 1 — The hook: problem → gap → question (45s)
+> **The problem.** The field is racing toward **Grid Foundation Models** — one large,
+> pre-trained graph neural network meant to serve *any* grid and *any* task, from
+> power flow to contingency screening (IBM's *GridFM*, Microsoft's *GridSFM* trained
+> on 200 grids). The entire promise rests on a single assumption: that a GNN trained
+> on some grids **transfers to grids and topologies it has never seen**. Because the
+> grid is a graph that *constantly changes* — lines trip, topologies reconfigure — a
+> model that only works on its training grid is useless for operations.
+>
+> **The research gap.** That assumption is usually *asserted*, not *measured*. Papers
+> say "GNNs generalize" and scale up — but we lack controlled evidence for **which**
+> graph architectures actually transfer across grids, by **how much**, and **how to
+> even measure** distance between grids of different sizes. Without that, a Grid
+> Foundation Model is scaling an unvalidated core.
+>
+> **The research question.** So, concretely: *Which GNN architectures generalize
+> across unseen transmission topologies and unseen grids — and does training on
+> multiple grids actually deliver the cross-grid transfer a foundation model needs?*
+> We answer it on a task where the ground truth is exact — **AC power flow** — so any
+> failure to generalize is unambiguous, not hidden by label noise.
 
-## Beat 2 — The setup (45s)
+## Beat 2 — The setup / methodology (45s)
+> Why learn a surrogate at all, if power flow is exact? **Amortization** — a solver
+> re-runs from scratch for every scenario, but a trained GNN answers instantly, which
+> is what makes screening thousands of topologies feasible. Here is the methodology.
 > Four transmission grids — IEEE 24, 39, 118-bus, and a UK model. Each grid is not
 > one graph: we generate a **distribution** of topologies by sampling demand
 > snapshots and N-1/N-2 contingencies, then re-solve AC power flow for ground
@@ -67,7 +81,9 @@ is roughly one slide; suggested visuals reference figures already in the repo
 ## Beat 7 — The close (20s)
 > Bottom line: for deployable, cross-grid power-flow surrogates, **train on multiple
 > grids and use attention-based GNNs**. Expressiveness wins the training set;
-> **scale-invariance wins the real world.** Thank you.
+> **scale-invariance wins the real world.** And that is exactly the groundwork a
+> **Grid Foundation Model** needs — evidence for *which* graph backbone to scale and
+> proof that multi-grid pre-training actually transfers. Thank you.
 
 ---
 
