@@ -147,6 +147,38 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
     return rows
 
 
+def compute_cc_aggregate_gscores(cc_records, lap_mmd, dc_rows, model_names, grids):
+    """Cross-context g-score in ENGAGE's Table-3 format: ONE aggregated row per model.
+
+    Unlike `compute_gscores` (per training grid), ENGAGE pools ALL train->test pairs
+    into a single g-score per model -- `get_generalization_score(mmd, nrmse)` over
+    every cross-context (unseen) pair, with the default 2/98 trim. Reproduced here for
+    paper-comparability; the per-training-grid table is kept for the source-grid
+    mechanism. A DC-PF reference row is appended with mmd=0 (so its distance term
+    vanishes); note DC-PF's g-score is an artifact (Dmmd=0 + the Q==0 bookkeeping),
+    a reference bar rather than a competitor.
+    """
+    df = pd.DataFrame(cc_records)
+    rows = []
+    for name in model_names:
+        sub = df[(df.model == name) & (df.unseen)].dropna(subset=["nrmse"])
+        if sub.empty:
+            continue
+        nrmses = sub["nrmse"].values
+        mmds = np.array([lap_mmd.loc[r.train_grid, r.test_grid]
+                         for _, r in sub.iterrows()])
+        mean_n, std_n, mmd_rng, score = get_generalization_score(mmds, nrmses)
+        rows.append({"model": name, "n_pairs": len(nrmses),
+                     "mean_nrmse": mean_n, "std_nrmse": std_n,
+                     "mmd_range": mmd_rng, "g_score": score})
+    dc = np.array([r["dc_nrmse"] for r in dc_rows])
+    mean_n, std_n, mmd_rng, score = get_generalization_score(np.zeros(len(dc)), dc)
+    rows.append({"model": "dc_pf", "n_pairs": len(dc),
+                 "mean_nrmse": mean_n, "std_nrmse": std_n,
+                 "mmd_range": mmd_rng, "g_score": score})
+    return rows
+
+
 def ood_distances(data, grids):
     """Per held-out grid, its POOLED topological distance to the training grids.
 
@@ -271,6 +303,11 @@ def main():
         pd.DataFrame(gs).to_csv(os.path.join(args.out, "gscore.csv"), index=False)
         print("\n-- g-scores (over unseen grids) --")
         print(pd.DataFrame(gs).round(4).to_string(index=False))
+        cc_agg = compute_cc_aggregate_gscores(cc, lap_mmd, dc_rows, args.models, grids)
+        pd.DataFrame(cc_agg).to_csv(
+            os.path.join(args.out, "gscore_cc_aggregate.csv"), index=False)
+        print("\n-- CC g-score (ENGAGE Table-3 format, aggregated per model) --")
+        print(pd.DataFrame(cc_agg).round(4).to_string(index=False))
         summary["cross_context_rows"] = len(cc)
 
     if args.experiment in ("ood", "both"):
