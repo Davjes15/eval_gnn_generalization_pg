@@ -33,7 +33,7 @@ flowchart TD
     MMD["MMD topological distance<br/>(degree + Laplacian histograms)<br/>grid ↔ grid, model-independent"] --> GS
     CCM --> GS["g-score = NRMSE vs MMD<br/>CC: per training grid (small-N)<br/>OOD: per model over held-out grids (better-posed)"]
     OODM --> GS
-    MMD --> OODD["ood_distance.csv<br/>held-out grid → mean MMD to its 3 training grids<br/>(the OOD g-score x-axis)"]
+    MMD --> OODD["ood_distance.csv<br/>held-out grid → POOLED MMD to the training-grid mixture<br/>MMD(held, A∪B∪C), ENGAGE-consistent (the OOD g-score x-axis)"]
     OODD --> GS
 
     DC["DC-PF baseline (per grid)"] --> REP

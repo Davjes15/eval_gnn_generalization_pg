@@ -147,11 +147,14 @@ al. 2012; ggme (O'Bray et al.).
     small-N variant (no trim) is the appropriate reading — see `gscore_smallN.csv`.
   - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
     grids (one point per grid → up to 4 points), where the topological distance is
-    the mean Laplacian-MMD from each held-out grid to its TRAINING grids. This is
-    the **better-posed** g-score at small N (no trim; NaN cells dropped) and the
+    the **pooled** Laplacian-MMD from each held-out grid to the **mixture** of its
+    TRAINING grids — i.e. the three training grids are pooled into one distribution
+    and a single `MMD(held, A∪B∪C)` is computed, matching ENGAGE's `evaluate_cc_mmd`
+    (NOT a mean of pairwise MMDs; see design decision D14). This is the
+    **better-posed** g-score at small N (no trim; NaN cells dropped) and the
     one most aligned with "generalization to a new grid after training on several."
     The explicit distances it uses are written to **`ood_distance.csv`** (per
-    held-out grid: mean/min/max Laplacian-MMD to its training grids) so the
+    held-out grid: pooled degree + Laplacian MMD to the training mixture) so the
     g-score's x-axis is visible without back-computing it from the pairwise matrix.
 
 ---

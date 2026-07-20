@@ -74,21 +74,24 @@ Laplacian-spectrum MMD (primary), `mmd_laplacian.csv`:
 - **Within-grid MMD ≈ 0** (0.003–0.12) ≪ **cross-grid MMD ≈ 0.73–1.24** — the
   metric is non-degenerate (the earlier bug is fixed): each grid's cloud of
   contingency topologies is tight relative to the gaps between grids.
-- **UK is the farthest grid from everything** (mean distance to the others ≈ 1.13),
-  IEEE24 the closest to the pack (≈ 0.82). Ordering of "distance to the rest":
-  IEEE24 < IEEE39 ≈ IEEE118 < **UK**.
-- The OOD distances the g-score uses (`ood_distance.csv`, held-out grid → its 3
-  training grids — this is the MMD table **for the OOD experiment**):
+- The OOD distances the g-score uses (`ood_distance.csv`) — this is the MMD table
+  **for the OOD experiment**. Following ENGAGE (`evaluate_cc_mmd`), the three
+  training grids are **pooled into one distribution** and a **single** MMD is
+  computed between that pool and the held-out grid, i.e. `MMD(held, A∪B∪C)` — **not**
+  a mean of pairwise MMDs (see design decision D14):
 
-  | held-out grid | trained on | mean MMD | min | max |
-  |---|---|---|---|---|
-  | IEEE24 | IEEE39+IEEE118+UK | 0.82 | 0.73 | 1.00 |
-  | IEEE39 | IEEE24+IEEE118+UK | 0.94 | 0.78 | 1.12 |
-  | IEEE118 | IEEE24+IEEE39+UK | 0.94 | 0.77 | 1.22 |
-  | **UK** | IEEE24+IEEE39+IEEE118 | **1.13** | 1.05 | 1.24 |
+  | held-out grid | trained on (pooled) | pooled MMD (Laplacian, primary) | pooled MMD (degree) |
+  |---|---|---|---|
+  | IEEE118 | IEEE24+IEEE39+UK | 0.62 | 1.09 |
+  | IEEE24 | IEEE39+IEEE118+UK | 0.65 | 0.69 |
+  | IEEE39 | IEEE24+IEEE118+UK | 0.67 | 0.97 |
+  | **UK** | IEEE24+IEEE39+IEEE118 | **0.97** | 0.97 |
 
-This ordering matters: it predicts UK should be the **hardest** unseen grid, which
-the OOD errors below confirm.
+- **UK is clearly the farthest grid** from the pooled training mixture (Laplacian
+  0.97); the other three sit tightly together (0.62–0.67), essentially
+  indistinguishable by topology. So the pooled distance gives one confident
+  prediction — **UK is the hardest unseen grid** — which the OOD errors below
+  confirm (UK is where models most often degrade / diverge).
 
 ---
 
@@ -216,8 +219,9 @@ Off-diagonal transfer NRMSE, summarized per model:
   topology families lets the model learn grid-invariant power-flow structure.
 - **Per-grid difficulty tracks topological distance.** IEEE118 is easiest to
   generalize to (≈ 0.10 for all models), **UK is hardest** (0.15–0.22) — exactly as
-  the MMD distances predicted (UK is farthest, IEEE118 sits centrally with the most
-  training coverage from the other grids).
+  the pooled MMD distances predicted (**UK is farthest** from the training mixture at
+  0.97, **IEEE118 the closest** at 0.62, with the most topological coverage from the
+  other grids).
 - **Two documented instabilities (not bugs):** `arma_gnn` **diverges to NaN** on the
   UK held-out split (ARMA's recursive filter is sensitive on the farthest, smallest
   training-support target), and `nnconv` produces a **3.07 outlier** on held-out
@@ -248,18 +252,21 @@ Off-diagonal transfer NRMSE, summarized per model:
 - **OOD g-score** (`gscore_ood.csv`, better-posed — one point per held-out grid,
   no trim, NaN dropped):
 
+  (distance = **pooled** Laplacian MMD held-out→training mixture; `mmd_range` =
+  its spread across held-out grids = 0.97 − 0.62 = 0.353)
+
   | model | mean_nrmse | std_nrmse | mmd_range | g_score |
   |---|---|---|---|---|
-  | transformer | 0.137 | 0.019 | 0.305 | **0.154** |
-  | arma_gnn | 0.124 | 0.024 | 0.116 | 0.146 (3 pts, UK dropped) |
-  | gat | 0.141 | 0.026 | 0.305 | 0.163 |
-  | gin | 0.142 | 0.025 | 0.305 | 0.164 |
-  | gcn | 0.147 | 0.041 | 0.305 | 0.183 |
-  | nnconv | 0.873 | 1.270 | 0.305 | 1.982 |
+  | transformer | 0.137 | 0.019 | 0.353 | **0.153** |
+  | arma_gnn | 0.124 | 0.024 | 0.054 | 0.147 (3 pts, UK dropped) |
+  | gat | 0.141 | 0.026 | 0.353 | 0.163 |
+  | gin | 0.142 | 0.025 | 0.353 | 0.163 |
+  | gcn | 0.147 | 0.041 | 0.353 | 0.182 |
+  | nnconv | 0.873 | 1.270 | 0.353 | 1.961 |
 
   Lower is better (low + stable error across distances). **`transformer` wins**;
   `gat`/`gin` close behind; `gcn` a bit noisier; **`nnconv` is disqualified by its
-  IEEE39 outlier**; `arma_gnn`'s 0.146 is optimistic because its diverged UK point
+  IEEE39 outlier**; `arma_gnn`'s 0.147 is optimistic because its diverged UK point
   was dropped (it would otherwise be the worst).
 
 ---
@@ -292,7 +299,7 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 
 ### `gcn` — 8× GCNConv, **scalar** edge weight, symmetric-normalized aggregation
 - Within-grid 0.011–0.051 (weakest on the small IEEE24/39). CC mean 0.47 / max 1.30.
-  OOD 0.112/0.141/0.120/**0.215 (UK)**; g-score 0.183 (noisiest, std 0.041).
+  OOD 0.112/0.141/0.120/**0.215 (UK)**; g-score 0.182 (noisiest, std 0.041).
 - **Why:** GCNConv's `D^-1/2 A D^-1/2` normalization is inherently **scale-robust**,
   so CC never explodes catastrophically (max only 1.3) — but its edge model is a
   single learned **scalar** per line, too weak to encode UK's distinct impedance
@@ -304,7 +311,7 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 ### `arma_gnn` — ARMAConv (5 stacks × 8 layers), **scalar** edge weight, recursive filter
 - Within-grid **excellent on meshed grids** (IEEE39/118/UK 0.004–0.010) but poor on
   IEEE24 (0.147). CC mean 0.66 / max 2.81. OOD 0.157/0.112/0.102/**NaN (UK)**;
-  g-score 0.146 but only 3 points (UK dropped).
+  g-score 0.147 but only 3 points (UK dropped).
 - **Why:** ARMA is a **rational (auto-regressive) graph filter** with a wide
   receptive field — great at capturing the global spectral structure of large
   looped networks (hence its IEEE118/39 dominance), but the recursion is
@@ -330,7 +337,7 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 
 ### `gin` — 3× GINEConv, **vector** edge embedding, **SUM** aggregation
 - Within-grid **best-tier (0.006–0.016)** but **CC worst: mean 3.52, max 26.8
-  (IEEE118→UK)**. OOD fine (0.106–0.170); g-score 0.164.
+  (IEEE118→UK)**. OOD fine (0.106–0.170); g-score 0.163.
 - **Why:** GIN's **sum** aggregation is maximally expressive (WL-discriminative) →
   it fits a fixed grid superbly, but the sum **scales with node count and degree**,
   so moving from dense IEEE118 to a differently-sized grid changes aggregated
@@ -344,7 +351,7 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 ### `transformer` — 3× TransformerConv, 4 heads, **vector** edge embedding, softmax-attention
 - Within-grid best-tier (0.005–0.016). CC mean 0.74 (IEEE118-trained rows blow up
   like the others), but **OOD best and most stable: 0.106–0.157, UK 0.149, lowest
-  std 0.019 → g-score 0.154 (winner)**.
+  std 0.019 → g-score 0.153 (winner)**.
 - **Why:** like GAT it uses **scale-robust softmax attention**, but multi-head
   Transformer attention is more expressive, so once it sees several grids it
   captures grid-invariant power-flow structure best. Its CC blow-ups (single-source)
@@ -354,7 +361,7 @@ off-diagonal mean/max, OOD per held-out grid, OOD g-score.
 
 ### `nnconv` — 2× NNConv, **edge-network → 64×64 weight matrix per edge**, mean aggregation
 - Within-grid great (0.006–0.023). But **CC mean 1.91 / max 17.1 (IEEE118→IEEE39)**
-  and an **OOD 3.07 outlier on IEEE39**; g-score 1.98 (disqualified).
+  and an **OOD 3.07 outlier on IEEE39**; g-score 1.96 (disqualified).
 - **Why:** NNConv generates a full **4096-entry weight matrix per edge** from
   `edge_attr` — by far the most parameters and the most edge-expressive model. That
   capacity fits a single grid well but **overfits the source topology**, and on an
@@ -398,13 +405,17 @@ attention models, with `nnconv`'s IEEE39 outlier clearly visible.
 
 ![Performance](figures/fig_performance.png)
 
-**Generalizability curves — MMD vs NRMSE** (log-y; Pearson/Spearman annotated).
-Unlike ENGAGE's distribution grids (clear positive CC correlation), here the
-correlation is **weak** (CC Pearson ≈ 0.05, OOD ≈ −0.01): with only 4 transmission
-grids, error is driven far more by **which grid was the source** (IEEE118-trained
-models overfit and blow up on smaller grids) than by raw topological distance. This is
-itself a finding — *at this scale MMD does not linearly predict transfer error*, so we
-lead with the transfer matrix + OOD NRMSE and treat the g-score as supporting.
+**Generalizability curves — MMD vs NRMSE** (log-y; Pearson/Spearman annotated; OOD
+uses the **pooled** held-out→training distance). The **linear** correlation is weak
+in both regimes (CC Pearson ≈ 0.05, OOD ≈ **−0.05**): with only 4 transmission grids,
+error is driven far more by **which grid was the source** (IEEE118-trained models
+overfit and blow up on smaller grids) than by raw topological distance. But the OOD
+**rank** correlation is now clearly positive (Spearman ≈ **0.62**, up from −0.11 under
+the old mean-of-pairwise distance) — the pooled distance correctly ranks **UK
+(farthest) as the hardest** held-out grid. So the takeaway is nuanced: *at this scale
+MMD does not linearly predict transfer error, but pooled distance does track the
+error ordering* — we still lead with the transfer matrix + OOD NRMSE and treat the
+g-score as supporting.
 
 ![Generalizability curve](figures/fig_generalizability_curve.png)
 

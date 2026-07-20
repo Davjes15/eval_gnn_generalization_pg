@@ -227,7 +227,7 @@ style(axes[0])
 xs2, ys2 = [], []
 for m in models:
     sub = ood[ood.model == m].dropna(subset=["nrmse"])
-    px = [oodist.loc[r.held_out_grid, "mmd_to_train_mean"] for _, r in sub.iterrows()]
+    px = [oodist.loc[r.held_out_grid, "mmd_pooled_laplacian"] for _, r in sub.iterrows()]
     py = list(sub.nrmse.values)
     axes[1].scatter(px, py, s=90, color=COL[m], edgecolor=INK, lw=0.9, label=m, zorder=3)
     xs2 += px
@@ -236,7 +236,7 @@ xs2, ys2 = np.array(xs2), np.array(ys2)
 pr2 = pearsonr(xs2, ys2)[0]
 sr2 = spearmanr(xs2, ys2)[0]
 axes[1].set_yscale("log")
-axes[1].set_xlabel("MMD (Laplacian) held-out->training grids (mean)")
+axes[1].set_xlabel("MMD (Laplacian) held-out->pooled training grids")
 axes[1].set_ylabel("NRMSE (log)")
 axes[1].set_title("OOD generalizability curve", loc="left")
 style(axes[1])
