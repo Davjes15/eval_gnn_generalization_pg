@@ -147,36 +147,41 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
     return rows
 
 
-def ood_distances(lap_mmd, grids):
-    """Per held-out grid, its topological distance to the TRAINING grids.
+def ood_distances(data, grids):
+    """Per held-out grid, its POOLED topological distance to the training grids.
 
-    This is the exact distance the OOD g-score uses: for a leave-one-grid-out
-    split the training set is all the other grids, so the held-out grid's
-    distance is summarized as the mean Laplacian-MMD to each of them (min/max
-    reported too). Model-independent (topology only) -- written to
-    ood_distance.csv so a reader can see the OOD g-score's x-axis directly
-    instead of back-computing it from the pairwise mmd_laplacian matrix.
+    This is the exact distance the OOD g-score uses. Following ENGAGE's OOD MMD
+    (`evaluate_cc_mmd`), the leave-one-grid-out training grids are POOLED into a
+    single distribution of graphs and ONE MMD is computed between that pooled
+    training distribution and the held-out grid's test split -- i.e.
+    MMD(held, A u B u C), NOT a mean of the pairwise MMDs MMD(held, A/B/C).
+    Pooling reflects the mixture distribution the model is actually trained on.
+    Model-independent (topology only). Returns (rows, pooled_lap) where
+    pooled_lap maps held-out grid -> pooled Laplacian-MMD (the g-score x-axis).
     """
     rows = []
+    pooled_lap = {}
     for held in grids:
         train_grids = [g for g in grids if g != held]
-        ds = [float(lap_mmd.loc[held, g]) for g in train_grids]
+        pooled_train = [d for g in train_grids for d in data[g]["train"]]
+        md, ml = evaluate_mmd(pooled_train, data[held]["test"])
+        pooled_lap[held] = float(ml)
         rows.append({"held_out_grid": held,
                      "train_grids": "+".join(train_grids),
-                     "mmd_to_train_mean": float(np.mean(ds)),
-                     "mmd_to_train_min": float(np.min(ds)),
-                     "mmd_to_train_max": float(np.max(ds))})
-    return rows
+                     "mmd_pooled_degree": float(md),
+                     "mmd_pooled_laplacian": float(ml)})
+    return rows, pooled_lap
 
 
-def compute_ood_gscores(ood_records, lap_mmd, model_names, grids):
+def compute_ood_gscores(ood_records, pooled_lap, model_names, grids):
     """OOD g-score per model over the held-out grids.
 
     Unlike the cross-context g-score (which is per TRAINING grid and has only the
     unseen TEST grids as points), the OOD g-score has ONE point per held-out grid
     -- i.e. as many points as grids -- so it is better-posed at small N. For each
-    held-out grid the topological distance is the mean Laplacian-MMD from that
-    grid to its TRAINING grids (the other grids the model was trained on).
+    held-out grid the topological distance is the POOLED Laplacian-MMD from that
+    grid to the mixture of its TRAINING grids (ENGAGE-consistent: MMD(held,
+    A u B u C), supplied via `pooled_lap`), NOT a mean of pairwise MMDs.
 
     No percentile trim is used (bounds=0): with only a handful of grids the
     ENGAGE default trim collapses the statistics (see design decision D13).
@@ -190,9 +195,7 @@ def compute_ood_gscores(ood_records, lap_mmd, model_names, grids):
         for _, r in sub.iterrows():
             if not np.isfinite(r["nrmse"]):
                 continue
-            held = r["held_out_grid"]
-            train_grids = [g for g in grids if g != held]
-            mmds.append(float(np.mean([lap_mmd.loc[held, g] for g in train_grids])))
+            mmds.append(float(pooled_lap[r["held_out_grid"]]))
             nrmses.append(float(r["nrmse"]))
         if len(nrmses) < 2:
             continue  # need >=2 points for std / mmd_range
@@ -276,11 +279,11 @@ def main():
                       save_dir=save_dir)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
-        ood_dist = ood_distances(lap_mmd, grids)
+        ood_dist, pooled_lap = ood_distances(data, grids)
         pd.DataFrame(ood_dist).to_csv(os.path.join(args.out, "ood_distance.csv"), index=False)
-        print("\n-- OOD topological distance (held-out grid → its training grids) --")
+        print("\n-- OOD topological distance (held-out grid → POOLED training grids) --")
         print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
-        ood_gs = compute_ood_gscores(ood, lap_mmd, args.models, grids)
+        ood_gs = compute_ood_gscores(ood, pooled_lap, args.models, grids)
         pd.DataFrame(ood_gs).to_csv(os.path.join(args.out, "gscore_ood.csv"), index=False)
         print("\n-- OOD g-scores (over held-out grids, no trim) --")
         print(pd.DataFrame(ood_gs).round(4).to_string(index=False))
