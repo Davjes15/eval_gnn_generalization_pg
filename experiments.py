@@ -152,10 +152,12 @@ def compute_cc_aggregate_gscores(cc_records, lap_mmd, dc_rows, model_names, grid
 
     Unlike `compute_gscores` (per training grid), ENGAGE pools ALL train->test pairs
     into a single g-score per model -- `get_generalization_score(mmd, nrmse)` over
-    every cross-context (unseen) pair, with the default 2/98 trim. Reproduced here for
-    paper-comparability; the per-training-grid table is kept for the source-grid
-    mechanism. A DC-PF reference row is appended with mmd=0 (so its distance term
-    vanishes); note DC-PF's g-score is an artifact (Dmmd=0 + the Q==0 bookkeeping),
+    every cross-context (unseen) pair. Reproduced here for paper-comparability; the
+    per-training-grid table is kept for the source-grid mechanism. NO percentile trim
+    is used (bounds=0) so this table is consistent with the OOD g-score table, which
+    is also un-trimmed (with only 4 grids the ENGAGE default trim is degenerate; see
+    design decision D13). A DC-PF reference row is appended with mmd=0 (so its distance
+    term vanishes); note DC-PF's g-score is an artifact (Dmmd=0 + the Q==0 bookkeeping),
     a reference bar rather than a competitor.
     """
     df = pd.DataFrame(cc_records)
@@ -167,12 +169,13 @@ def compute_cc_aggregate_gscores(cc_records, lap_mmd, dc_rows, model_names, grid
         nrmses = sub["nrmse"].values
         mmds = np.array([lap_mmd.loc[r.train_grid, r.test_grid]
                          for _, r in sub.iterrows()])
-        mean_n, std_n, mmd_rng, score = get_generalization_score(mmds, nrmses)
+        mean_n, std_n, mmd_rng, score = get_generalization_score(mmds, nrmses, bounds=0)
         rows.append({"model": name, "n_pairs": len(nrmses),
                      "mean_nrmse": mean_n, "std_nrmse": std_n,
                      "mmd_range": mmd_rng, "g_score": score})
     dc = np.array([r["dc_nrmse"] for r in dc_rows])
-    mean_n, std_n, mmd_rng, score = get_generalization_score(np.zeros(len(dc)), dc)
+    mean_n, std_n, mmd_rng, score = get_generalization_score(
+        np.zeros(len(dc)), dc, bounds=0)
     rows.append({"model": "dc_pf", "n_pairs": len(dc),
                  "mean_nrmse": mean_n, "std_nrmse": std_n,
                  "mmd_range": mmd_rng, "g_score": score})
