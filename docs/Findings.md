@@ -276,20 +276,23 @@ grid; OOD per model). The original ENGAGE paper instead reports **one aggregated
 per model** for *both* experiments (its Table 3: `μ_NRMSE, σ_NRMSE, Δ_MMD, g-score`,
 no grid names). For direct comparability with the paper we reproduce that exact
 format here (`gscore_cc_aggregate.csv` + `gscore_ood.csv`; Laplacian MMD; α=1). The
-**Cross-Context** g-score is now **pooled over all 12 train→test pairs per model**
-(ENGAGE's method — `get_generalization_score(mmd, nrmse)` over every pair, 2/98
-trim), *not* per training grid; the **OOD** column is the same per-model g-score as
-§6 above. `Δ_MMD` = `mmd_range` (spread of the distances entering each score).
+**Cross-Context** g-score is **pooled over all 12 train→test pairs per model**
+(ENGAGE's method — `get_generalization_score(mmd, nrmse)` over every pair), *not* per
+training grid; the **OOD** column is the same per-model g-score as §6 above. `Δ_MMD` =
+`mmd_range` (spread of the distances entering each score). **Both blocks use NO
+percentile trim (bounds=0)** for consistency: with only 4 grids the ENGAGE default
+2/98 trim is degenerate for OOD, so we drop it everywhere and discard no data (see
+caveat below and design decision D13).
 
 | model | **CC** μ_NRMSE | σ_NRMSE | Δ_MMD | **g-score** | · | **OOD** μ_NRMSE | σ_NRMSE | Δ_MMD | **g-score** |
 |---|---|---|---|---|---|---|---|---|---|
-| gcn | 0.427 | 0.408 | 0.505 | 0.758 | · | 0.147 | 0.041 | 0.353 | 0.182 |
-| arma_gnn | 0.504 | 0.814 | 0.517 | 1.160 | · | 0.124 | 0.024 | 0.054 | 0.147¹ |
-| gat | **0.178** | **0.073** | 0.491 | **0.238** | · | 0.141 | 0.026 | 0.353 | 0.163 |
-| gin | 1.533 | 2.775 | 0.505 | **3.779** | · | 0.142 | 0.025 | 0.353 | 0.163 |
-| transformer | 0.581 | 0.888 | 0.517 | 1.297 | · | 0.137 | **0.019** | 0.353 | **0.153** |
-| nnconv | 0.569 | 0.699 | 0.505 | 1.135 | · | 0.873 | 1.270 | 0.353 | 1.961 |
-| dc_pf² | 0.017 | 0.000 | 0.000 | 0.017² | · | 0.017 | 0.000 | 0.000 | 0.017² |
+| gcn | 0.473 | 0.458 | 0.517 | 0.842 | · | 0.147 | 0.041 | 0.353 | 0.182 |
+| arma_gnn | 0.660 | 0.992 | 0.517 | 1.460 | · | 0.124 | 0.024 | 0.054 | 0.147¹ |
+| gat | **0.189** | **0.090** | 0.517 | **0.261** | · | 0.141 | 0.026 | 0.353 | 0.163 |
+| gin | 3.523 | 7.483 | 0.517 | **9.555** | · | 0.142 | 0.025 | 0.353 | 0.163 |
+| transformer | 0.736 | 1.054 | 0.517 | 1.586 | · | 0.137 | **0.019** | 0.353 | **0.153** |
+| nnconv | 1.912 | 4.638 | 0.517 | 5.651 | · | 0.873 | 1.270 | 0.353 | 1.961 |
+| dc_pf² | 0.017 | 0.005 | 0.000 | 0.017² | · | 0.017 | 0.000 | 0.000 | 0.017² |
 
 ¹ arma_gnn OOD is over **3** grids (its UK split diverged to NaN and was dropped),
 so its low value is optimistic. ² **DC-PF's tiny g-score is an artifact, not a win**:
@@ -301,10 +304,11 @@ per-quantity caveats.
 **What this new table shows, vs. the OOD table.** The contrast between the two blocks
 is the headline of the whole study:
 - **CC (single-grid, pessimistic regime):** `gat` is the clear winner (g-score
-  **0.238**, μ 0.178) — the only architecture that transfers well from *one* grid.
-  Everything else is 0.76–3.8, because a single blow-up cell (e.g. `gin` IEEE118→UK
-  ≈ 27) dominates the pooled statistics; `gin` is worst (**3.78**). Notably
-  **`transformer` looks *bad* here (1.30)** — its single-grid transfer is fragile.
+  **0.261**, μ 0.189) — the only architecture that transfers well from *one* grid.
+  Everything else is 0.84–9.6, because catastrophic blow-up cells (e.g. `gin`
+  IEEE118→UK ≈ 27, `nnconv` IEEE118→IEEE39 ≈ 17) dominate the un-trimmed statistics;
+  `gin` is worst (**9.56**) and `nnconv` second-worst (**5.65**). Notably
+  **`transformer` looks *bad* here (1.59)** — its single-grid transfer is fragile.
 - **OOD (multi-grid regime):** the ranking **flips at the top** — `transformer`
   becomes best (**0.153**) and every GNN except `nnconv` collapses to a tight
   0.15–0.18 band. Training on three grids removes almost all the CC fragility.
@@ -323,6 +327,14 @@ finding* — the aggregate is dominated by a few IEEE118-trained outliers, where
 breakdown shows *which* training grid causes the blow-up. The two views are
 complementary: the aggregated table for paper-comparability, the grid-named tables
 for the mechanism.
+
+> **Note on the trim.** ENGAGE's original Table 3 uses a 2/98 percentile trim on the
+> 12 CC pairs. We report the **un-trimmed** value (bounds=0) so the CC and OOD blocks
+> are internally consistent (OOD has only 4 grids, where a trim is degenerate). The
+> trim does not change the story — GAT stays best and GIN worst either way — it only
+> affects the middle ordering (with the trim: nnconv 1.14, transformer 1.30, gin
+> 3.78; un-trimmed the catastrophic IEEE118 outliers are retained, so nnconv 5.65 and
+> gin 9.56 rise). The un-trimmed numbers are the honest "worst-case sensitivity" read.
 
 ---
 
