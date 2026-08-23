@@ -24,9 +24,29 @@ HOW IT CONNECTS
 HOW TO RUN
     # quick smoke test (few epochs, two models):
     python3 experiments.py --experiment both --models gcn gat --epochs 20 \
-        --data_dir data --out results
-    # full run:
-    python3 experiments.py --experiment both --data_dir data --out results
+        --data_dir data --out results --allow_default_config
+    # fixed-topology control arm (Regime A), 5 seeds, tuned configs:
+    python3 experiments.py --experiment within --data_dir data_a \
+        --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+        --regime_tag A --out results_tuned/regime_a
+    # generalization arms (Regime B), same frozen configs:
+    python3 experiments.py --experiment both --data_dir data_full \
+        --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+        --regime_tag B --out results_tuned/regime_b
+
+ARCHITECTURE CONFIGURATION
+    `--arch_config` is a JSON file {model: {num_layers, hidden, learning_rate}}
+    produced by tune_budget.py. It is REQUIRED: the inherited ENGAGE/PowerGraph
+    defaults were never selected under any protocol, so falling back to them
+    silently would invalidate the architecture comparison. Pass
+    `--allow_default_config` to opt into them explicitly (smoke tests only).
+
+BATCH SIZE (ENGAGE section 3.3)
+    Batch size is scaled with the training-set size so the arms get comparable
+    numbers of optimizer steps per epoch: within-grid and cross-context train on
+    one grid (~800 samples, batch 32), OOD trains on three pooled grids (~2400
+    samples, batch 96). Without this, OOD would take ~3x more updates per epoch
+    and the CC-vs-OOD comparison would be confounded.
 """
 from __future__ import annotations
 
@@ -41,7 +61,6 @@ import torch
 from models import MODELS
 from mmd_utils import evaluate_mmd
 from training_utils import (
-    TARGET_NAMES,
     evaluate,
     get_device,
     get_generalization_score,
@@ -51,6 +70,67 @@ from training_utils import (
     train,
 )
 from transmission_grids import get_transmission_grid_codes
+
+
+def load_arch_config(path, model_names, allow_default=False):
+    """Load the frozen per-architecture configuration, or the inherited defaults.
+
+    Returns {model: {num_layers, hidden, learning_rate}}. Missing entries are a
+    hard error: a partially-tuned comparison is worse than no comparison.
+    """
+    if path is None:
+        if not allow_default:
+            raise SystemExit(
+                "--arch_config is required. The inherited ENGAGE/PowerGraph "
+                "defaults were not selected under any protocol, so using them "
+                "silently would invalidate the architecture comparison. Run "
+                "tune_budget.py, or pass --allow_default_config for a smoke test."
+            )
+        print("[warn] no --arch_config: using the INHERITED (untuned) defaults")
+        return {name: {} for name in model_names}
+
+    with open(path) as fh:
+        cfg = json.load(fh)
+    cfg = cfg.get("configs", cfg)  # accept tune_budget.py's wrapper or a bare map
+    missing = [n for n in model_names if n not in cfg]
+    if missing:
+        raise SystemExit(f"--arch_config {path} has no entry for {missing}")
+    known = {"num_layers", "hidden", "learning_rate"}
+    out = {}
+    for name in model_names:
+        unknown = set(cfg[name]) - known
+        if unknown:
+            raise SystemExit(f"--arch_config {path}: {name} has unknown keys {unknown}")
+        out[name] = {k: cfg[name][k] for k in cfg[name]}
+    return out
+
+
+def _build_model(name, cfg, device):
+    """Instantiate `name` with its selected depth/width (learning rate is
+    consumed by the training loop, not the constructor)."""
+    kwargs = {k: v for k, v in cfg.items() if k in ("num_layers", "hidden")}
+    return MODELS[name](input_dim=7, **kwargs).to(device)
+
+
+def _config_columns(name, cfg):
+    """Configuration provenance, carried on every result row."""
+    return {"num_layers": cfg.get("num_layers"), "hidden": cfg.get("hidden"),
+            "learning_rate": cfg.get("learning_rate", 1e-3)}
+
+
+def _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
+         ckpt=None, skip_existing=False):
+    """Train, or reuse an existing checkpoint when resuming a sharded run."""
+    if skip_existing and ckpt is not None and os.path.exists(ckpt):
+        model.load_state_dict(torch.load(ckpt, map_location=device))
+        print(f"    reusing {ckpt}")
+        return model
+    tl, vl = make_loaders(train_ds, val_ds, batch_size=batch_size)
+    train(model, device, tl, vl, epochs=epochs,
+          learning_rate=cfg.get("learning_rate", 1e-3))
+    if ckpt is not None:
+        torch.save(model.state_dict(), ckpt)
+    return model
 
 
 def _load_all(data_dir, grids):
@@ -72,60 +152,103 @@ def _mmd_matrix(data, grids):
     return deg, lap
 
 
-def run_cross_context(data, grids, model_names, device, epochs, seed, save_dir=None):
-    """Train on each grid, test on every grid. Returns records + trained matrices.
+def run_within(data, grids, model_names, device, epochs, seeds, arch_cfg,
+               batch_size=32, save_dir=None, skip_existing=False, regime_tag=""):
+    """Fixed-topology control arm: train and test on the SAME grid.
 
-    If save_dir is given, each trained model's state_dict is written to
-    save_dir/cc_<model>_<train_grid>.pt so the exact trained GNNs are reusable.
+    This is the PowerGraph-like regime -- no unseen grid, no unseen topology --
+    and the reference ranking the generalization arms are compared against.
     """
     records = []
     for name in model_names:
-        for train_grid in grids:
-            torch.manual_seed(seed)
-            model = MODELS[name](input_dim=7).to(device)
-            tl, vl = make_loaders(data[train_grid]["train"], data[train_grid]["val"])
-            train(model, device, tl, vl, epochs=epochs)
-            if save_dir is not None:
-                torch.save(model.state_dict(),
-                           os.path.join(save_dir, f"cc_{name}_{train_grid}.pt"))
-            for test_grid in grids:
-                nrmse, per_q = evaluate(model, device, data[test_grid]["test"])
-                rec = {
-                    "model": name, "train_grid": train_grid, "test_grid": test_grid,
-                    "unseen": train_grid != test_grid, "nrmse": nrmse,
-                    **{f"nrmse_{q}": per_q[q] for q in TARGET_NAMES},
-                }
-                records.append(rec)
-                print(f"  [{name}] train={train_grid} test={test_grid} "
-                      f"nrmse={nrmse:.4f} unseen={train_grid != test_grid}")
+        cfg = arch_cfg[name]
+        for grid in grids:
+            for seed in seeds:
+                torch.manual_seed(seed)
+                model = _build_model(name, cfg, device)
+                ckpt = (os.path.join(save_dir, f"within_{name}_{grid}_s{seed}.pt")
+                        if save_dir else None)
+                _fit(model, device, data[grid]["train"], data[grid]["val"],
+                     epochs, cfg, batch_size, ckpt, skip_existing)
+                nrmse, _, metrics = evaluate(model, device, data[grid]["test"],
+                                             full=True)
+                records.append({
+                    "model": name, "grid": grid, "seed": seed,
+                    "regime": regime_tag, **_config_columns(name, cfg), **metrics,
+                })
+                print(f"  [{name}] grid={grid} seed={seed} nrmse={nrmse:.4f} "
+                      f"mse={metrics['mse']:.4g}")
     return records
 
 
-def run_ood(data, grids, model_names, device, epochs, seed, save_dir=None):
-    """Leave-one-grid-out: train on the other grids, test on the held-out grid.
+def run_cross_context(data, grids, model_names, device, epochs, seeds, arch_cfg,
+                      batch_size=32, save_dir=None, skip_existing=False,
+                      regime_tag=""):
+    """Train on each grid, test on every grid. Returns records + trained matrices.
 
     If save_dir is given, each trained model's state_dict is written to
-    save_dir/ood_<model>_heldout_<held>.pt.
+    save_dir/cc_<model>_<train_grid>_s<seed>.pt so the exact trained GNNs are
+    reusable. The seed is part of the filename so seed replicates cannot
+    overwrite one another.
     """
     records = []
     for name in model_names:
+        cfg = arch_cfg[name]
+        for train_grid in grids:
+            for seed in seeds:
+                torch.manual_seed(seed)
+                model = _build_model(name, cfg, device)
+                ckpt = (os.path.join(save_dir, f"cc_{name}_{train_grid}_s{seed}.pt")
+                        if save_dir else None)
+                _fit(model, device, data[train_grid]["train"],
+                     data[train_grid]["val"], epochs, cfg, batch_size,
+                     ckpt, skip_existing)
+                for test_grid in grids:
+                    nrmse, _, metrics = evaluate(model, device,
+                                                 data[test_grid]["test"], full=True)
+                    records.append({
+                        "model": name, "train_grid": train_grid,
+                        "test_grid": test_grid, "unseen": train_grid != test_grid,
+                        "seed": seed, "regime": regime_tag,
+                        **_config_columns(name, cfg), **metrics,
+                    })
+                    print(f"  [{name}] train={train_grid} test={test_grid} "
+                          f"seed={seed} nrmse={nrmse:.4f} "
+                          f"unseen={train_grid != test_grid}")
+    return records
+
+
+def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
+            batch_size=96, save_dir=None, skip_existing=False, regime_tag=""):
+    """Leave-one-grid-out: train on the other grids, test on the held-out grid.
+
+    If save_dir is given, each trained model's state_dict is written to
+    save_dir/ood_<model>_heldout_<held>_s<seed>.pt. The default batch size is
+    larger than the cross-context one because three grids are pooled here (see
+    the module docstring).
+    """
+    records = []
+    for name in model_names:
+        cfg = arch_cfg[name]
         for held in grids:
             train_grids = [g for g in grids if g != held]
             train_ds = [d for g in train_grids for d in data[g]["train"]]
             val_ds = [d for g in train_grids for d in data[g]["val"]]
-            torch.manual_seed(seed)
-            model = MODELS[name](input_dim=7).to(device)
-            tl, vl = make_loaders(train_ds, val_ds)
-            train(model, device, tl, vl, epochs=epochs)
-            if save_dir is not None:
-                torch.save(model.state_dict(),
-                           os.path.join(save_dir, f"ood_{name}_heldout_{held}.pt"))
-            nrmse, per_q = evaluate(model, device, data[held]["test"])
-            records.append({
-                "model": name, "held_out_grid": held, "nrmse": nrmse,
-                **{f"nrmse_{q}": per_q[q] for q in TARGET_NAMES},
-            })
-            print(f"  [{name}] held_out={held} nrmse={nrmse:.4f}")
+            for seed in seeds:
+                torch.manual_seed(seed)
+                model = _build_model(name, cfg, device)
+                ckpt = (os.path.join(save_dir,
+                                     f"ood_{name}_heldout_{held}_s{seed}.pt")
+                        if save_dir else None)
+                _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
+                     ckpt, skip_existing)
+                nrmse, _, metrics = evaluate(model, device, data[held]["test"],
+                                             full=True)
+                records.append({
+                    "model": name, "held_out_grid": held, "seed": seed,
+                    "regime": regime_tag, **_config_columns(name, cfg), **metrics,
+                })
+                print(f"  [{name}] held_out={held} seed={seed} nrmse={nrmse:.4f}")
     return records
 
 
@@ -242,25 +365,64 @@ def compute_ood_gscores(ood_records, pooled_lap, model_names, grids):
     return rows
 
 
+def per_seed(fn, records, seeds, *args):
+    """Apply a g-score function to each seed's records separately.
+
+    Pooling seeds would fold seed variance into the g-score's std term, which is
+    meant to capture variation ACROSS TEST GRIDS. So each seed gets its own
+    g-score and a `seed` column; aggregation over seeds happens downstream.
+    """
+    rows = []
+    for seed in seeds:
+        sub = [r for r in records if r.get("seed") == seed]
+        if not sub:
+            continue
+        rows += [{"seed": seed, **row} for row in fn(sub, *args)]
+    return rows
+
+
 def dc_baseline(data, grids):
     rows = []
     for g in grids:
-        nrmse, per_q = test_dc_pf(data[g]["test"])
-        rows.append({"grid": g, "dc_nrmse": nrmse,
-                     **{f"dc_nrmse_{q}": per_q[q] for q in TARGET_NAMES}})
+        _, _, metrics = test_dc_pf(data[g]["test"], full=True)
+        rows.append({"grid": g,
+                     **{f"dc_{k}": v for k, v in metrics.items()}})
     return rows
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--experiment", choices=["cross", "ood", "both"], default="both")
+    p.add_argument("--experiment",
+                   choices=["within", "cross", "ood", "both"], default="both",
+                   help="'within' is the fixed-topology control arm (Regime A); "
+                        "'both' means cross-context + OOD (Regime B)")
     p.add_argument("--data_dir", default="data")
     p.add_argument("--out", default="results")
     p.add_argument("--models", nargs="+", default=list(MODELS.keys()))
     p.add_argument("--grids", nargs="+", default=None,
                    help="default: all available transmission grids")
     p.add_argument("--epochs", type=int, default=200)
-    p.add_argument("--seed", type=int, default=12)
+    p.add_argument("--seed", type=int, default=12,
+                   help="single-seed shorthand; superseded by --seeds")
+    p.add_argument("--seeds", type=int, nargs="+", default=None,
+                   help="training seeds to replicate over, e.g. 0 100 300 700 1000")
+    p.add_argument("--arch_config", default=None,
+                   help="JSON of per-architecture {num_layers, hidden, "
+                        "learning_rate} from tune_budget.py (required)")
+    p.add_argument("--allow_default_config", action="store_true",
+                   help="explicitly opt into the inherited untuned defaults")
+    p.add_argument("--batch_size", type=int, default=32,
+                   help="within-grid and cross-context batch size")
+    p.add_argument("--batch_size_ood", type=int, default=96,
+                   help="OOD batch size (3 grids pooled -- see module docstring)")
+    p.add_argument("--regime_tag", default="",
+                   help="label carried on every result row, e.g. A or B")
+    p.add_argument("--skip_existing", action="store_true",
+                   help="reuse a run's checkpoint instead of retraining it "
+                        "(requires --save_models); makes sharded runs resumable")
+    p.add_argument("--skip_mmd", action="store_true",
+                   help="skip MMD and the g-scores; implied by --experiment within, "
+                        "where one topology per grid makes them degenerate")
     p.add_argument("--save_models", default=None,
                    help="directory to write trained model state_dicts (.pt)")
     return p.parse_args()
@@ -271,63 +433,112 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     grids = args.grids or get_transmission_grid_codes()
     device = get_device()
-    print(f"device={device} grids={grids} models={args.models} epochs={args.epochs}")
+    seeds = args.seeds if args.seeds else [args.seed]
+    arch_cfg = load_arch_config(args.arch_config, args.models,
+                               allow_default=args.allow_default_config)
+    if args.skip_existing and args.save_models is None:
+        raise SystemExit("--skip_existing requires --save_models")
+    # With one topology per grid the within-grid MMD is 0 by construction, so
+    # the MMD matrix and every g-score built on it are degenerate.
+    skip_mmd = args.skip_mmd or args.experiment == "within"
+    print(f"device={device} grids={grids} models={args.models} "
+          f"epochs={args.epochs} seeds={seeds} regime={args.regime_tag or '-'}")
+    print(f"arch_config: {json.dumps(arch_cfg)}")
 
     save_dir = args.save_models
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
 
     data = _load_all(args.data_dir, grids)
-    summary = {}
+    summary = {"regime_tag": args.regime_tag, "seeds": seeds,
+               "experiment": args.experiment, "data_dir": args.data_dir,
+               "epochs": args.epochs, "arch_config_path": args.arch_config,
+               "arch_config": arch_cfg,
+               "batch_size": args.batch_size,
+               "batch_size_ood": args.batch_size_ood}
 
-    print("\n== MMD (topological distance) ==")
-    deg_mmd, lap_mmd = _mmd_matrix(data, grids)
-    deg_mmd.to_csv(os.path.join(args.out, "mmd_degree.csv"))
-    lap_mmd.to_csv(os.path.join(args.out, "mmd_laplacian.csv"))
-    print(lap_mmd.round(4).to_string())
+    lap_mmd = None
+    if skip_mmd:
+        print("\n== MMD skipped (degenerate for a fixed-topology regime) ==")
+    else:
+        print("\n== MMD (topological distance) ==")
+        deg_mmd, lap_mmd = _mmd_matrix(data, grids)
+        deg_mmd.to_csv(os.path.join(args.out, "mmd_degree.csv"))
+        lap_mmd.to_csv(os.path.join(args.out, "mmd_laplacian.csv"))
+        print(lap_mmd.round(4).to_string())
 
     print("\n== DC-PF baseline (per test grid) ==")
     dc_rows = dc_baseline(data, grids)
     pd.DataFrame(dc_rows).to_csv(os.path.join(args.out, "dc_baseline.csv"), index=False)
     print(pd.DataFrame(dc_rows).round(4).to_string(index=False))
 
+    if args.experiment == "within":
+        print("\n== Within-grid (fixed-topology control arm) ==")
+        wi = run_within(data, grids, args.models, device, args.epochs, seeds,
+                        arch_cfg, batch_size=args.batch_size, save_dir=save_dir,
+                        skip_existing=args.skip_existing,
+                        regime_tag=args.regime_tag)
+        wi_df = pd.DataFrame(wi)
+        wi_df.to_csv(os.path.join(args.out, "within_grid.csv"), index=False)
+        print(wi_df.round(4).to_string(index=False))
+        summary["within_rows"] = len(wi)
+
     if args.experiment in ("cross", "both"):
         print("\n== Cross-context transfer ==")
         cc = run_cross_context(data, grids, args.models, device, args.epochs,
-                                args.seed, save_dir=save_dir)
+                               seeds, arch_cfg, batch_size=args.batch_size,
+                               save_dir=save_dir,
+                               skip_existing=args.skip_existing,
+                               regime_tag=args.regime_tag)
         cc_df = pd.DataFrame(cc)
         cc_df.to_csv(os.path.join(args.out, "cross_context.csv"), index=False)
-        # headline NRMSE transfer matrix (first model shown; all in the CSV)
-        for name in args.models:
-            mat = cc_df[cc_df.model == name].pivot(
-                index="train_grid", columns="test_grid", values="nrmse")
-            mat.to_csv(os.path.join(args.out, f"transfer_matrix_{name}.csv"))
-        gs = compute_gscores(cc, lap_mmd, args.models, grids)
-        pd.DataFrame(gs).to_csv(os.path.join(args.out, "gscore.csv"), index=False)
-        print("\n-- g-scores (over unseen grids) --")
-        print(pd.DataFrame(gs).round(4).to_string(index=False))
-        cc_agg = compute_cc_aggregate_gscores(cc, lap_mmd, dc_rows, args.models, grids)
-        pd.DataFrame(cc_agg).to_csv(
-            os.path.join(args.out, "gscore_cc_aggregate.csv"), index=False)
-        print("\n-- CC g-score (ENGAGE Table-3 format, aggregated per model) --")
-        print(pd.DataFrame(cc_agg).round(4).to_string(index=False))
         summary["cross_context_rows"] = len(cc)
+        # Headline NRMSE transfer matrix per model, averaged over seeds.
+        for name in args.models:
+            mat = cc_df[cc_df.model == name].pivot_table(
+                index="train_grid", columns="test_grid", values="nrmse",
+                aggfunc="mean")
+            mat.to_csv(os.path.join(args.out, f"transfer_matrix_{name}.csv"))
+
+        if lap_mmd is None:
+            print("(g-scores skipped: no MMD matrix)")
+        else:
+            gs = per_seed(compute_gscores, cc, seeds, lap_mmd, args.models, grids)
+            pd.DataFrame(gs).to_csv(os.path.join(args.out, "gscore.csv"), index=False)
+            print("\n-- g-scores (over unseen grids) --")
+            print(pd.DataFrame(gs).round(4).to_string(index=False))
+            cc_agg = per_seed(compute_cc_aggregate_gscores, cc, seeds,
+                              lap_mmd, dc_rows, args.models, grids)
+            pd.DataFrame(cc_agg).to_csv(
+                os.path.join(args.out, "gscore_cc_aggregate.csv"), index=False)
+            print("\n-- CC g-score (ENGAGE Table-3 format, aggregated per model) --")
+            print(pd.DataFrame(cc_agg).round(4).to_string(index=False))
 
     if args.experiment in ("ood", "both"):
         print("\n== Out-of-distribution (leave-one-grid-out) ==")
-        ood = run_ood(data, grids, args.models, device, args.epochs, args.seed,
-                      save_dir=save_dir)
+        ood = run_ood(data, grids, args.models, device, args.epochs, seeds,
+                      arch_cfg, batch_size=args.batch_size_ood,
+                      save_dir=save_dir, skip_existing=args.skip_existing,
+                      regime_tag=args.regime_tag)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
-        ood_dist, pooled_lap = ood_distances(data, grids)
-        pd.DataFrame(ood_dist).to_csv(os.path.join(args.out, "ood_distance.csv"), index=False)
-        print("\n-- OOD topological distance (held-out grid → POOLED training grids) --")
-        print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
-        ood_gs = compute_ood_gscores(ood, pooled_lap, args.models, grids)
-        pd.DataFrame(ood_gs).to_csv(os.path.join(args.out, "gscore_ood.csv"), index=False)
-        print("\n-- OOD g-scores (over held-out grids, no trim) --")
-        print(pd.DataFrame(ood_gs).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)
+
+        if lap_mmd is None:
+            print("(OOD g-scores skipped: no MMD matrix)")
+        else:
+            ood_dist, pooled_lap = ood_distances(data, grids)
+            pd.DataFrame(ood_dist).to_csv(
+                os.path.join(args.out, "ood_distance.csv"), index=False)
+            print("\n-- OOD topological distance (held-out grid → POOLED training "
+                  "grids) --")
+            print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
+            ood_gs = per_seed(compute_ood_gscores, ood, seeds, pooled_lap,
+                              args.models, grids)
+            pd.DataFrame(ood_gs).to_csv(
+                os.path.join(args.out, "gscore_ood.csv"), index=False)
+            print("\n-- OOD g-scores (over held-out grids, no trim) --")
+            print(pd.DataFrame(ood_gs).round(4).to_string(index=False))
 
     with open(os.path.join(args.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)

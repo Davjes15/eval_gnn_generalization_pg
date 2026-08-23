@@ -26,7 +26,12 @@ WHY THIS STEP EXISTS (design decision D7)
 
 HOW IT CONNECTS
     data/<CODE>/<split>/dataset.pt  (Step 3)
-        -> MODELS[name](input_dim=7)  -> trained by Step 5's driver
+        -> MODELS[name](input_dim=7, num_layers=..., hidden=...)
+        -> trained by Step 5's driver
+    `num_layers` and `hidden` are per-architecture and selected by the
+    equal-budget tuning sweep (tune_budget.py); the defaults below are the
+    inherited ENGAGE/PowerGraph values and are kept only for backwards
+    compatibility with the earlier runs.
     The registry `MODELS` is imported by the experiment drivers (Step 5), which
     simply iterate over it.
 
@@ -49,7 +54,7 @@ from torch_geometric.nn import (
     TransformerConv,
 )
 
-HIDDEN = 64        # hidden width shared by all models (matches ENGAGE)
+HIDDEN = 64        # DEFAULT hidden width (ENGAGE's value; per-model via `hidden=`)
 EDGE_HIDDEN = 16   # width of the vector edge embedding for attention models
 N_TARGET = 4       # [p_mw, q_mvar, vm_pu, va_degree]
 
@@ -60,20 +65,21 @@ class BasePFGNN(nn.Module):
     message-passing stack) and build whatever edge encoder they need.
     """
 
-    def __init__(self, input_dim: int = 7):
+    def __init__(self, input_dim: int = 7, hidden: int = HIDDEN):
         super().__init__()
         self.input_dim = input_dim
+        self.hidden = hidden
         self.act = nn.LeakyReLU(negative_slope=0.2)
         self.act_small = nn.LeakyReLU(negative_slope=0.005)
 
-        # Node pre-encoder: raw (N, input_dim) -> (N, HIDDEN).
-        self.predense1_node = nn.Linear(input_dim, HIDDEN)
-        self.predense2_node = nn.Linear(HIDDEN, HIDDEN)
+        # Node pre-encoder: raw (N, input_dim) -> (N, hidden).
+        self.predense1_node = nn.Linear(input_dim, hidden)
+        self.predense2_node = nn.Linear(hidden, hidden)
 
         # Post-processing (concatenates the raw inputs as a skip connection).
-        self.postdense1 = nn.Linear(HIDDEN + input_dim, HIDDEN)
-        self.postdense2 = nn.Linear(HIDDEN, HIDDEN)
-        self.readout = nn.Linear(HIDDEN, N_TARGET)
+        self.postdense1 = nn.Linear(hidden + input_dim, hidden)
+        self.postdense2 = nn.Linear(hidden, hidden)
+        self.readout = nn.Linear(hidden, N_TARGET)
 
     # -- message passing: implemented by each subclass -----------------------
     def _mp(self, node_emb, edge_index, edge_attr):  # pragma: no cover - abstract
@@ -133,11 +139,12 @@ class _ScalarEdgeMixin:
 class GCN(BasePFGNN, _ScalarEdgeMixin):
     """GCN with a learned scalar edge weight (ENGAGE-style)."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 8):
-        super().__init__(input_dim)
+    def __init__(self, input_dim: int = 7, num_layers: int = 8,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
         self._build_scalar_edge()
         self.convs = nn.ModuleList(
-            [GCNConv(HIDDEN, HIDDEN, normalize=True) for _ in range(num_layers)]
+            [GCNConv(hidden, hidden, normalize=True) for _ in range(num_layers)]
         )
 
     def _mp(self, node_emb, edge_index, edge_attr):
@@ -150,11 +157,12 @@ class GCN(BasePFGNN, _ScalarEdgeMixin):
 class ARMA_GNN(BasePFGNN, _ScalarEdgeMixin):
     """ARMA GNN (Hansen et al. 2023), scalar edge weight."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 8):
-        super().__init__(input_dim)
+    def __init__(self, input_dim: int = 7, num_layers: int = 8,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
         self._build_scalar_edge()
         self.arma = ARMAConv(
-            HIDDEN, HIDDEN, num_stacks=5, num_layers=num_layers,
+            hidden, hidden, num_stacks=5, num_layers=num_layers,
             shared_weights=False, act=self.act, dropout=0.0, bias=True,
         )
 
@@ -175,12 +183,13 @@ class _VectorEdgeMixin:
 class GAT(BasePFGNN, _VectorEdgeMixin):
     """Graph Attention (GATv2), edge features via `edge_dim`."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 3, heads: int = 4):
-        super().__init__(input_dim)
-        assert HIDDEN % heads == 0
+    def __init__(self, input_dim: int = 7, num_layers: int = 3, heads: int = 4,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
+        assert hidden % heads == 0, f"hidden={hidden} must be divisible by heads={heads}"
         self._build_vector_edge(EDGE_HIDDEN)
         self.convs = nn.ModuleList([
-            GATv2Conv(HIDDEN, HIDDEN // heads, heads=heads, concat=True,
+            GATv2Conv(hidden, hidden // heads, heads=heads, concat=True,
                       edge_dim=EDGE_HIDDEN)
             for _ in range(num_layers)
         ])
@@ -196,14 +205,15 @@ class GIN(BasePFGNN, _VectorEdgeMixin):
     """GINE: edge-aware GIN (edge embedding added inside the conv, so it must
     match the node hidden width)."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 3):
-        super().__init__(input_dim)
-        self._build_vector_edge(HIDDEN)
+    def __init__(self, input_dim: int = 7, num_layers: int = 3,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
+        self._build_vector_edge(hidden)
         self.convs = nn.ModuleList([
             GINEConv(
-                nn.Sequential(nn.Linear(HIDDEN, HIDDEN), nn.LeakyReLU(0.2),
-                              nn.Linear(HIDDEN, HIDDEN)),
-                edge_dim=HIDDEN,
+                nn.Sequential(nn.Linear(hidden, hidden), nn.LeakyReLU(0.2),
+                              nn.Linear(hidden, hidden)),
+                edge_dim=hidden,
             )
             for _ in range(num_layers)
         ])
@@ -218,12 +228,13 @@ class GIN(BasePFGNN, _VectorEdgeMixin):
 class TRANSFORMER(BasePFGNN, _VectorEdgeMixin):
     """Graph Transformer (TransformerConv), edge features via `edge_dim`."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 3, heads: int = 4):
-        super().__init__(input_dim)
-        assert HIDDEN % heads == 0
+    def __init__(self, input_dim: int = 7, num_layers: int = 3, heads: int = 4,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
+        assert hidden % heads == 0, f"hidden={hidden} must be divisible by heads={heads}"
         self._build_vector_edge(EDGE_HIDDEN)
         self.convs = nn.ModuleList([
-            TransformerConv(HIDDEN, HIDDEN // heads, heads=heads, concat=True,
+            TransformerConv(hidden, hidden // heads, heads=heads, concat=True,
                             edge_dim=EDGE_HIDDEN)
             for _ in range(num_layers)
         ])
@@ -236,16 +247,17 @@ class TRANSFORMER(BasePFGNN, _VectorEdgeMixin):
 
 
 class NN_CONV(BasePFGNN):
-    """NNConv: an edge network maps the 4-dim edge_attr to a HIDDENxHIDDEN
+    """NNConv: an edge network maps the 4-dim edge_attr to a hidden x hidden
     weight matrix used in message passing (the most edge-expressive model)."""
 
-    def __init__(self, input_dim: int = 7, num_layers: int = 2):
-        super().__init__(input_dim)
+    def __init__(self, input_dim: int = 7, num_layers: int = 2,
+                 hidden: int = HIDDEN):
+        super().__init__(input_dim, hidden)
         self.convs = nn.ModuleList([
             NNConv(
-                HIDDEN, HIDDEN,
+                hidden, hidden,
                 nn=nn.Sequential(nn.Linear(4, 32), nn.LeakyReLU(0.2),
-                                 nn.Linear(32, HIDDEN * HIDDEN)),
+                                 nn.Linear(32, hidden * hidden)),
                 aggr="mean",
             )
             for _ in range(num_layers)
