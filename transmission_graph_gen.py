@@ -147,6 +147,7 @@ def generate_dataset(
     max_tries_factor: int = 50,
     contingency_source: str = "random",
     pg_graph_raw: str | None = None,
+    used_t: set[int] | None = None,
 ):
     """Generate `n_samples` valid (demand, contingency) operating points for `code`.
 
@@ -154,6 +155,12 @@ def generate_dataset(
     Each sample: random demand snapshot + an N-k line outage (k drawn from
     {0..max_k}), re-solved with AC power flow, filtered for convergence,
     connectivity and voltage sanity.
+
+    `used_t`: if given, demand snapshots already in the set are rejected and
+    accepted ones are added. Pass the same set across a grid's splits to keep
+    demand snapshots disjoint. This matters for the fixed-topology regime
+    (`max_k=0`), where a repeated snapshot is an exact duplicate sample and a
+    repeat across splits is test-set leakage.
     """
     base = load_case(code)
     demand = load_hourly_demand(code)
@@ -186,6 +193,8 @@ def generate_dataset(
 
         # 1) demand snapshot
         t = int(rng.integers(0, n_time))
+        if used_t is not None and t in used_t:
+            continue
         _apply_demand(net, demand[:, t])
 
         # 2) contingency -- random N-k, or a harvested PowerGraph-Graph outage set
@@ -221,6 +230,8 @@ def generate_dataset(
         samples.append(_build_sample(net))
         metas.append({"grid": code, "t_idx": t, "k": k, "out_lines": out_lines,
                       "source": contingency_source})
+        if used_t is not None:
+            used_t.add(t)
 
     if len(samples) < n_samples:
         print(
@@ -252,6 +263,10 @@ def parse_args():
     p.add_argument("--out_dir", default="data")
     p.add_argument("--seed", type=int, default=12)
     p.add_argument("--max_tries_factor", type=int, default=50)
+    p.add_argument("--unique_demand", action="store_true",
+                   help="draw each demand snapshot at most once per grid, across "
+                        "all splits (required for the fixed-topology regime, "
+                        "where a repeated snapshot is an exact duplicate)")
     p.add_argument("--contingency_source", choices=["random", "harvest"],
                    default="random",
                    help="'random' N-k outages, or 'harvest' real outage sets "
@@ -270,6 +285,7 @@ def main():
               f"max_k={args.max_k}, redispatch={args.redispatch})")
         # One RNG per grid, seeded deterministically (stable across processes).
         rng = np.random.default_rng(args.seed * 100 + _GRID_SEED_OFFSET.get(code, 0))
+        used_t = set() if args.unique_demand else None
         for split, n in [("train", args.n_train), ("val", args.n_val), ("test", args.n_test)]:
             if n <= 0:
                 continue
@@ -278,6 +294,7 @@ def main():
                 max_tries_factor=args.max_tries_factor,
                 contingency_source=args.contingency_source,
                 pg_graph_raw=args.pg_graph_raw,
+                used_t=used_t,
             )
             _save_split(args.out_dir, code, split, samples, metas)
 

@@ -21,9 +21,19 @@ WHAT IT CHECKS
     D. Topology variation   -- contingencies actually change the edge count.
     E. MMD non-degeneracy   -- within-grid MMD < cross-grid MMD, not constant.
 
+FIXED-TOPOLOGY REGIME (`--regime a`)
+    The fixed-topology control arm inverts gate D: every sample in a grid must
+    share ONE topology. Gates D/E are replaced by
+    D'. Topology invariance   -- identical edge_index and edge_attr everywhere.
+    F.  Contingency metadata  -- every row has k == 0 and no outaged branch.
+    G.  Split disjointness    -- no demand snapshot shared between two splits
+                                 (with one topology, a repeat is an exact
+                                 duplicate sample, i.e. test leakage).
+
 HOW TO RUN
     python3 validate.py                       # conversion checks only
     python3 validate.py --data_dir data       # + data/contract/topology/MMD checks
+    python3 validate.py --data_dir data_a --regime a   # fixed-topology gates
 Exit code is non-zero if any gate fails (usable in CI).
 """
 from __future__ import annotations
@@ -32,6 +42,8 @@ import argparse
 import os
 import sys
 import warnings
+
+import pandas as pd
 
 warnings.filterwarnings("ignore")
 
@@ -141,6 +153,74 @@ def gate_topology_variation(g: Gate, data_dir, grids):
                 f"distinct 2E = {edge_counts}")
 
 
+def gate_topology_invariance(g: Gate, data_dir, grids):
+    print("\nD'. Topology invariance (fixed-topology regime: one topology per grid)")
+    for code in grids:
+        try:
+            ds = [d for split in ("train", "val", "test")
+                  for d in load_grid_dataset(data_dir, code, split)]
+        except FileNotFoundError:
+            g.check(f"{code} dataset present", False, "generate the regime first")
+            continue
+        ref = ds[0]
+
+        def _same(a, b):
+            # NaN-aware: edge_attr's sc_voltage column is NaN on non-transformer
+            # branches, and NaN != NaN under plain equality.
+            return (a.shape == b.shape
+                    and bool(((a == b) | (a.isnan() & b.isnan())).all()))
+
+        same_index = all(torch.equal(d.edge_index, ref.edge_index) for d in ds)
+        same_attr = all(_same(d.edge_attr, ref.edge_attr) for d in ds)
+        g.check(f"{code} identical edge_index across all samples", same_index,
+                f"n={len(ds)} 2E={int(ref.edge_index.shape[1])}")
+        g.check(f"{code} identical edge_attr across all samples", same_attr)
+
+
+def _load_meta(data_dir, code, split):
+    path = os.path.join(data_dir, code, split, "dataset_src.csv")
+    return pd.read_csv(path) if os.path.exists(path) else None
+
+
+def gate_contingency_metadata(g: Gate, data_dir, grids):
+    print("\nF. Contingency metadata (every sample is the base topology)")
+    for code in grids:
+        frames = [m for m in (_load_meta(data_dir, code, s)
+                              for s in ("train", "val", "test")) if m is not None]
+        if not frames:
+            g.check(f"{code} metadata present", False)
+            continue
+        meta = pd.concat(frames, ignore_index=True)
+        ks = sorted(meta["k"].unique().tolist())
+        # `out_lines` round-trips through CSV as the string "[]" when empty.
+        no_outage = meta["out_lines"].astype(str).str.strip().isin(["[]", ""]).all()
+        g.check(f"{code} all samples k == 0", ks == [0], f"observed k = {ks}")
+        g.check(f"{code} no branch outaged", bool(no_outage))
+
+
+def gate_split_disjointness(g: Gate, data_dir, grids):
+    print("\nG. Split disjointness (no demand snapshot shared between splits)")
+    for code in grids:
+        sets = {}
+        for split in ("train", "val", "test"):
+            meta = _load_meta(data_dir, code, split)
+            if meta is not None:
+                sets[split] = set(meta["t_idx"].tolist())
+        if len(sets) < 2:
+            g.check(f"{code} metadata present for all splits", False)
+            continue
+        overlaps = {f"{a}|{b}": len(sets[a] & sets[b])
+                    for a, b in (("train", "val"), ("train", "test"), ("val", "test"))
+                    if a in sets and b in sets}
+        g.check(f"{code} splits share no demand snapshot",
+                all(v == 0 for v in overlaps.values()), str(overlaps))
+        # Duplicates *within* a split are exact duplicate samples here too.
+        for split, s in sets.items():
+            meta = _load_meta(data_dir, code, split)
+            g.check(f"{code}/{split} no duplicate demand snapshot",
+                    len(s) == len(meta), f"{len(s)} distinct of {len(meta)}")
+
+
 def gate_mmd(g: Gate, data_dir, grids):
     print("\nE. MMD non-degeneracy (within-grid < cross-grid, not constant)")
     from mmd_utils import evaluate_mmd
@@ -177,6 +257,9 @@ def parse_args():
     p.add_argument("--data_dir", default=None,
                    help="if given, also run data/contract/topology/MMD gates")
     p.add_argument("--grids", nargs="+", default=None)
+    p.add_argument("--regime", choices=["a", "b"], default="b",
+                   help="'b' (default): topology varies -- gates B-E. "
+                        "'a': fixed topology -- gates B, C, D', F, G.")
     return p.parse_args()
 
 
@@ -189,8 +272,15 @@ def main():
     if args.data_dir:
         gate_contract(g, args.data_dir, grids)
         gate_masking(g, args.data_dir, grids)
-        gate_topology_variation(g, args.data_dir, grids)
-        gate_mmd(g, args.data_dir, grids)
+        if args.regime == "a":
+            gate_topology_invariance(g, args.data_dir, grids)
+            gate_contingency_metadata(g, args.data_dir, grids)
+            gate_split_disjointness(g, args.data_dir, grids)
+            print("\n(Gate E skipped: with one topology per grid the within-grid "
+                  "MMD is 0 by construction and the g-score is undefined.)")
+        else:
+            gate_topology_variation(g, args.data_dir, grids)
+            gate_mmd(g, args.data_dir, grids)
     else:
         print("\n(Skipping data-dependent gates B-E; pass --data_dir to enable.)")
 
