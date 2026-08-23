@@ -130,7 +130,7 @@ def tune_model(name, grids, data, device, args, done, rows, csv_path):
 
     # -- Stage 1: the 9-point depth x width grid at the base learning rate ----
     stage1 = []
-    for num_layers, hidden in itertools.product(NUM_LAYERS, HIDDENS):
+    for num_layers, hidden in itertools.product(args.num_layers, args.hidden):
         cfg = {"num_layers": num_layers, "hidden": hidden,
                "learning_rate": LEARNING_RATES[0]}
         score = score_candidate(name, cfg, [args.seed], grids, data, device,
@@ -214,6 +214,15 @@ def parse_args():
     p.add_argument("--config_out", default="configs/arch_config.json")
     p.add_argument("--models", nargs="+", default=list(MODELS.keys()))
     p.add_argument("--grids", nargs="+", default=None)
+    # The Stage-1 grid can be narrowed to shard one architecture's sweep over
+    # several processes (NNConv's per-edge weight generator makes its wide/deep
+    # candidates ~an order of magnitude slower than the attention models). Every
+    # trial is cached by its full key, so a final unnarrowed run with
+    # --skip_existing does the selection from the shards without retraining.
+    p.add_argument("--num_layers", type=int, nargs="+", default=NUM_LAYERS,
+                   help=f"Stage-1 depths to score (protocol: {NUM_LAYERS})")
+    p.add_argument("--hidden", type=int, nargs="+", default=HIDDENS,
+                   help=f"Stage-1 widths to score (protocol: {HIDDENS})")
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--seed", type=int, default=0, help="Stage-1 seed")
@@ -265,9 +274,10 @@ def main():
     payload = {
         "protocol": {
             "regime": "A (fixed topology)", "data_dir": args.data_dir,
-            "search_space": {"num_layers": NUM_LAYERS, "hidden": HIDDENS,
+            "search_space": {"num_layers": args.num_layers,
+                             "hidden": args.hidden,
                              "learning_rate": LEARNING_RATES},
-            "candidates_per_model": len(NUM_LAYERS) * len(HIDDENS) + 1,
+            "candidates_per_model": len(args.num_layers) * len(args.hidden) + 1,
             "selection": "mean best validation weighted-MSE across grids",
             "grids": grids, "epochs": args.epochs,
             "batch_size": args.batch_size,

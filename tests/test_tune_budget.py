@@ -21,7 +21,6 @@ import pandas as pd
 import torch
 from torch_geometric.data import Data
 
-import tune_budget
 from models import MODELS
 from tune_budget import (HIDDENS, LEARNING_RATES, NUM_LAYERS, _load_previous,
                          per_grid_argmin, tune_model)
@@ -54,7 +53,7 @@ def _toy_data(grids, n=4, n_bus=5):
 
 def _args(tmp, **over):
     base = dict(epochs=1, batch_size=2, seed=0, tie_seed=100, tie_pct=0.05,
-                out=tmp)
+                out=tmp, num_layers=NUM_LAYERS, hidden=HIDDENS)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -161,21 +160,17 @@ def test_equal_budget_across_architectures():
     # The full 3x3 grid over 6 architectures is too slow for a unit test, so the
     # depth/width lists are narrowed -- the property under test is that every
     # architecture gets the SAME number of candidates, not their values.
-    orig = (tune_budget.NUM_LAYERS, tune_budget.HIDDENS)
-    tune_budget.NUM_LAYERS, tune_budget.HIDDENS = [2], [32]
-    try:
-        counts = {}
-        with tempfile.TemporaryDirectory() as tmp:
-            for name in MODELS:
-                rows = []
-                _, summary = tune_model(name, grids, data, "cpu",
-                                        _args(tmp, tie_pct=0.0), {}, rows,
-                                        os.path.join(tmp, f"{name}.csv"))
-                counts[name] = len(summary)
-        check("every architecture scores the same number of candidates",
-              len(set(counts.values())) == 1, str(counts))
-    finally:
-        tune_budget.NUM_LAYERS, tune_budget.HIDDENS = orig
+    narrowed = dict(num_layers=[2], hidden=[32], tie_pct=0.0)
+    counts = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for name in MODELS:
+            rows = []
+            _, summary = tune_model(name, grids, data, "cpu",
+                                    _args(tmp, **narrowed), {}, rows,
+                                    os.path.join(tmp, f"{name}.csv"))
+            counts[name] = len(summary)
+    check("every architecture scores the same number of candidates",
+          len(set(counts.values())) == 1, str(counts))
 
 
 def main():
