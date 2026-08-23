@@ -8,6 +8,11 @@ PURPOSE
         NRMSE is inflated by the trivially-bounded voltage magnitude (see the
         design doc "Metrics & baselines").
       * a DC power-flow baseline evaluator (`test_dc_pf`).
+      * PLAIN (unnormalised) MSE and MAE, aggregate and per quantity -- the
+        metric PowerGraph-Node reports, so the fixed-topology control arm can be
+        compared against its published numbers. It is dominated by P and Q,
+        whose numeric scale is orders of magnitude above V and theta, which is
+        exactly why the normalised metrics are kept alongside it.
 
 WHY (design decisions D8 + the power-systems reporting corrections)
     A credible power-systems study must show where the error actually lives
@@ -75,6 +80,50 @@ def nrmse_per_quantity(y_true, y_pred, eps=1e-8):
     return out
 
 
+def mse_plain(y_true, y_pred):
+    """Unnormalised MSE over all targets (PowerGraph-Node's reported metric).
+
+    In the raw physical units of y, so P/Q dominate V/theta by construction.
+    """
+    return torch.mean((y_true - y_pred) ** 2).item()
+
+
+def mae_plain(y_true, y_pred):
+    """Unnormalised MAE over all targets (in the raw physical units of y)."""
+    return torch.mean(torch.abs(y_true - y_pred)).item()
+
+
+def mse_per_quantity(y_true, y_pred):
+    """Per-column unnormalised MSE. Returns dict {P, Q, V, theta}."""
+    return {name: torch.mean((y_true[:, j] - y_pred[:, j]) ** 2).item()
+            for j, name in enumerate(TARGET_NAMES)}
+
+
+def mae_per_quantity(y_true, y_pred):
+    """Per-column unnormalised MAE. Returns dict {P, Q, V, theta}."""
+    return {name: torch.mean(torch.abs(y_true[:, j] - y_pred[:, j])).item()
+            for j, name in enumerate(TARGET_NAMES)}
+
+
+def all_metrics(y_true, y_pred):
+    """Every metric for one (truth, prediction) pair, as a flat dict.
+
+    Keys: nrmse / mse / mae, plus <metric>_<quantity> for each of P, Q, V, theta.
+    Flat so a result row can be built with `row.update(all_metrics(...))`.
+    """
+    out = {
+        "nrmse": nrmse_range(y_true, y_pred),
+        "mse": mse_plain(y_true, y_pred),
+        "mae": mae_plain(y_true, y_pred),
+    }
+    for metric, fn in (("nrmse", nrmse_per_quantity),
+                       ("mse", mse_per_quantity),
+                       ("mae", mae_per_quantity)):
+        for name, value in fn(y_true, y_pred).items():
+            out[f"{metric}_{name}"] = value
+    return out
+
+
 def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-3,
           patience=50, log_every=0):
     """Train with early stopping on validation loss; restore best weights."""
@@ -112,8 +161,13 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
 
 
 @torch.no_grad()
-def evaluate(model, device, dataset, batch_size=32):
-    """Evaluate a trained model on a dataset. Returns (aggregate_nrmse, per_quantity_dict)."""
+def evaluate(model, device, dataset, batch_size=32, full=False):
+    """Evaluate a trained model on a dataset.
+
+    Returns (aggregate_nrmse, per_quantity_nrmse_dict), and additionally the
+    flat `all_metrics` dict when `full=True` (opt-in, so existing two-value
+    unpacking keeps working).
+    """
     model.eval()
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     preds, ys = [], []
@@ -122,19 +176,28 @@ def evaluate(model, device, dataset, batch_size=32):
         preds.append(model(batch).cpu())
         ys.append(batch.y.cpu())
     y_pred, y_true = torch.cat(preds), torch.cat(ys)
-    return nrmse_range(y_true, y_pred), nrmse_per_quantity(y_true, y_pred)
+    nrmse, per_q = nrmse_range(y_true, y_pred), nrmse_per_quantity(y_true, y_pred)
+    if full:
+        return nrmse, per_q, all_metrics(y_true, y_pred)
+    return nrmse, per_q
 
 
 @torch.no_grad()
-def test_dc_pf(dataset, batch_size=32):
-    """DC power-flow baseline: NRMSE of the stored DC solution vs the AC truth."""
+def test_dc_pf(dataset, batch_size=32, full=False):
+    """DC power-flow baseline: error of the stored DC solution vs the AC truth.
+
+    Same return contract as `evaluate`.
+    """
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     dc, ys = [], []
     for batch in loader:
         dc.append(batch.dc_pf.cpu())
         ys.append(batch.y.cpu())
     dc_pf, y_true = torch.cat(dc), torch.cat(ys)
-    return nrmse_range(y_true, dc_pf), nrmse_per_quantity(y_true, dc_pf)
+    nrmse, per_q = nrmse_range(y_true, dc_pf), nrmse_per_quantity(y_true, dc_pf)
+    if full:
+        return nrmse, per_q, all_metrics(y_true, dc_pf)
+    return nrmse, per_q
 
 
 def make_loaders(train_ds, val_ds, batch_size=32, shuffle=True):
