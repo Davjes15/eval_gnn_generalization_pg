@@ -24,6 +24,12 @@ PROTOCOL
     Staged budget of 10 candidates each:
         Stage 1: the 9-point num_layers x hidden grid at lr = 1e-3
         Stage 2: the Stage-1 winner re-scored at lr = 3e-4
+    Stability requirement (amendment, see below):
+        A candidate whose training DIVERGES (non-finite validation loss on any
+        grid) is DISQUALIFIED, not merely ranked last; and the leading candidate
+        must reproduce at a second seed before it can be frozen. If no candidate
+        at lr = 1e-3 survives, the depth x width grid is re-scored at lr = 3e-4
+        (the same 18-point space, reached in a different order).
     Scoring:
         Every candidate is trained on ALL FOUR grids under REGIME A (fixed
         topology), and scored by the MEAN best VALIDATION weighted-MSE across
@@ -32,6 +38,17 @@ PROTOCOL
     Tie-break, declared in advance:
         if the top two Stage-1 candidates are within `--tie_pct` (default 5%),
         both are re-run at a second seed and the two-seed mean decides.
+
+WHY THE STABILITY REQUIREMENT
+    The original rule took the argmin of the mean validation loss at a single
+    seed. That crowned ARMA at 8 layers x hidden 128 / lr 1e-3, which trains at
+    seed 0 and diverges to NaN at seeds 100, 700 and 1000 -- 4 of 5 final seeds,
+    in Regime A as well as in both Regime B arms. The sweep had in fact already
+    recorded `inf` for all three hidden-64 ARMA candidates, and the rule scored
+    that as "a very bad number" instead of "this candidate failed". A
+    configuration that only trains at the seed it was selected on is not a
+    configuration; it is a coincidence. The rule is applied identically to all
+    six architectures -- it is a no-op for the five that never diverge.
 
 OUTPUTS
     results_a/tuning.csv                 every trial (per grid, per seed)
@@ -52,9 +69,11 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import math
 import os
 import time
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -99,7 +118,13 @@ def run_trial(name, cfg, seed, grid, data, device, epochs, batch_size):
 
 def score_candidate(name, cfg, seeds, grids, data, device, epochs, batch_size,
                     done, rows, csv_path):
-    """Mean validation loss over all grids (and seeds), training what is missing.
+    """Score one candidate over all grids (and seeds), training what is missing.
+
+    Returns (mean validation loss, stable), where `stable` is False if training
+    diverged on ANY grid or seed. A diverged candidate is disqualified rather
+    than ranked last, so its mean is reported as inf regardless of the grids it
+    did survive -- averaging a finite grid with a diverged one would otherwise
+    let a partially-broken candidate outscore a sound one.
 
     Every trial is flushed to `csv_path` as soon as it finishes so a long sweep
     can be interrupted and resumed without losing work.
@@ -120,7 +145,59 @@ def score_candidate(name, cfg, seeds, grids, data, device, epochs, batch_size,
             print(f"    {name} L{cfg['num_layers']} h{cfg['hidden']} "
                   f"lr{cfg['learning_rate']:g} s{seed} {grid}: "
                   f"val={rec['val_loss']:.5g} ({rec['seconds']}s)")
-    return sum(losses) / len(losses)
+    stable = all(math.isfinite(x) for x in losses)
+    mean = sum(losses) / len(losses) if stable else float("inf")
+    return mean, stable
+
+
+def _cfg_of(row):
+    return {k: row[k] for k in ("num_layers", "hidden", "learning_rate")}
+
+
+def _stage1_grid(name, lr, stage, grids, data, device, args, done, rows,
+                 csv_path, summary):
+    """Score the whole depth x width grid at one learning rate, best first."""
+    scored = []
+    for num_layers, hidden in itertools.product(args.num_layers, args.hidden):
+        cfg = {"num_layers": num_layers, "hidden": hidden, "learning_rate": lr}
+        score, stable = score_candidate(name, cfg, [args.seed], grids, data,
+                                        device, args.epochs, args.batch_size,
+                                        done, rows, csv_path)
+        scored.append({**cfg, "stage": stage, "seeds": str([args.seed]),
+                       "mean_val_loss": score, "stable": stable})
+        print(f"  {stage} L{num_layers} h{hidden} lr{lr:g}: mean_val={score:.5g}"
+              + ("" if stable else "  DISQUALIFIED (diverged)"))
+    scored.sort(key=lambda r: r["mean_val_loss"])
+    summary += scored
+    return scored
+
+
+def _confirm(name, scored, stage, grids, data, device, args, done, rows,
+             csv_path, summary):
+    """Walk the ranked candidates until one reproduces at the second seed.
+
+    A candidate that diverged at the Stage-1 seed is skipped outright; one that
+    survived Stage 1 but diverges at the confirmation seed is disqualified here.
+    This is what the original rule lacked: it froze whichever config won on a
+    single seed, without ever asking whether that win was reproducible.
+    """
+    seeds = [args.seed, args.tie_seed]
+    for cand in scored:
+        if not cand["stable"]:
+            continue
+        cfg = _cfg_of(cand)
+        score, stable = score_candidate(name, cfg, seeds, grids, data, device,
+                                        args.epochs, args.batch_size, done, rows,
+                                        csv_path)
+        summary.append({**cfg, "stage": stage, "seeds": str(seeds),
+                        "mean_val_loss": score, "stable": stable})
+        print(f"  {stage} L{cfg['num_layers']} h{cfg['hidden']} "
+              f"lr{cfg['learning_rate']:g}: mean_val={score:.5g}"
+              + ("" if stable else "  DISQUALIFIED (diverged at "
+                                   f"seed {args.tie_seed})"))
+        if stable:
+            return summary[-1], seeds
+    return None, seeds
 
 
 def tune_model(name, grids, data, device, args, done, rows, csv_path):
@@ -128,57 +205,67 @@ def tune_model(name, grids, data, device, args, done, rows, csv_path):
     print(f"\n== {name} ==")
     summary = []
 
-    # -- Stage 1: the 9-point depth x width grid at the base learning rate ----
-    stage1 = []
-    for num_layers, hidden in itertools.product(args.num_layers, args.hidden):
-        cfg = {"num_layers": num_layers, "hidden": hidden,
-               "learning_rate": LEARNING_RATES[0]}
-        score = score_candidate(name, cfg, [args.seed], grids, data, device,
-                                args.epochs, args.batch_size, done, rows, csv_path)
-        stage1.append({**cfg, "stage": 1, "seeds": str([args.seed]),
-                       "mean_val_loss": score})
-        print(f"  stage1 L{num_layers} h{hidden}: mean_val={score:.5g}")
+    # -- Stage 1: the depth x width grid at the base learning rate, then the
+    # confirmation seed. If nothing survives, the same grid is re-scored at the
+    # lower learning rate -- the search space is unchanged, only the order in
+    # which it is explored.
+    best = None
+    for lr, stage in zip(LEARNING_RATES, ("1", "1b")):
+        scored = _stage1_grid(name, lr, stage, grids, data, device, args, done,
+                              rows, csv_path, summary)
+        best, seeds = _confirm(name, scored, f"{stage}-confirm", grids, data,
+                               device, args, done, rows, csv_path, summary)
+        if best is not None:
+            break
+        print(f"  no candidate at lr={lr:g} survived; falling back to the "
+              f"next learning rate")
+    if best is None:
+        raise SystemExit(
+            f"{name}: every candidate in the search space diverged. This is a "
+            "finding about the architecture, not a bug -- report it rather than "
+            "freezing an unstable configuration."
+        )
 
-    stage1.sort(key=lambda r: r["mean_val_loss"])
-    summary += stage1
-    best = stage1[0]
-    second = stage1[1] if len(stage1) > 1 else None
-    seeds = [args.seed]
-
-    # -- declared tie-break: a near-tie is resolved with a second seed --------
-    gap = (float("inf") if second is None else
-           (second["mean_val_loss"] - best["mean_val_loss"]) / best["mean_val_loss"])
-    print(f"  best/2nd gap = {gap:.3%} (tie threshold {args.tie_pct:.1%})")
-    if second is not None and gap < args.tie_pct:
-        seeds = [args.seed, args.tie_seed]
-        print(f"  -> near-tie: re-scoring the top two at seeds {seeds}")
-        rescored = []
-        for cand in (best, second):
-            cfg = {k: cand[k] for k in ("num_layers", "hidden", "learning_rate")}
-            score = score_candidate(name, cfg, seeds, grids, data, device,
-                                    args.epochs, args.batch_size, done, rows,
-                                    csv_path)
-            rescored.append({**cfg, "stage": "1-tiebreak", "seeds": str(seeds),
-                             "mean_val_loss": score})
+    # -- declared tie-break: a near-tie is resolved on the confirmation seeds --
+    stage1 = [r for r in summary if r["stage"] in ("1", "1b")
+              and r["learning_rate"] == best["learning_rate"] and r["stable"]]
+    runner_up = next((r for r in stage1 if _cfg_of(r) != _cfg_of(best)), None)
+    if runner_up is not None:
+        ref = next(r for r in stage1 if _cfg_of(r) == _cfg_of(best))
+        gap = ((runner_up["mean_val_loss"] - ref["mean_val_loss"])
+               / ref["mean_val_loss"])
+        print(f"  best/2nd gap = {gap:.3%} (tie threshold {args.tie_pct:.1%})")
+        if gap < args.tie_pct:
+            print(f"  -> near-tie: re-scoring the runner-up at seeds {seeds}")
+            cfg = _cfg_of(runner_up)
+            score, stable = score_candidate(name, cfg, seeds, grids, data, device,
+                                            args.epochs, args.batch_size, done,
+                                            rows, csv_path)
+            summary.append({**cfg, "stage": "1-tiebreak", "seeds": str(seeds),
+                            "mean_val_loss": score, "stable": stable})
             print(f"  tiebreak L{cfg['num_layers']} h{cfg['hidden']}: "
                   f"mean_val={score:.5g}")
-        rescored.sort(key=lambda r: r["mean_val_loss"])
-        summary += rescored
-        best = rescored[0]
+            if stable and score < best["mean_val_loss"]:
+                best = summary[-1]
 
-    # -- Stage 2: the winner re-scored at the second learning rate -----------
-    cfg2 = {"num_layers": best["num_layers"], "hidden": best["hidden"],
-            "learning_rate": LEARNING_RATES[1]}
-    score2 = score_candidate(name, cfg2, seeds, grids, data, device, args.epochs,
-                             args.batch_size, done, rows, csv_path)
-    summary.append({**cfg2, "stage": 2, "seeds": str(seeds),
-                    "mean_val_loss": score2})
-    print(f"  stage2 lr={LEARNING_RATES[1]:g}: mean_val={score2:.5g}")
+    # -- Stage 2: the winner re-scored at the other learning rate ------------
+    # Skipped when the fallback already searched that learning rate: its whole
+    # grid was scored, so there is nothing left to compare against.
+    winner = best
+    other = [lr for lr in LEARNING_RATES if lr != best["learning_rate"]]
+    if other and not any(r["stage"] == "1b" for r in summary):
+        cfg2 = {"num_layers": best["num_layers"], "hidden": best["hidden"],
+                "learning_rate": other[0]}
+        score2, stable2 = score_candidate(name, cfg2, seeds, grids, data, device,
+                                          args.epochs, args.batch_size, done,
+                                          rows, csv_path)
+        summary.append({**cfg2, "stage": 2, "seeds": str(seeds),
+                        "mean_val_loss": score2, "stable": stable2})
+        print(f"  stage2 lr={other[0]:g}: mean_val={score2:.5g}")
+        if stable2 and score2 < best["mean_val_loss"]:
+            winner = summary[-1]
 
-    # The Stage-1 winner's score must be on the SAME seed set as Stage 2's to be
-    # comparable; a tie-break already re-scored it, otherwise it is single-seed.
-    winner = best if best["mean_val_loss"] <= score2 else summary[-1]
-    chosen = {k: winner[k] for k in ("num_layers", "hidden", "learning_rate")}
+    chosen = _cfg_of(winner)
     print(f"  SELECTED {name}: {chosen} (mean_val={winner['mean_val_loss']:.5g})")
 
     for row in summary:
@@ -196,8 +283,11 @@ def per_grid_argmin(rows):
     """
     df = pd.DataFrame(rows)
     df = df[df.seed == df.seed.min()]  # one seed, so all candidates are present
+    df = df[np.isfinite(df.val_loss)]  # diverged candidates are disqualified
     out = []
     for (model, grid), sub in df.groupby(["model", "grid"]):
+        if sub.empty:
+            continue
         best = sub.loc[sub.val_loss.idxmin()]
         out.append({"model": model, "grid": grid,
                     "num_layers": int(best.num_layers), "hidden": int(best.hidden),
@@ -283,6 +373,12 @@ def main():
             "batch_size": args.batch_size,
             "stage1_seed": args.seed, "tie_seed": args.tie_seed,
             "tie_pct": args.tie_pct,
+            "stability_rule": (
+                "a candidate with a non-finite validation loss on any grid is "
+                "disqualified; the leading candidate must also reproduce at the "
+                "tie seed before it can be frozen; if no candidate survives at "
+                "one learning rate the grid is re-scored at the other"
+            ),
         },
         "configs": configs,
     }
