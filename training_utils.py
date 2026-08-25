@@ -125,8 +125,12 @@ def all_metrics(y_true, y_pred):
 
 
 def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-3,
-          patience=50, log_every=0):
-    """Train with early stopping on validation loss; restore best weights."""
+          patience=50, log_every=0, grad_clip=None):
+    """Train with early stopping on validation loss; restore best weights.
+
+    ``grad_clip`` caps the global gradient norm before each optimizer step.
+    ``None`` leaves the update untouched, so runs without it are unaffected.
+    """
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_val, best_weights, wait = np.inf, None, 0
     for epoch in range(epochs):
@@ -136,6 +140,8 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
             optimizer.zero_grad()
             loss = weighted_mse_loss(model(batch), batch.y)
             loss.backward()
+            if grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
         model.eval()

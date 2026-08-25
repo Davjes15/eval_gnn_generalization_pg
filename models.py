@@ -155,7 +155,15 @@ class GCN(BasePFGNN, _ScalarEdgeMixin):
 
 
 class ARMA_GNN(BasePFGNN, _ScalarEdgeMixin):
-    """ARMA GNN (Hansen et al. 2023), scalar edge weight."""
+    """ARMA GNN (Hansen et al. 2023), scalar edge weight.
+
+    The edge weight is passed through softplus rather than the leaky ReLU used
+    by GCN. `ARMAConv` symmetrically normalizes the adjacency WITHOUT adding
+    self-loops, so a bus whose incident weights sum to zero or below yields
+    `deg ** -0.5` of inf or NaN and the whole run is lost; a non-negative
+    weight keeps the normalization defined. GCNConv adds self-loops of weight
+    one and is not exposed to this.
+    """
 
     def __init__(self, input_dim: int = 7, num_layers: int = 8,
                  hidden: int = HIDDEN):
@@ -165,6 +173,11 @@ class ARMA_GNN(BasePFGNN, _ScalarEdgeMixin):
             hidden, hidden, num_stacks=5, num_layers=num_layers,
             shared_weights=False, act=self.act, dropout=0.0, bias=True,
         )
+
+    def _scalar_edge(self, edge_attr):
+        e = self.act(self.predense1_edge(edge_attr))
+        e = nn.functional.softplus(self.predense2_edge(e))
+        return e.reshape((-1,))
 
     def _mp(self, node_emb, edge_index, edge_attr):
         w = self._scalar_edge(edge_attr)

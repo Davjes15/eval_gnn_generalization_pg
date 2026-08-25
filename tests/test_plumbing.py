@@ -8,7 +8,10 @@ What could silently invalidate results, and is therefore checked here:
   * every architecture must actually honour `hidden` and `num_layers`;
   * a missing --arch_config must be a hard error, not a silent fallback to the
     untuned defaults;
-  * checkpoint names must carry the seed, or seed replicates overwrite each other.
+  * checkpoint names must carry the seed, or seed replicates overwrite each other;
+  * ARMA's scalar edge weight must stay non-negative -- `ARMAConv` normalizes
+    without self-loops, so a non-positive degree makes the forward pass NaN;
+  * `train(grad_clip=...)` must be an opt-in that leaves the default untouched.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from torch_geometric.data import Data
 from experiments import (_build_model, _config_columns, load_arch_config,
                          run_cross_context, run_ood, run_within)
 from models import HIDDEN, MODELS
+from training_utils import make_loaders, train
 
 FAILURES = []
 
@@ -147,6 +151,40 @@ def _toy_data(grids):
     return {g: {s: _toy_dataset() for s in ("train", "val", "test")} for g in grids}
 
 
+def test_arma_edge_weight_is_non_negative():
+    print("\nARMA edge weight keeps the ARMAConv normalization defined")
+    torch.manual_seed(0)
+    arma = MODELS["arma_gnn"](input_dim=7, num_layers=2, hidden=32)
+    edge_attr = torch.randn(64, 4) * 50          # extreme, both signs
+    w = arma._scalar_edge(edge_attr)
+    check("arma: edge weight is non-negative", bool((w >= 0).all()),
+          f"min={float(w.min()):.4g}")
+    check("arma: edge weight is finite", bool(torch.isfinite(w).all()))
+
+    gcn = MODELS["gcn"](input_dim=7, num_layers=2, hidden=32)
+    check("gcn: edge encoder left as it was (may be negative)",
+          bool((gcn._scalar_edge(edge_attr) < 0).any()))
+
+    d = _toy_dataset(1)[0]
+    arma.train()
+    check("arma: forward is finite on a toy graph",
+          bool(torch.isfinite(arma(d)).all()))
+
+
+def test_grad_clip_is_opt_in():
+    print("\nGradient clipping is an opt-in argument")
+    data = _toy_dataset(4)
+    losses = []
+    for clip in (None, 1.0):
+        torch.manual_seed(0)
+        model = MODELS["gcn"](input_dim=7, num_layers=1, hidden=32)
+        tl, vl = make_loaders(data, data, batch_size=2)
+        losses.append(float(train(model, "cpu", tl, vl, epochs=1,
+                                  grad_clip=clip)))
+    check("default (None) and explicit clipping both train",
+          all(v == v for v in losses), f"val={losses}")
+
+
 def test_runners_seeds_and_checkpoints():
     print("\nRunners: seed columns, seeded checkpoint names, resumability")
     grids = ["G1", "G2"]
@@ -210,6 +248,8 @@ def main():
     test_hidden_and_depth_are_honoured()
     test_forward_shapes()
     test_arch_config_loading()
+    test_arma_edge_weight_is_non_negative()
+    test_grad_clip_is_opt_in()
     test_runners_seeds_and_checkpoints()
     print("\n" + "=" * 50)
     if FAILURES:
