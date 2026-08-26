@@ -117,12 +117,37 @@ def test_two_configs_for_one_model_refused():
                      "an architecture with two configurations is refused")
 
 
+def test_seed_shards():
+    print("\n== seed shards ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        _write(tmp, "s0", _rows("gcn", seeds=(0,)), summary={"seeds": [0]})
+        _write(tmp, "s100", _rows("gcn", seeds=(100,)), summary={"seeds": [100]})
+        dirs = shard_dirs([os.path.join(tmp, "s*")])
+        _expect_exit(lambda: check_protocol(dirs),
+                     "differing seeds are refused without --seed_shards")
+        protocol = check_protocol(dirs, seed_shards=True)
+        check("the seed union is reported", protocol["seeds"] == [0, 100],
+              str(protocol["seeds"]))
+        df, owners = gather(dirs, "within_grid.csv", ["gcn"], seed_shards=True)
+        check("both seeds are kept", sorted(df.seed) == [0, 100], str(list(df.seed)))
+        check("the architecture is attributed", set(owners) == {"gcn"}, str(owners))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _write(tmp, "s0", _rows("gcn", seeds=(0,)), summary={"seeds": [0]})
+        _write(tmp, "s0b", _rows("gcn", seeds=(0,)), summary={"seeds": [0]})
+        dirs = shard_dirs([os.path.join(tmp, "s*")])
+        _expect_exit(lambda: gather(dirs, "within_grid.csv", ["gcn"],
+                                    seed_shards=True),
+                     "a repeated (model, seed) pair is still refused")
+
+
 def main():
     test_clean_merge()
     test_duplicate_model_refused()
     test_missing_model_refused()
     test_protocol_mismatch_refused()
     test_two_configs_for_one_model_refused()
+    test_seed_shards()
     print("\n" + "=" * 50)
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s): {FAILURES}")

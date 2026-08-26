@@ -1,0 +1,37 @@
+{
+  "protocol": {
+    "regime": "A (fixed topology)",
+    "data_dir": "data_a",
+    "search_space": {
+      "num_layers": [2, 3, 8],
+      "hidden": [32, 64, 128],
+      "learning_rate": [0.001, 0.0003]
+    },
+    "candidates_per_model": 10,
+    "selection": "mean best validation weighted-MSE across grids",
+    "stability_rule": "a candidate with a non-finite validation loss on any grid is disqualified; the leading candidate must also reproduce at the tie seed before it can be frozen; if no candidate survives at one learning rate the grid is re-scored at the other",
+    "grids": ["IEEE24", "IEEE39", "IEEE118", "UK"],
+    "epochs": 200,
+    "batch_size": 32,
+    "stage1_seed": 0,
+    "tie_seed": 100,
+    "tie_pct": 0.05,
+    "per_model_sweeps": {
+      "gcn": "results_a/gcn",
+      "gat": "results_a/gat",
+      "gin": "results_a/gin",
+      "transformer": "results_a/transformer",
+      "nnconv": "results_a/nnconv",
+      "arma_gnn": "results_a/arma_v2"
+    },
+    "notes": "arma_gnn was re-swept after its edge weight was made non-negative (see docs/Model_configurations.md); the superseded sweep of the earlier ARMA layer is kept in results_a/arma_gnn and results_a/arma_stability."
+  },
+  "configs": {
+    "gcn": {"num_layers": 2, "hidden": 128, "learning_rate": 0.001},
+    "arma_gnn": {"num_layers": 8, "hidden": 128, "learning_rate": 0.001},
+    "gat": {"num_layers": 2, "hidden": 128, "learning_rate": 0.001},
+    "gin": {"num_layers": 3, "hidden": 128, "learning_rate": 0.001},
+    "transformer": {"num_layers": 2, "hidden": 128, "learning_rate": 0.001},
+    "nnconv": {"num_layers": 2, "hidden": 128, "learning_rate": 0.001}
+  }
+}

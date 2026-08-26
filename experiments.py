@@ -435,7 +435,7 @@ def main():
     device = get_device()
     seeds = args.seeds if args.seeds else [args.seed]
     arch_cfg = load_arch_config(args.arch_config, args.models,
-                               allow_default=args.allow_default_config)
+                                allow_default=args.allow_default_config)
     if args.skip_existing and args.save_models is None:
         raise SystemExit("--skip_existing requires --save_models")
     # With one topology per grid the within-grid MMD is 0 by construction, so

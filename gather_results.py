@@ -16,6 +16,14 @@ WHAT IS CHECKED
       * all shards must agree on seeds, epochs, data_dir and batch size
       * each architecture must carry ONE (num_layers, hidden, learning_rate)
 
+SEED SHARDS
+    One architecture's seeds are sometimes split across processes too (one seed
+    each), which is the only way an expensive architecture fits the wall clock
+    available. `--seed_shards` accepts that layout: `seeds` may then differ
+    between shards and an architecture may appear in several of them, but every
+    (model, seed) pair must still occur exactly once, so a duplicated or
+    silently overwritten run is still refused.
+
 HOW TO RUN
     python3 gather_results.py --shards 'results_a/within_*' --file within_grid.csv \
         --out results_a
@@ -44,6 +52,9 @@ def parse_args():
     p.add_argument("--out", required=True, help="destination directory")
     p.add_argument("--models", nargs="+", default=list(MODELS.keys()),
                    help="architectures that must all be present")
+    p.add_argument("--seed_shards", action="store_true",
+                   help="shards carry different seeds of the same architecture; "
+                        "uniqueness is then enforced per (model, seed)")
     return p.parse_args()
 
 
@@ -56,8 +67,14 @@ def shard_dirs(patterns):
     return dirs
 
 
-def check_protocol(dirs):
-    """Each shard's summary.json must describe the same run protocol."""
+def check_protocol(dirs, seed_shards=False):
+    """Each shard's summary.json must describe the same run protocol.
+
+    With `seed_shards` the seed list is expected to differ, so it is collected
+    into a union instead of being compared; everything else still has to match.
+    """
+    shared = [k for k in SHARED_KEYS if not (seed_shards and k == "seeds")]
+    seeds: list = []
     reference, ref_dir = None, None
     for d in dirs:
         path = os.path.join(d, "summary.json")
@@ -66,17 +83,22 @@ def check_protocol(dirs):
                              "whose protocol cannot be verified")
         with open(path) as fh:
             summary = json.load(fh)
-        keys = {k: summary.get(k) for k in SHARED_KEYS}
+        keys = {k: summary.get(k) for k in shared}
+        for seed in summary.get("seeds") or []:
+            if seed not in seeds:
+                seeds.append(seed)
         if reference is None:
             reference, ref_dir = keys, d
         elif keys != reference:
-            differing = {k for k in SHARED_KEYS if keys[k] != reference[k]}
+            differing = {k for k in shared if keys[k] != reference[k]}
             raise SystemExit(f"{d} disagrees with {ref_dir} on {differing}: "
                              "the shards were not run under one protocol")
+    if seed_shards and reference is not None:
+        reference = {**reference, "seeds": sorted(seeds)}
     return reference
 
 
-def gather(dirs, fname, models):
+def gather(dirs, fname, models, seed_shards=False):
     frames = []
     for d in dirs:
         path = os.path.join(d, fname)
@@ -86,10 +108,21 @@ def gather(dirs, fname, models):
         raise SystemExit(f"no {fname} found in {dirs}")
     df = pd.concat(frames, ignore_index=True)
 
-    owners = {}
+    owners: dict = {}
+    claimed: dict = {}
     for frame, d in zip(frames, [d for d in dirs
                                  if os.path.exists(os.path.join(d, fname))]):
         for model in frame.model.unique():
+            if seed_shards:
+                for seed in frame.loc[frame.model == model, "seed"].unique():
+                    key = (model, int(seed))
+                    if key in claimed:
+                        raise SystemExit(
+                            f"{model} seed {seed} appears in both {claimed[key]} "
+                            f"and {d}: duplicated runs must not be merged")
+                    claimed[key] = d
+                owners.setdefault(model, d)
+                continue
             if model in owners:
                 raise SystemExit(f"{model} appears in both {owners[model]} and "
                                  f"{d}: duplicated runs must not be merged")
@@ -111,8 +144,8 @@ def gather(dirs, fname, models):
 def main():
     args = parse_args()
     dirs = shard_dirs(args.shards)
-    protocol = check_protocol(dirs)
-    df, owners = gather(dirs, args.file, args.models)
+    protocol = check_protocol(dirs, args.seed_shards)
+    df, owners = gather(dirs, args.file, args.models, args.seed_shards)
 
     os.makedirs(args.out, exist_ok=True)
     out_csv = os.path.join(args.out, args.file)
