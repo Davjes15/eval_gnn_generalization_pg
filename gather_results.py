@@ -24,6 +24,10 @@ SEED SHARDS
     (model, seed) pair must still occur exactly once, so a duplicated or
     silently overwritten run is still refused.
 
+    The merged directory carries a `summary.json` of the protocol it was verified
+    against, so it can itself be a shard of a later merge: an architecture whose
+    seeds were sharded is consolidated first, then merged with the others.
+
 HOW TO RUN
     python3 gather_results.py --shards 'results_a/within_*' --file within_grid.csv \
         --out results_a
@@ -141,6 +145,26 @@ def gather(dirs, fname, models, seed_shards=False):
     return df, owners
 
 
+def write_summary(protocol, dirs, fname, out):
+    """Record the verified protocol next to the merged file.
+
+    The merged directory must be usable as a shard of a later merge (seeds are
+    gathered first, then architectures), which requires the protocol it was
+    checked against to travel with it. Only the checked keys are written: the
+    per-run fields of one shard's summary do not describe a union. Merging a
+    second arm into the same directory adds to the record rather than replacing
+    it.
+    """
+    path = os.path.join(out, "summary.json")
+    summary = {**(protocol or {}), "merged_from": dirs, "merged_file": fname}
+    if os.path.exists(path):
+        with open(path) as fh:
+            summary = {**json.load(fh), **summary}
+    with open(path, "w") as fh:
+        json.dump(summary, fh, indent=2)
+    return summary
+
+
 def main():
     args = parse_args()
     dirs = shard_dirs(args.shards)
@@ -150,6 +174,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     out_csv = os.path.join(args.out, args.file)
     df.to_csv(out_csv, index=False)
+    write_summary(protocol, dirs, args.file, args.out)
     print(f"protocol: {protocol}")
     for model, d in sorted(owners.items()):
         print(f"  {model:12s} <- {d}")

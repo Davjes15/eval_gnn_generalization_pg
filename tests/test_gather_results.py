@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 
-from gather_results import check_protocol, gather, shard_dirs
+from gather_results import (check_protocol, gather, shard_dirs,
+                            write_summary)
 
 FAILURES = []
 MODELS_2 = ["gcn", "gat"]
@@ -141,6 +142,34 @@ def test_seed_shards():
                      "a repeated (model, seed) pair is still refused")
 
 
+def test_merged_dir_is_a_valid_shard():
+    print("\n== a merged directory can be merged again ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        s0 = _write(tmp, "s0", _rows("gcn", seeds=(0,)), summary={"seeds": [0]})
+        s100 = _write(tmp, "s100", _rows("gcn", seeds=(100,)),
+                      summary={"seeds": [100]})
+        merged = os.path.join(tmp, "gcn_all")
+        os.makedirs(merged)
+        df, _ = gather([s0, s100], "within_grid.csv", ["gcn"], seed_shards=True)
+        df.to_csv(os.path.join(merged, "within_grid.csv"), index=False)
+        protocol = check_protocol([s0, s100], seed_shards=True)
+        summary = write_summary(protocol, [s0, s100], "within_grid.csv", merged)
+        check("the merged summary carries the seed union",
+              summary["seeds"] == [0, 100], str(summary["seeds"]))
+        check("the merged summary records its provenance",
+              summary["merged_from"] == [s0, s100])
+
+        other = _write(tmp, "gat", _rows("gat"))
+        again = check_protocol([merged, other])
+        check("the merged directory passes the protocol check as a shard",
+              again["seeds"] == [0, 100] and again["epochs"] == 200, str(again))
+        df2, owners = gather([merged, other], "within_grid.csv", MODELS_2)
+        check("the second-stage merge keeps every row", len(df2) == 4,
+              str(len(df2)))
+        check("both architectures are attributed", set(owners) == set(MODELS_2),
+              str(owners))
+
+
 def main():
     test_clean_merge()
     test_duplicate_model_refused()
@@ -148,6 +177,7 @@ def main():
     test_protocol_mismatch_refused()
     test_two_configs_for_one_model_refused()
     test_seed_shards()
+    test_merged_dir_is_a_valid_shard()
     print("\n" + "=" * 50)
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s): {FAILURES}")
