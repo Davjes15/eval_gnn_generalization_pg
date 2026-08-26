@@ -296,6 +296,25 @@ def per_grid_argmin(rows):
     return out
 
 
+def merge_config(payload, path):
+    """Fold `payload` into the configuration already frozen at `path`.
+
+    Architectures are swept one at a time (they differ in cost by an order of
+    magnitude), so a sweep of one model must not drop the models already frozen
+    in the file, nor the provenance keys earlier sweeps recorded next to them.
+    Only the swept models' entries and the protocol keys this run states are
+    replaced.
+    """
+    if not os.path.exists(path):
+        return payload
+    with open(path) as fh:
+        previous = json.load(fh)
+    return {
+        "protocol": {**previous.get("protocol", {}), **payload["protocol"]},
+        "configs": {**previous.get("configs", {}), **payload["configs"]},
+    }
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data_dir", default="data_a",
@@ -382,11 +401,12 @@ def main():
         },
         "configs": configs,
     }
+    payload = merge_config(payload, args.config_out)
     with open(args.config_out, "w") as fh:
         json.dump(payload, fh, indent=2)
 
     print("\n== frozen configuration ==")
-    print(json.dumps(configs, indent=2))
+    print(json.dumps(payload["configs"], indent=2))
     print(f"\nwritten: {args.config_out}, {csv_path}, "
           f"{args.out}/tuning_summary.csv, {args.out}/tuning_per_grid_argmin.csv")
 

@@ -155,18 +155,40 @@ width, so this selection is a statement about width, not depth: 128 is worth a
 
 ### `nnconv` — 2 layers, hidden 128, lr 1e-3 (1,166,660 params)
 
-| Rank | Config | Mean val (s0) | Mean val (s100) |
-|---|---|---:|---:|
-| 1 | **2 × 128** | **0.1089** | **0.0907** |
-| 2 | 2 × 64 | 0.1141 | 0.1029 |
-| 3 | 3 × 32 | 0.2146 | — |
-| … | 8 × 128 | 2.3e+07 | — |
+| Rank | Config | Mean val (s0) | Mean val (s100) | Mean over both |
+|---|---|---:|---:|---:|
+| 1 | **2 × 128** | **0.1089** | **0.0907** | **0.0998** |
+| 2 | 2 × 64 | 0.1141 | 0.1029 | 0.1085 |
+| 3 | 3 × 32 | 0.2146 | — | — |
+| … | 8 × 128 | 2.3e+07 | — | — |
+| stage 2 | 2 × 128, lr 3e-4 | 0.1950 | 0.1738 | 0.1844 |
 
 This is **the only architecture where the declared 5% tie-break fired**: the gap
 to 2 × 64 is 4.8%. Both candidates were therefore re-scored at seed 100, and
-2 × 128 won again (0.0907 vs 0.1029, an 11.9% margin) on all four grids
-individually. The tie-break was declared in advance precisely so that a 4.8%
-gap could not be resolved by inspection after the fact.
+2 × 128 won again on the two-seed mean (0.0998 vs 0.1085, an 8.7% margin). The
+tie-break was declared in advance precisely so that a 4.8% gap could not be
+resolved by inspection after the fact.
+
+The per-grid detail is worth recording, because it is the clearest instance of
+pooled selection disagreeing with a single grid:
+
+| Grid | 2 × 128 (s0 / s100) | 2 × 64 (s0 / s100) |
+|---|---:|---:|
+| IEEE24 | 0.0121 / 0.0158 | 0.0130 / 0.0251 |
+| IEEE39 | 0.3161 / 0.2621 | **0.2625 / 0.2572** |
+| IEEE118 | 0.0808 / 0.0697 | 0.1278 / 0.0942 |
+| UK | 0.0266 / 0.0151 | 0.0532 / 0.0351 |
+
+2 × 64 is better on IEEE39 at **both** seeds; 2 × 128 wins the other three and
+the pooled mean. The frozen config is the pooled winner by protocol (§1) — a
+per-grid choice would leave the pooled-grid OOD arm undefined and would confound
+architecture with configuration — and the disagreement is reported here rather
+than smoothed over. It is the same effect the per-grid argmin diagnostic
+(`results_a/*/tuning_per_grid_argmin.csv`) exists to expose.
+
+The stage-2 row also settles the learning rate for this architecture: at
+lr 3e-4 the same shape is 1.8× worse at both seeds, so 1e-3 is not a marginal
+preference.
 
 NNConv also shows the depth collapse most violently — 8 × 128 reaches 2.3e+07
 mean validation loss — which is expected: its edge network emits a full
@@ -362,3 +384,13 @@ directory.** Each loads the shard's `tuning.csv` at start and rewrites it at
 end, so the second silently drops the first's rows — this destroyed GAT's
 confirmation trials once and they had to be recomputed in their own shard
 (`results_a/gat_confirm/<grid>`). Shard by directory, then `gather_trials.py`.
+
+The same hazard applied to the frozen configuration file itself: a per-model
+sweep wrote `--config_out` as a whole document, so `--models nnconv` replaced a
+file holding all six architectures with one holding only `nnconv`. It was caught
+by inspection and the file restored from the pushed copy — no experiment ran on
+a wrong configuration, since the swept model's entry was identical and every
+final run names its own model. `tune_budget.merge_config` now folds a sweep's
+result into whatever is already frozen, replacing only the swept models'
+entries and keeping the provenance keys earlier sweeps recorded
+(`tests/test_tune_budget.py::test_config_merge_keeps_other_models`).

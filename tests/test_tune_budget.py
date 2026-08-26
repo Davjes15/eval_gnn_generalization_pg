@@ -11,6 +11,7 @@ without retraining.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import sys
@@ -25,7 +26,7 @@ from torch_geometric.data import Data
 import tune_budget
 from models import MODELS
 from tune_budget import (HIDDENS, LEARNING_RATES, NUM_LAYERS, _load_previous,
-                         per_grid_argmin, tune_model)
+                         merge_config, per_grid_argmin, tune_model)
 
 FAILURES = []
 
@@ -299,6 +300,33 @@ def test_equal_budget_across_architectures():
           len(set(counts.values())) == 1, str(counts))
 
 
+def test_config_merge_keeps_other_models():
+    print("\nOne model's sweep does not drop the others")
+    frozen = {
+        "protocol": {"epochs": 200, "notes": "arma re-swept"},
+        "configs": {"gcn": {"num_layers": 2, "hidden": 128},
+                    "nnconv": {"num_layers": 3, "hidden": 32}},
+    }
+    fresh = {"protocol": {"epochs": 200},
+             "configs": {"nnconv": {"num_layers": 2, "hidden": 128}}}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "arch_config.json")
+        check("a missing file is written as-is",
+              merge_config(fresh, path) == fresh)
+        with open(path, "w") as fh:
+            json.dump(frozen, fh)
+        merged = merge_config(fresh, path)
+    check("the untouched model survives",
+          merged["configs"]["gcn"] == {"num_layers": 2, "hidden": 128},
+          str(merged["configs"]))
+    check("the swept model is replaced",
+          merged["configs"]["nnconv"] == {"num_layers": 2, "hidden": 128},
+          str(merged["configs"]["nnconv"]))
+    check("provenance recorded by earlier sweeps survives",
+          merged["protocol"]["notes"] == "arma re-swept",
+          str(merged["protocol"]))
+
+
 def main():
     test_search_space()
     test_sweep_and_selection()
@@ -307,6 +335,7 @@ def main():
     test_per_grid_argmin_skips_diverged()
     test_no_test_split_used()
     test_equal_budget_across_architectures()
+    test_config_merge_keeps_other_models()
     print("\n" + "=" * 50)
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s): {FAILURES}")
