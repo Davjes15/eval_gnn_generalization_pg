@@ -247,6 +247,7 @@ def test_no_test_split_used():
     grids = ["G1"]
     data = _toy_data(grids)
     # A tripwire: any read of data['G1']['test'] during tuning is a leak.
+
     class Tripwire(list):
         touched = False
 
