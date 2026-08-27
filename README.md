@@ -126,6 +126,14 @@ eval_gnn_generalization_pg/
 ├── README.md                     # this file — start here
 ├── docs/                         # design & experiment documents (the "why")
 │   ├── Pipeline_Report.md        # ← as-built report: flow diagram + run guide
+│   ├── Reproducibility.md        # exact commands, pins, provenance, replay (A4)
+│   ├── Regime_comparison_results.md   # the results: A vs cross-context vs OOD
+│   ├── Model_configurations.md   # tuning evidence + frozen configs
+│   ├── Audit_response.md         # external audit, answered point by point
+│   ├── Normalization_assessment.md    # why pu_zscore (A2), field survey
+│   ├── Normalization_results.md  # normalized vs raw-unit outcome
+│   ├── Generalization_score_and_MMD.md  # g-score degeneracy + grid distances (A6/A7)
+│   ├── Paper_verification.md     # our claims vs the ENGAGE / PowerGraph papers
 │   ├── PowerGraph_to_ENGAGE_design_decisions.md
 │   ├── Experimental_Design_transmission_GNN_generalization.md
 │   ├── Layer2_implementation_plan.md
@@ -148,6 +156,11 @@ change needed. **Data generation is CPU-only** (pandapower Newton-Raphson AC
 power-flow solves do not use the GPU).
 
 ## How to run the experiments (step by step)
+> **Reproducing the published results** (exact commands, version pins, dataset
+> provenance, checkpoint replay, and what still limits reproducibility):
+> [`docs/Reproducibility.md`](docs/Reproducibility.md). Replaying a released
+> checkpoint takes minutes; retraining the full campaign takes ~24-36 h on 8 cores.
+>
 > **On Windows with a GPU and no environment yet?** Follow the dedicated
 > copy‑paste guide: [`docs/Reproduce_on_Windows.md`](docs/Reproduce_on_Windows.md)
 > (venv, CUDA PyTorch + PyG, data generation, and running one model at a time).

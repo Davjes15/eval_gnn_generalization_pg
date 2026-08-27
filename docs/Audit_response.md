@@ -38,11 +38,11 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 |---|---|---|---|---|
 | A1 | DC baseline carried AC reactive power | **closed** | Q ≡ 0 enforced at generation *and* at scoring (`apply_dc_convention`); `nrmse_PVtheta` added as the fair-to-DC secondary aggregate; `pandapower==3.5.4` pinned; regression tests | no |
 | A2 | Node features/targets never scaled | **implemented, campaign running** | `normalization.py` + `experiments.py --normalize pu_zscore`, de-normalized before scoring (Decision 20). Within-grid arm training now; Regime B follows A5 | **yes** (final campaign) |
-| A3 | Aggregate metric hides the physics | open | evaluation pass over the saved checkpoints: per-quantity metrics as primary, metrics over genuinely predicted entries only, AC-mismatch feasibility, V/line violation rates, p95/p99/max tails | no |
-| A4 | Not reproducible from the repository | partly closed | tuning artifacts + version pins committed; `dataset_src.csv` committed for the final datasets; remaining: checkpoint index + one-command replay | no |
-| A5 | Split hygiene (shared demand snapshots in Regime B) | **fix implemented, data regenerating** | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` regenerating | **yes** (Regime B only, once) |
-| A6 | g-score affine in (mean, sd) here | open | derivation + explicit statement of what the MMD term can and cannot contribute with four grids | no |
-| A7 | MMD estimator details unstated | open | documentation of estimator, kernel, sigmas, sample sizes | no |
+| A3 | Aggregate metric hides the physics | **implemented, awaiting final checkpoints** | `physics_metrics.py` (per-quantity, predicted-entries-only, p95/p99/max tails, V-violation / false-secure / false-alarm rates) + `eval_checkpoints.py` replay driver + `tests/test_physics_metrics.py`. Runs over the final checkpoints when the campaign ends | no |
+| A4 | Not reproducible from the repository | **closed** | `docs/Reproducibility.md`: pinned versions, exact generation/training commands, `dataset_src.csv` provenance + realised split windows, `checkpoint_index.py` (path, size, SHA-256, parameter count) and one-command replay via `eval_checkpoints.py`; the 21 tuning artifacts the configuration tables cite are now committed. Remaining limits (one data realization, four grids, NNConv seeds) are stated, not fixed | no |
+| A5 | Split hygiene (shared demand snapshots in Regime B) | **closed for the data; training in progress** | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
+| A6 | g-score affine in (mean, sd) here | **closed** | `docs/Generalization_score_and_MMD.md` §1: the identity `g = μ + 0.806σ` (cross-context) / `μ + 0.857σ` (OOD) verified against the committed artifacts to 1e-4, and rank-by-g ≡ rank-by-mean (τ = 1.0) in both arms | no |
+| A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_full_v2.csv` | no |
 | A8 | Statistics weaker than claimed | partly closed | permutation test run (A↔OOD τ = 0.222, p = 0.21; A↔cross-context −0.022, p = 0.91) and the wording corrected; remaining: optional NNConv 3 → 5 seeds | additive only |
 
 **Ordering constraint that drove the plan:** A5 changes the Regime B *data*, and A2 changes the
@@ -276,6 +276,12 @@ Checked against the stored value: ARMA OOD seed 0, 0.127976 + 0.8563 × 0.024694
 when comparing dataset designs or protocols. ENGAGE never claimed otherwise, and I did not say
 it out loud. This belongs in the paper as a protocol observation.
 
+**Closed.** Now checked over *all* stored rows rather than one: the identity holds to 1.0e-4
+(cross-context, 33 rows) and 3.5e-5 (OOD, 28 rows), and ranking the six architectures by
+`g_score` versus by `mean_nrmse` gives Kendall τ = 1.0 in both arms — the distance term moves no
+position. Per train grid (`gscore.csv`) `Δ = 0`, so there `g = μ` exactly. Written up with the
+derivation and a reproduction snippet in `docs/Generalization_score_and_MMD.md` §1.
+
 ## A7 — MMD details. CONFIRMED (low–medium)
 
 `mmd()` uses full Gram means including the diagonal, i.e. the **biased V-statistic**. The
@@ -284,6 +290,17 @@ or switch to the U-statistic. Descriptors are purely topological (degree histogr
 Laplacian spectrum), so they are blind to the ~20× electrical/scale shift in A2 — a distance
 that cannot see the dominant shift is a weak covariate. Median-heuristic bandwidth is refit per
 pair; defensible, but must be stated. Pooled OOD MMD (D14) is implemented as documented.
+
+**Closed.** The estimator is now named as the biased V-statistic, `mmd(..., unbiased=True)` adds
+the U-statistic (default unchanged so the committed CSVs stay reproducible), and the per-pair
+bandwidth is stated. The measured bias: ~0.005 on different-grid pairs, but the entire value on
+same-grid pairs (IEEE39 self-distance 0.0713 biased vs 0.0000 unbiased) — so any within-grid MMD
+*floor* is an estimator artifact, while cross-grid comparisons are unaffected. For the blindness
+to electrical scale, `mmd_utils.reactance_histogram` adds a `log10(x_pu)` branch-reactance
+descriptor; `mmd_report.py` tabulates all 16 grid pairs under all three descriptors and both
+estimators (`docs/tables/mmd_data_full_v2.csv`). The pair that makes the point: UK → IEEE24 is the
+closest off-diagonal pair topologically (degree MMD 0.276) yet far apart electrically (0.833).
+Details in `docs/Generalization_score_and_MMD.md` §2.
 
 ## A8 — Statistics are weaker than the doc implies. CONFIRMED, and worse
 
