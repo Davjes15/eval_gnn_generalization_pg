@@ -98,17 +98,24 @@ re-injected ground truth flatters every model, so the fraction of genuinely
 predicted entries must be stated (it is, in §5) and the per-quantity table must
 carry the interpretation.
 
-## 4. Normalization — neither paper normalizes node features, but our docs claimed we did
+## 4. Normalization — CORRECTED: PowerGraph-Node does normalize, in code
 
-Neither paper applies a scaler to node features or targets: ENGAGE relies on the
-metric's range normalization to *"balance the difference of scale across feature
-dimension"* (p. 5), and PowerGraph reports raw MSE per quantity (pp. 5–6, Fig. 3).
-So audit item A2 is not a deviation from the papers either. It remains **our
-documentation error** — `transmission_graph_gen.py`'s header and design decision
-D9 claim per-unit node features, and that is false of the node tensors. The
-substantive concern also remains: with raw MW targets, UK's P range is ~24× IEEE24's,
-so our cross-grid degradation mixes a magnitude shift with a topology shift in a
-way ENGAGE's ten same-voltage-class feeders largely avoid.
+The first version of this section said "neither paper normalizes node features".
+That is right for ENGAGE and **wrong for PowerGraph-Node**. Neither *paper text*
+mentions a scaler — ENGAGE relies on the metric's range normalization to
+*"balance the difference of scale across feature dimension"* (p. 5), and
+PowerGraph reports MSE per quantity (pp. 5–6, Fig. 3) — but PowerGraph-Node's
+released code max-abs-normalizes both X and Y per dimension
+(`code/dataset/powergrid.py`: `N_norm = N / maxsX`, `Y_norm = Y_o / maxsY`),
+trains in normalized space, and de-normalizes only for reporting
+(`code/train_gnn.py`: `batch_preds.squeeze() * batch.maxs`).
+
+So A2 *is* a deviation from the benchmark our grids come from, our documentation
+error stands (`transmission_graph_gen.py`'s header and design decision D9 claim
+per-unit node features, which is false of the node tensors), and the substantive
+concern is larger than "cross-grid magnitude": in raw units voltage magnitude
+receives ~1e-8 of the training gradient and is not learned at all. Full
+assessment, measurements and options: `docs/Normalization_assessment.md`.
 
 ## 5. Training-protocol deviations from both papers (deliberate, now stated)
 
@@ -141,5 +148,5 @@ are not directly comparable to their Table 4.
 | "DC's g-score is an artifact of ΔMMD = 0" | **stands**, and is literally ENGAGE's Table 3 |
 | "Our aggregate metric hides the physics" | **stands as a limitation**, but it is ENGAGE's published metric reproduced faithfully, not a coding error |
 | "Known-value re-injection inflates the numbers" | **stands as a reporting caveat**; both papers do the same thing |
-| "Node features are per-unit" (old docstring / D9) | **false**, and neither paper normalizes either — the fix is to correct our documentation and to disclose the cross-grid magnitude shift |
+| "Node features are per-unit" (old docstring / D9) | **false**; ENGAGE does not normalize either, but PowerGraph-Node's code does (max-abs on X and Y) — see `docs/Normalization_assessment.md` |
 | "DC beats the GNNs even in-distribution on P/V/θ by 23–108×" | **valid only for the mean-of-per-quantity estimator**, which is V-dominated and is *not* ENGAGE's Equation 3; now labelled as such |

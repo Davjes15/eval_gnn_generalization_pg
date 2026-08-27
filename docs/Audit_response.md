@@ -18,10 +18,17 @@ PowerGraph's conventions from their *released code only*, because the publicatio
 outside this session's network allowlist. Both papers were then supplied directly and every
 such claim is now verified against them in [`Paper_verification.md`](Paper_verification.md).
 Net effect: the DC-convention reasoning holds and is strengthened (ENGAGE publishes DC ratios
-of 10.5× cross-context and 2.1× OOD, bracketing ours), A2 and A3 turn out to describe
-*standard practice in both papers* rather than deviations — which sharpens them into reporting
-duties rather than bugs — and one number I quoted (23–108×) had to be relabelled as an
-estimator artefact.
+of 10.5× cross-context and 2.1× OOD, bracketing ours), A3 turns out to describe *standard
+practice in both papers* rather than a deviation — which sharpens it into a reporting duty
+rather than a bug — and one number I quoted (23–108×) had to be relabelled as an estimator
+artefact.
+
+**Update 2026-07-18 (second pass, A2).** I first wrote that A2 was also standard practice in
+both papers. That is wrong: PowerGraph-Node's released code normalizes X and Y (max-abs per
+dimension), and so do the other AC-power-flow GNN code bases I could reach. A2 stands as a real
+defect, its critical consequence is that voltage magnitude receives ~1e-8 of the training
+gradient, and the audit's suggested remedy (per unit) would not have fixed it. See the A2
+section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 
 ---
 
@@ -134,15 +141,37 @@ leave-one-grid-out error mixes topology shift with an input/target magnitude shi
 and the sentence "cross-grid degradation measures topology generalization" is not currently
 supportable. This is the audit's most consequential point for the paper's story.
 
-Fix requires regeneration in p.u. plus a re-run of at least one or two architectures on the
-cross-context and OOD arms as an ablation (~1 day).
+Reassessment (2026-07-18), full evidence in
+[`Normalization_assessment.md`](Normalization_assessment.md). Three corrections to what is
+written above, one of them to my own paper check:
 
-Paper check (2026-07-18): **neither source paper normalizes node features or targets either** —
-ENGAGE relies on the metric's range normalization *"to balance the difference of scale across
-feature dimension"* (p. 5) and PowerGraph reports raw per-quantity MSE. So this is not a
-deviation from the literature; it is our documentation claiming something we never did, plus a
-real confound that ENGAGE's ten same-voltage-class feeders largely avoid and our four
-transmission systems do not.
+1. **Per-unit conversion is not the fix.** All four cases carry `net.sn_mva = 100.0`, so
+   converting P and Q to p.u. divides them by a single constant: no ratio, no learnability and
+   no cross-grid spread changes. Worth doing for convention (Hansen et al. do it), useless as a
+   remedy.
+2. **The decisive defect is intra-sample, not cross-grid.** Share of `weighted_mse_loss`
+   contributed by each target dimension at the mean predictor: IEEE24 P 0.831 / Q 0.148 /
+   θ 0.021 / **V 5.3e−08**; UK **V 1.2e−11**. Voltage magnitude is not optimized, which is
+   exactly what the per-quantity table shows (V NRMSE 5.8–27 in-distribution, i.e. worse than
+   the constant `V ≡ 1.0`). This makes A2 the *cause* of half of A3's finding.
+3. **My earlier paper check was half wrong.** ENGAGE indeed does not normalize (and gets away
+   with it: its SimBench LV/MV feeders have MW injections of the same order as `vm_pu ≈ 1`, and
+   its `1/‖y‖` loss weight equalizes buses). But **PowerGraph-Node's released code does
+   normalize** — max-abs per dimension on both X and Y, training in normalized space,
+   de-normalized only for reporting. So does PowerFlowNet (z-score, train statistics) and the
+   KIT-IAI pretrained-GNN work (p.u. *and* z-score). Standard practice in the field is p.u. plus
+   a per-dimension scaler with physical-unit reporting; ENGAGE is the exception.
+
+The cross-grid confound above still stands (nominal load: 2,850 / 6,254 / 3,733 / **56,326** MW),
+but no unit system removes it — the UK system genuinely moves an order of magnitude more power.
+Isolating topology needs a per-grid physical base (e.g. nominal load, which is input data and so
+leak-free); a train-grid-fitted scaler keeps the size shift inside the OOD shift, which is
+honest but means the claim must read "generalization to an unseen system".
+
+Recommended sequence (not implemented, no retraining started): scaler behind a flag defaulting
+to today's behaviour → pilot on gcn + arma, seeds 0/100, within + cross-context (hours) → full
+retrain as the primary protocol only if the pilot confirms the mechanism → per-grid load base as
+the OOD-isolating ablation.
 
 ## A3 — The aggregate metric hides the physics. CONFIRMED (critical, and a result)
 
