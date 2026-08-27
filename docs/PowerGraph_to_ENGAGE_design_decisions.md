@@ -383,6 +383,38 @@ electrically (0.833), so an electrical complement is needed before any distance 
 
 ---
 
+## Decision 25 — Hyperparameters are selected once on Regime A validation data and frozen; seeds are replication, never a tuned parameter
+**Decision:** two separate passes over the data, with the three splits kept to non-overlapping
+jobs — train (800) fits weights, validation (100) *chooses* hyperparameters, test (100) is read
+only to report. Pass 1 (`tune_budget.py` on `data_a`) scores ~10 candidate configurations per
+architecture by mean best **validation** loss across the four grids at one seed plus a tie-break
+seed, and freezes the winner in `configs/arch_config.json`. Pass 2 (`experiments.py`) re-trains
+that one configuration at seeds 0/100/300/700/1000 (NNConv 0/100/300) and scores on **test**;
+those are the reported numbers. The same frozen configuration goes into all three arms —
+within-grid, cross-context and OOD — and Regime B is never re-tuned.
+
+**Why:** the selection pass's own scores are optimistically biased, having been selected on the
+validation set, and exist at one seed with no spread, so reporting the search's winner as the
+result is textbook selection bias. Freezing across arms is what makes the headline claim
+falsifiable: if each arm chose its own hyperparameters, a rank change between regimes could be
+explained by "different configurations" rather than by generalization, and re-tuning on the
+transfer data would select on the very quantity being measured. The cost is disclosed — a
+configuration tuned under fixed topology may be suboptimal under varying topology, so absolute
+Regime B errors are an upper bound on a per-arm-tuned model.
+
+On seeds: a seed fixes weight initialisation and batch ordering, and serves exactly two purposes
+— exact reproducibility of a single row (the seed is carried in every result row and every
+checkpoint filename) and a spread over training randomness, so an architecture gap can be judged
+against run-to-run noise. There is **no best seed**: selecting one per architecture would let any
+desired ranking be manufactured and would not reproduce elsewhere. Five seeds matches PowerGraph
+(p. 5; ENGAGE does not report its seed count — see `Paper_verification.md` §5), and is small enough
+that fine-grained gaps are not claimed — hence τ per seed and per grid with permutation
+p-values instead of one aggregate ranking. It also captures training randomness only, not the
+uncertainty of the dataset draw. Full statement: the *Final protocol* section of
+`docs/Experimental_Design_transmission_GNN_generalization.md`.
+
+---
+
 ## Semantic mappings that must be preserved (implementation contract)
 - **Bus type → one-hot** `[Slack, PV, PQ]` from MATPOWER type (3/2/1).
 - **Per-unit base**: carry `baseMVA` / `baseKV` so `r_pu`, `x_pu` are correct (ENGAGE edge attr = `[trafo?, r_pu, x_pu, sc_voltage]`).

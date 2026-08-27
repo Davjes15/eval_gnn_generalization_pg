@@ -406,6 +406,17 @@ python3 experiments.py --experiment ood    --data_dir data_full_v2 --normalize p
 the earlier `results/` tables. `launch_normalized.sh` runs the same campaign sharded across
 cores; every job is resumable with `--skip_existing` because it checkpoints.
 
+Two protocol points those commands encode. **`configs/arch_config.json` is frozen**: the
+hyperparameters were selected once, on the Regime A *validation* split (`tune_budget.py`), and
+the same configuration is carried into all three arms — Regime B is never re-tuned, so a rank
+change between regimes cannot be explained by different configurations. **`--seeds` is
+replication, not a search**: a seed fixes weight initialisation and batch order, every result row
+and checkpoint name carries it for exact re-execution, and repeating a configuration across seeds
+gives the spread needed to compare an architecture gap against run-to-run noise. There is no
+"best seed" to pick. Reasoning and limits: *Final protocol* in
+[`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md)
+and Decision 25 in [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md).
+
 ## Status
 **Steps 1–7 implemented** (grid conversion → loader → data generation → model
 zoo → experiments → validation gates → optional PowerGraph-Graph contingency

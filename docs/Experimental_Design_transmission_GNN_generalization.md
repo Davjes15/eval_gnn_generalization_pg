@@ -208,6 +208,52 @@ seeds 0/100/300/700/1000 (NNConv 0/100/300, a compute decision), three arms: wit
 cross-context, leave-one-grid-out. Every final run writes a checkpoint so results are
 replayable without retraining.
 
+**Tune once, freeze, then re-run for the reported numbers.** The three splits have
+non-overlapping jobs: weights are fitted on **train** (800), hyperparameters are *chosen*
+on **validation** (100), and **test** (100) is read only to report. So the pipeline is two
+distinct passes, and the second is not a redundant repeat of the first:
+
+1. *Selection pass* (`tune_budget.py` on `data_a`): ~10 candidate configurations per
+   architecture, scored by mean best **validation** loss across the four grids, one seed
+   plus a tie-break seed — enough to rank candidates. The winner is frozen into
+   `configs/arch_config.json` and never changes again.
+2. *Measurement pass* (`experiments.py`): the one frozen configuration per architecture,
+   re-trained at every seed, scored on **test**. These are the reported numbers.
+
+The selection pass's own scores are not reportable: they were selected *on* the validation
+set, so they are optimistically biased, and they exist at one seed with no spread. This is
+also why the transfer arms do not wait for the within-grid measurement pass — the
+configurations were fixed in pass 1, and pass 2 cannot change them.
+
+**One configuration across all three arms.** Regime B is *not* re-tuned. If each arm chose
+its own hyperparameters, a rank change between regimes could be explained by "different
+configurations" and the central claim would be untestable; re-tuning on the transfer data
+would additionally select on the quantity being measured. The cost of this decision is
+stated plainly: a configuration tuned under fixed topology may be suboptimal under varying
+topology, so absolute Regime B errors are an upper bound on what a per-arm-tuned model
+could reach.
+
+**What the seeds are for, and what they are not.** A seed fixes the random weight
+initialisation and the batch ordering. It has two roles, and no third one:
+
+- *Reproducibility.* Every result row and every checkpoint filename carries its seed
+  (`within_gcn_IEEE24_s700.pt`), so any single number can be regenerated exactly.
+- *Spread over training randomness.* Repeating one configuration at several seeds turns a
+  point into a sample, so an architecture gap can be compared against run-to-run noise. It
+  also exposes instability that a single run hides — e.g. normalized GCN on IEEE24 scores
+  0.00080 / 0.00067 / 0.00079 / 0.00066 / 0.052 at seeds 0/100/300/700/1000; that outlier is
+  a reportable property, not something to seed-select away.
+
+A seed is therefore **fixed and disclosed, never tuned**. There is no "best seed": choosing
+the seed per architecture would let any desired ranking be manufactured, and the number
+would not reproduce elsewhere. Five seeds is a small sample — it supports the large gaps
+observed, not fine-grained claims between architectures within a few percent, which is why
+τ is reported per seed and per grid with permutation p-values rather than as one aggregate
+ranking. It also quantifies only training randomness, not uncertainty from the data draw
+(that would need several dataset regenerations). Five seeds matches PowerGraph's protocol (p. 5);
+ENGAGE does not report a seed count, so this is stricter than its published protocol rather than
+a match to it (see [`Paper_verification.md`](Paper_verification.md) §5).
+
 **Reporting.** Primary metrics are **per quantity** (P, Q, V, θ) in physical units, with the
 aggregate `nrmse_range` (ENGAGE Eq. 3) reported alongside and never on its own; DC power flow
 under both conventions (Q ≡ 0 primary, P/V/θ secondary); degree and Laplacian MMD separately;
