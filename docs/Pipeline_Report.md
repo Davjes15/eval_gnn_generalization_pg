@@ -300,6 +300,16 @@ python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a \
     --data_b data_full_v2 --normalize pu_zscore --out results_norm/physics
 python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
 ```
+The campaign runs with `--skip_mmd`, so the model-independent tables (MMD
+matrices, pooled OOD distances, DC baseline) are computed once for the whole
+campaign instead of 18 times in parallel with the training:
+```bash
+python3 experiments.py --only_topology --experiment ood --data_dir data_full_v2 \
+    --out results_norm/topology --regime_tag B --models gcn \
+    --arch_config configs/arch_config.json
+```
+The merge / ranking / table chain that consumes all of this is one block in
+`docs/Reproducibility.md` §5.
 Outputs in `results/`: `cross_context.csv`, `ood.csv`, `transfer_matrix_<model>.csv`,
 `mmd_degree.csv`, `mmd_laplacian.csv`, `dc_baseline.csv`, `gscore.csv` (cross-context),
 `ood_distance.csv` (held-out→train distances), `gscore_ood.csv` (OOD, better-posed at

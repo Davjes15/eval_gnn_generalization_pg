@@ -455,6 +455,12 @@ def parse_args():
                         "where one topology per grid makes them degenerate")
     p.add_argument("--save_models", default=None,
                    help="directory to write trained model state_dicts (.pt)")
+    p.add_argument("--only_topology", action="store_true",
+                   help="write the model-independent tables (MMD matrices, "
+                        "pooled OOD distances, DC baseline) and exit without "
+                        "training; use it when the training shards ran with "
+                        "--skip_mmd, so the analysis still has its topology "
+                        "inputs and every shard shares one copy of them")
     return p.parse_args()
 
 
@@ -503,6 +509,22 @@ def main():
     dc_rows = dc_baseline(data, grids)
     pd.DataFrame(dc_rows).to_csv(os.path.join(args.out, "dc_baseline.csv"), index=False)
     print(pd.DataFrame(dc_rows).round(4).to_string(index=False))
+
+    if args.only_topology:
+        if lap_mmd is None:
+            raise SystemExit("--only_topology needs the MMD matrix; drop "
+                             "--skip_mmd and do not use --experiment within")
+        ood_dist, _ = ood_distances(data, grids)
+        pd.DataFrame(ood_dist).to_csv(
+            os.path.join(args.out, "ood_distance.csv"), index=False)
+        print("\n-- OOD topological distance (held-out grid -> POOLED "
+              "training grids) --")
+        print(pd.DataFrame(ood_dist).round(4).to_string(index=False))
+        summary["only_topology"] = True
+        with open(os.path.join(args.out, "summary.json"), "w") as f:
+            json.dump(summary, f, indent=2)
+        print(f"\nTopology tables written to {args.out}/")
+        return
 
     if args.experiment == "within":
         print("\n== Within-grid (fixed-topology control arm) ==")

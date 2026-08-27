@@ -194,11 +194,51 @@ and an index entry.
 
 ## 5. Downstream analysis, from the committed artifacts
 
+The campaign is sharded one process per architecture, so each arm is merged
+first. `gather_results.py` refuses a merge that is not consistent with one
+frozen protocol (an architecture in two shards, a missing architecture,
+disagreeing seeds/epochs/data_dir/batch size, two configurations for one
+architecture), which is the failure that would silently invalidate the ranking.
+
 ```bash
-python rank_analysis.py     --results_dir results_norm   # tau-b, rho, modal ranks, bump chart
-python recompute_tables.py  --results_dir results_norm   # g-score, per-quantity, DC baseline
-python mmd_report.py        --data_dir data_full_v2      # grid distances (A7)
+# 1. merge the per-architecture shards into one file per arm
+python gather_results.py --shards results_norm/within_*  --file within_grid.csv \
+    --out results_norm/within_grid.csv
+python gather_results.py --shards results_norm/cross_*   --file cross_context.csv \
+    --out results_norm/cross_context.csv
+python gather_results.py --shards results_norm/ood_*     --file ood.csv \
+    --out results_norm/ood.csv
+
+# 2. the model-independent tables (see below) -- one shared copy
+python experiments.py --only_topology --experiment ood --data_dir data_full_v2 \
+    --out results_norm/topology --regime_tag B --models gcn \
+    --arch_config configs/arch_config.json
+
+# 3. the DC baseline on the Regime A data (the topology shard covers Regime B)
+python recompute_dc_baseline.py --data_dir data_a \
+    --out results_norm/dc_baseline_regime_a.csv
+
+# 4. ranking and downstream tables
+python rank_analysis.py --regime_a results_norm/within_grid.csv \
+    --cross results_norm/cross_context.csv --ood results_norm/ood.csv \
+    --out results_norm/analysis
+python recompute_tables.py --within results_norm/within_grid.csv \
+    --cross results_norm/cross_context.csv --ood results_norm/ood.csv \
+    --topology results_norm/topology \
+    --dc_regime_a results_norm/dc_baseline_regime_a.csv \
+    --dc_regime_b results_norm/topology/dc_baseline.csv \
+    --out results_norm/analysis
+python mmd_report.py --data_dir data_full_v2 --out docs/tables   # A7 distances
 ```
+
+**Why step 2 exists.** The MMD matrix, the pooled OOD distances and the DC
+baseline depend only on the data, not on the architecture, so recomputing them in
+all 18 training shards wastes the cores the training needs -- the campaign runs
+with `--skip_mmd`. `--only_topology` writes exactly those tables and exits
+without training, from the same code path the training shards would have used, so
+the analysis input is identical to the one an unsharded run would have produced.
+`recompute_tables.py` still cross-checks the shards it is given and refuses to
+merge tables that disagree.
 
 Whole test suite:
 
