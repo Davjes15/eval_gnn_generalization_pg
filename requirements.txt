@@ -11,7 +11,12 @@
 
 torch>=2.2
 torch_geometric>=2.5
-pandapower>=2.14
+# pandapower 3.5.4 is what every dataset here was generated with. Pinned rather
+# than floored because the DC baseline is version-sensitive: `rundcpp` does not
+# write res_bus.q_mvar, and 2.x left the column as NaN while 3.x leaves the
+# previous AC result there. The generator now zeroes the column explicitly (the
+# Q == 0 convention), so the pin is for reproducibility, not correctness.
+pandapower==3.5.4
 scipy>=1.10
 numpy>=1.24
 pandas>=2.0

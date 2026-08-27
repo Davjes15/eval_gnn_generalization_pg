@@ -4,9 +4,9 @@ Run:  python3 tests/test_recompute_tables.py
 
 These tables are the ones that get read as results, so the checks are that the
 per-quantity table keeps P/Q/V/theta separate (never averaged into one number),
-that the DC comparison divides by the DC error of the same quantity and refuses
-to produce a ratio where DC-PF is structurally zero (Q), and that topology
-inputs from disagreeing shards are refused instead of silently merged.
+that the DC comparison divides by the DC error of the same quantity, uses a
+per-arm DC table and reports the Q-excluded aggregate, and that topology inputs
+from disagreeing shards are refused instead of silently merged.
 """
 from __future__ import annotations
 
@@ -45,10 +45,12 @@ def _rows(model, base):
     return out
 
 
-def _dc():
-    row = {"grid": "IEEE24", "dc_nrmse": 0.02}
+def _dc(scale=1.0):
+    """A DC table with a non-zero Q error: DC predicts Q = 0, it is not exempt."""
+    row = {"grid": "IEEE24", "dc_nrmse": 0.02 * scale,
+           "dc_nrmse_PVtheta": 0.015 * scale}
     for j, q in enumerate(QUANTITIES):
-        row[f"dc_nrmse_{q}"] = 0.0 if q == "Q" else 0.01 * (j + 1)
+        row[f"dc_nrmse_{q}"] = 0.01 * (j + 1) * scale
     return pd.DataFrame([row])
 
 
@@ -74,19 +76,32 @@ def test_per_quantity_keeps_targets_separate():
 
 
 def test_dc_comparison_matches_quantities():
-    print("\nDC comparison divides by the same quantity, and skips Q")
+    print("\nDC comparison divides by the same quantity, per arm")
     df = pd.DataFrame(_rows("gcn", 1.0))
-    out = dc_comparison({"regime_a": df}, _dc())
-    p = out[out.quantity == "P"].iloc[0]
+    tables = {"regime_a": _dc(), "ood": _dc(scale=2.0)}
+    out = dc_comparison({"regime_a": df, "ood": df}, tables)
+    p = out[(out.arm == "regime_a") & (out.quantity == "P")].iloc[0]
     check("P ratio uses dc_nrmse_P", math.isclose(p.gnn_over_dc, p.gnn_nrmse / 0.01),
           f"{p.gnn_nrmse} / 0.01 -> {p.gnn_over_dc}")
-    q = out[out.quantity == "Q"].iloc[0]
-    check("Q ratio is NaN because DC-PF carries no reactive power",
-          math.isnan(q.gnn_over_dc), str(q.gnn_over_dc))
-    agg = out[out.quantity == "aggregate"].iloc[0]
+    q = out[(out.arm == "regime_a") & (out.quantity == "Q")].iloc[0]
+    check("Q has a real DC error under the Q = 0 convention",
+          math.isclose(q.dc_nrmse, 0.02) and math.isclose(
+              q.gnn_over_dc, q.gnn_nrmse / 0.02),
+          f"{q.dc_nrmse} -> {q.gnn_over_dc}")
+    agg = out[(out.arm == "regime_a") & (out.quantity == "aggregate")].iloc[0]
     check("the aggregate row uses the aggregate NRMSE columns",
           math.isclose(agg.gnn_nrmse, 1.0) and math.isclose(agg.dc_nrmse, 0.02),
           f"{agg.gnn_nrmse} vs {agg.dc_nrmse}")
+    pvt = out[(out.arm == "regime_a") & (out.quantity == "PVtheta")].iloc[0]
+    # gcn P/V/theta over seeds 0, 100: (1,3,4) and (2,4,5) -> 19/6; DC 0.01,
+    # 0.03, 0.04 -> 0.02666. Both sides average the three per-quantity NRMSEs.
+    check("the Q-excluded aggregate averages P, V and theta only",
+          math.isclose(pvt.gnn_nrmse, 19 / 6)
+          and math.isclose(pvt.dc_nrmse, 0.08 / 3),
+          f"{pvt.gnn_nrmse} vs {pvt.dc_nrmse}")
+    ood_p = out[(out.arm == "ood") & (out.quantity == "P")].iloc[0]
+    check("each arm is scored against its own DC table",
+          math.isclose(ood_p.dc_nrmse, 0.02), str(ood_p.dc_nrmse))
 
 
 def _topo_dir(tmp, name, lap_value, dc_value=0.02, with_ood=True):
@@ -125,7 +140,8 @@ def test_topology_inputs_must_agree():
         check("agreeing shards merge", math.isclose(lap.loc["IEEE24", "IEEE39"], 0.7))
         check("pooled Laplacian distance is keyed by held-out grid",
               math.isclose(pooled["IEEE24"], 0.65), str(pooled))
-        check("the DC table comes through", len(dc) == 1, str(len(dc)))
+        check("the shards' DC table is read for the agreement check",
+              len(dc) == 1, str(len(dc)))
         c = _topo_dir(tmp, "c", 0.9)
         _expect_exit(lambda: topology_inputs([a, c]),
                      "a differing MMD matrix is refused")

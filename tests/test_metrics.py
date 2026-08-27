@@ -2,9 +2,12 @@
 
 Run:  python3 tests/test_metrics.py     (no pytest dependency needed)
 
-Covers the two things that could silently invalidate results: the new plain
-MSE/MAE must be numerically right, and the existing two-value return contract of
-`evaluate` / `test_dc_pf` must be unchanged.
+Covers the things that could silently invalidate results: the plain MSE/MAE must
+be numerically right, the existing two-value return contract of `evaluate` /
+`test_dc_pf` must be unchanged, and the DC baseline must be scored with the
+reactive-power convention Q = 0 rather than with whatever the dataset stored
+(pandapower >= 3 leaves the AC reactive power in `res_bus.q_mvar`, so datasets
+written before that was noticed carry the ground truth in `dc_pf`).
 """
 from __future__ import annotations
 
@@ -17,9 +20,10 @@ import numpy as np
 import torch
 from torch_geometric.data import Data
 
-from training_utils import (TARGET_NAMES, all_metrics, evaluate, mae_per_quantity,
-                            mae_plain, mse_per_quantity, mse_plain,
-                            nrmse_per_quantity, nrmse_range, test_dc_pf)
+from training_utils import (TARGET_NAMES, all_metrics, apply_dc_convention,
+                            evaluate, mae_per_quantity, mae_plain,
+                            mse_per_quantity, mse_plain, nrmse_per_quantity,
+                            nrmse_range, nrmse_range_subset, test_dc_pf)
 
 FAILURES = []
 
@@ -122,15 +126,43 @@ def test_return_contracts():
     dc_nrmse_f, dc_per_q_f, dc_metrics = test_dc_pf(ds, full=True)
     check("test_dc_pf(full=True) agrees with default",
           close(dc_nrmse, dc_nrmse_f) and dc_per_q == dc_per_q_f)
-    dc = torch.cat([d.dc_pf for d in ds])
+    dc = apply_dc_convention(torch.cat([d.dc_pf for d in ds]))
     check("test_dc_pf mae matches the stored DC solution",
           close(dc_metrics["mae"], float((y_true - dc).abs().mean())))
+
+
+def test_dc_convention():
+    print("\nDC baseline is scored with Q = 0, on P/V/theta as well as all four")
+    ds = _toy_dataset()
+    # Reproduce the contamination the old generator wrote: dc_pf.Q == y.Q.
+    for d in ds:
+        d.dc_pf[:, 1] = d.y[:, 1]
+    raw = torch.cat([d.dc_pf for d in ds])
+    fixed = apply_dc_convention(raw)
+    check("the convention zeroes Q", bool((fixed[:, 1] == 0).all()))
+    keep = [0, 2, 3]
+    check("the convention leaves P, V and theta untouched",
+          bool(torch.equal(fixed[:, keep], raw[:, keep])))
+    check("the input tensor is not mutated",
+          bool(torch.equal(raw[:, 1], torch.cat([d.y for d in ds])[:, 1])))
+
+    _, per_q, metrics = test_dc_pf(ds, full=True)
+    check("Q error is no longer zero once the labels are not reused",
+          per_q["Q"] > 0.0, str(per_q["Q"]))
+    y_true = torch.cat([d.y for d in ds])
+    check("the Q-excluded aggregate scores P, V and theta only",
+          close(metrics["nrmse_PVtheta"],
+                nrmse_range_subset(y_true, fixed, ["P", "V", "theta"])),
+          str(metrics["nrmse_PVtheta"]))
+    check("the Q-excluded aggregate differs from the four-column one",
+          not close(metrics["nrmse_PVtheta"], metrics["nrmse"]))
 
 
 def main():
     test_plain_metrics()
     test_all_metrics_schema()
     test_return_contracts()
+    test_dc_convention()
     print("\n" + "=" * 50)
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s): {FAILURES}")

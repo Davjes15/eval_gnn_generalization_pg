@@ -121,9 +121,16 @@ def _build_sample(net):
     A_i, E_i = get_edge_features(net)
 
     # DC power-flow baseline (stored once so evaluation need not recompute it).
+    # `rundcpp` never writes res_bus.q_mvar: DC power flow has no reactive power.
+    # ENGAGE relied on that column arriving as NaN and zeroing it, but pandapower
+    # >= 3 leaves the *previous* (AC) res_bus in place, so on a copy of an
+    # AC-solved net the AC reactive power survives and the baseline would be
+    # scored against its own labels. Zero the column explicitly instead, which
+    # states the convention (Q_dc == 0) and holds on every pandapower version.
     dc_net = deepcopy(net)
     pp.rundcpp(dc_net)
-    np_dc = dc_net.res_bus[["p_mw", "q_mvar", "vm_pu", "va_degree"]].values
+    np_dc = dc_net.res_bus[["p_mw", "q_mvar", "vm_pu", "va_degree"]].values.copy()
+    np_dc[:, 1] = 0.0
     dc_pf = torch.nan_to_num(torch.tensor(np_dc, dtype=torch.float32), nan=0.0)
 
     return Data(

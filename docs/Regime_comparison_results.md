@@ -186,25 +186,66 @@ result, not excluded.
 
 ## 7. The DC power-flow baseline beats every GNN out of distribution
 
-`results/analysis/dc_comparison.csv`, aggregate NRMSE as a ratio (GNN ÷ DC-PF;
-< 1 means the GNN wins):
+**Corrected 2026-07-18.** The numbers previously in this section were wrong. The
+generator built `dc_pf` by deep-copying an AC-solved net and calling
+`pp.rundcpp`, which never writes `res_bus.q_mvar`; ENGAGE's code relied on that
+column arriving as `NaN` and zeroing it (`graph_gen.py`, with
+`pandapower==2.14.11` pinned), but pandapower ≥ 3 leaves the previous AC result
+in place, so **the DC baseline's reactive power was the ground truth itself**.
+That is why every `dc_nrmse_Q` was exactly `0.0`, and the old explanation in this
+section ("DC-PF carries no reactive power, so Q ratios are NaN") described the
+intent, not what was computed. The convention Q ≡ 0 is now enforced explicitly at
+generation time and re-applied at scoring time (`training_utils.apply_dc_convention`),
+so the already-generated datasets are corrected without retraining anything.
+`pandapower` is pinned in `requirements.txt`. No GNN number changes.
+
+Two conventions are reported, both from `results/analysis/dc_comparison.csv`.
+
+**(a) ENGAGE's convention: all four quantities, DC's Q ≡ 0.** Aggregate NRMSE as
+a ratio (GNN ÷ DC-PF; < 1 means the GNN wins). This is the column comparable to
+ENGAGE's published `dc_pf_data.csv`:
 
 | model | Regime A | cross-context | OOD |
 |---|---:|---:|---:|
-| `arma_gnn` | **0.04** | 26.1 | 7.9 |
-| `gin` | **0.23** | 223.6 | 9.9 |
-| `nnconv` | **0.26** | 71.8 | 96.8 |
-| `transformer` | **0.40** | 59.3 | 9.2 |
-| `gat` | **0.76** | 15.8 | 9.5 |
-| `gcn` | **0.98** | 122.9 | 13.8 |
+| `arma_gnn` | **0.009** | 6.3 | 1.9 |
+| `gin` | **0.054** | 54.0 | 2.4 |
+| `nnconv` | **0.062** | 17.3 | 23.4 |
+| `transformer` | **0.096** | 14.3 | 2.2 |
+| `gat` | **0.182** | 3.8 | 2.3 |
+| `gcn` | **0.233** | 29.7 | 3.3 |
 
-Every architecture beats DC power flow on its own fixed topology — `arma_gnn` by
-25× — and **every architecture loses to it by one to two orders of magnitude on
-an unseen grid**. DC-PF is a linearization with no learned parameters, so it has
-nothing to transfer and its error is topology-agnostic; that is precisely why it
-is the right floor to report. Caveats: DC-PF carries no reactive power (Q ≡ 0, so
-per-quantity Q ratios are written as NaN) and its g-score is an artifact
-(`mmd_range = 0`), a reference bar rather than a competitor.
+**(b) The fair-to-DC convention: P, V and θ only** (mean of the three
+per-quantity NRMSEs on both sides, `quantity = PVtheta`), since Q is not a
+quantity DC attempts:
+
+| model | Regime A | cross-context | OOD |
+|---|---:|---:|---:|
+| `arma_gnn` | 23.7 | 1107 | 120 |
+| `nnconv` | 23.0 | 1421 | 353 |
+| `gin` | 30.5 | 16898 | 692 |
+| `gcn` | 31.4 | 2609 | 272 |
+| `transformer` | 98.8 | 1440 | 159 |
+| `gat` | 108.2 | 662 | 173 |
+
+Readings, in order of how much they survive scrutiny:
+
+1. **Every architecture loses to DC power flow on an unseen grid** — by 1.9–23×
+   on the four-quantity aggregate. This is the robust claim: it holds under both
+   conventions and for every architecture. The old "8–224×" figure was inflated
+   by the contamination (DC was being handed the Q labels, which shrank its
+   denominator error) and must not be quoted.
+2. **Only the four-quantity aggregate says the GNNs win in-distribution**
+   (ratios 0.009–0.23), and it says so because that aggregate is dominated by
+   MW/Mvar magnitudes where DC's linearization is charged for Q ≡ 0. On P/V/θ
+   the GNNs lose to DC *even in-distribution*, by 23–108×, driven almost
+   entirely by voltage magnitude (see §5's per-quantity table and the
+   `V ≡ 1.0` constant-predictor check in `docs/Audit_response.md` A3). So the
+   in-distribution win is a property of the metric's unit mixture, not evidence
+   that the GNNs have learned the voltage sub-problem.
+3. DC-PF is a linearization with no learned parameters, so it has nothing to
+   transfer and its error is topology-agnostic — which is exactly why it is the
+   right floor. Its g-score is an artifact (`mmd_range = 0`): a reference bar,
+   not a competitor.
 
 ## 8. g-score (ENGAGE, used cautiously at N = 4 grids)
 
@@ -219,7 +260,7 @@ Cross-context aggregate g-score and OOD g-score, mean over seeds
 | `nnconv` | 1.595 | 3.774 | 4.638 | 1.617 | 3.803 |
 | `gcn` | 2.729 | 4.234 | 6.142 | 0.231 | 0.349 |
 | `gin` | 4.978 | 12.277 | 14.876 | 0.166 | 0.217 |
-| *(dc_pf ref)* | *0.017* | *0.005* | *0.017* | — | — |
+| *(dc_pf ref)* | *0.069* | *0.017* | *0.069* | — | — |
 
 The two g-score flavours **disagree at the top** (`gat` best on cross-context,
 `arma_gnn` best on OOD), which is the same instability τ reports. With only four
@@ -261,11 +302,20 @@ python3 gather_results.py \
 python3 rank_analysis.py --regime_a results/regime_a/within_grid.csv \
     --cross results/regime_b/cross_context.csv \
     --ood results/regime_b/ood.csv --out results/analysis
+# 4a. DC baseline under the Q = 0 convention, once per dataset (see 7)
+python3 recompute_dc_baseline.py --data_dir data_a \
+    --out results/analysis/dc_baseline_regime_a.csv
+python3 recompute_dc_baseline.py --data_dir data_full \
+    --out results/analysis/dc_baseline_regime_b.csv
+
+# 4b. downstream tables
 python3 recompute_tables.py --within results/regime_a/within_grid.csv \
     --cross results/regime_b/cross_context.csv \
     --ood results/regime_b/ood.csv \
     --topology results_tuned/gcn results_tuned/arma_v2_s0 \
                 results_tuned/nnconv_cc_s0 results_tuned/nnconv_ood_s0 \
+    --dc_regime_a results/analysis/dc_baseline_regime_a.csv \
+    --dc_regime_b results/analysis/dc_baseline_regime_b.csv \
     --out results/analysis
 ```
 

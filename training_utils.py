@@ -188,21 +188,53 @@ def evaluate(model, device, dataset, batch_size=32, full=False):
     return nrmse, per_q
 
 
+def apply_dc_convention(dc_pf):
+    """Force the DC baseline's reactive power to ENGAGE's convention: Q == 0.
+
+    DC power flow has no reactive power, so `pp.rundcpp` never writes
+    res_bus.q_mvar. ENGAGE read the column anyway and zeroed the resulting NaNs;
+    under pandapower >= 3 the column instead retains whatever an earlier AC solve
+    left there, which for our generator is the ground truth itself. Datasets
+    written before that was noticed therefore carry the AC reactive power in
+    `dc_pf`, and applying the convention here corrects them at scoring time --
+    P, V and theta are untouched (verified identical between a DC solve on a
+    fresh net and on a copy of an AC-solved one).
+    """
+    out = dc_pf.clone()
+    out[:, 1] = 0.0
+    return out
+
+
+def nrmse_range_subset(y_true, y_pred, columns):
+    """`nrmse_range` restricted to a subset of target columns.
+
+    Used to score the DC baseline on the quantities DC actually solves (P, V,
+    theta), alongside the four-column number that charges it for Q == 0.
+    """
+    idx = [TARGET_NAMES.index(c) for c in columns]
+    return nrmse_range(y_true[:, idx], y_pred[:, idx])
+
+
 @torch.no_grad()
 def test_dc_pf(dataset, batch_size=32, full=False):
     """DC power-flow baseline: error of the stored DC solution vs the AC truth.
 
-    Same return contract as `evaluate`.
+    The stored solution is put through `apply_dc_convention` first. Same return
+    contract as `evaluate`, plus `nrmse_PVtheta` (the Q-excluded aggregate) in
+    the `full` metrics dict.
     """
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     dc, ys = [], []
     for batch in loader:
         dc.append(batch.dc_pf.cpu())
         ys.append(batch.y.cpu())
-    dc_pf, y_true = torch.cat(dc), torch.cat(ys)
+    dc_pf, y_true = apply_dc_convention(torch.cat(dc)), torch.cat(ys)
     nrmse, per_q = nrmse_range(y_true, dc_pf), nrmse_per_quantity(y_true, dc_pf)
     if full:
-        return nrmse, per_q, all_metrics(y_true, dc_pf)
+        metrics = all_metrics(y_true, dc_pf)
+        metrics["nrmse_PVtheta"] = nrmse_range_subset(
+            y_true, dc_pf, ["P", "V", "theta"])
+        return nrmse, per_q, metrics
     return nrmse, per_q
 
 

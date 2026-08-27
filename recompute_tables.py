@@ -21,16 +21,23 @@ WHAT IT COMPUTES
                            (arm, model) -- the four physical targets reported
                            separately, never as one aggregate
   dc_comparison.csv        per (arm, model, quantity) the GNN error, the DC-PF
-                           error on the same grids, and their ratio
+                           error on the same grids, and their ratio. The DC
+                           table is per ARM, because Regime A and Regime B were
+                           generated separately (`data_a` vs `data_full`).
 
-Topology-only inputs (`mmd_laplacian.csv`, `ood_distance.csv`, `dc_baseline.csv`)
-are model-independent, so any tuned shard's copy is valid; the script checks the
-shards agree before using one.
+Topology-only inputs (`mmd_laplacian.csv`, `ood_distance.csv`) are
+model-independent, so any tuned shard's copy is valid; the script checks the
+shards agree before using one. The DC baseline is passed in explicitly instead,
+because the per-shard `dc_baseline.csv` files predate the reactive-power fix
+(see recompute_dc_baseline.py) and are wrong.
 
 HOW TO RUN
   python3 recompute_tables.py --cross results/regime_b/cross_context.csv \
       --ood results/regime_b/ood.csv --within results/regime_a/within_grid.csv \
-      --topology results_tuned/gcn --out results/analysis
+      --topology results_tuned/gcn \
+      --dc_regime_a results/analysis/dc_baseline_regime_a.csv \
+      --dc_regime_b results/analysis/dc_baseline_regime_b.csv \
+      --out results/analysis
 """
 import argparse
 import os
@@ -53,6 +60,11 @@ def parse_args():
     p.add_argument("--topology", nargs="+", required=True,
                    help="tuned shard dirs holding the model-independent "
                         "mmd_laplacian.csv / ood_distance.csv / dc_baseline.csv")
+    p.add_argument("--dc_regime_a", required=True,
+                   help="DC baseline table for the Regime A data (data_a), "
+                        "from recompute_dc_baseline.py")
+    p.add_argument("--dc_regime_b", required=True,
+                   help="DC baseline table for the Regime B data (data_full)")
     p.add_argument("--out", required=True)
     return p.parse_args()
 
@@ -61,7 +73,10 @@ def topology_inputs(dirs):
     """Read the model-independent tables, refusing shards that disagree.
 
     They are recomputed identically by every arm, so a mismatch means the shards
-    came from different data and must not be merged into one table.
+    came from different data and must not be merged into one table. The shards'
+    `dc_baseline.csv` is still read as part of that agreement check, but its
+    values are NOT returned for use: they carry the contaminated reactive power
+    and are superseded by `--dc_regime_a` / `--dc_regime_b`.
     """
     lap = ood_dist = dc = None
     for d in dirs:
@@ -108,25 +123,42 @@ def per_quantity(frames):
     return pd.DataFrame(rows)
 
 
-def dc_comparison(frames, dc):
+def dc_comparison(frames, dc_tables):
     """GNN error vs DC power flow on the same grids, per quantity.
 
     The DC baseline is per grid, so each arm is compared against the mean DC
     error over the grids that arm evaluates on: the within-grid and OOD arms are
-    keyed by one grid per row, the cross-context arm spans all of them. Q is
-    reported but is structurally 0 for DC-PF (it carries no reactive power), so
-    its ratio is meaningless and is written as NaN.
+    keyed by one grid per row, the cross-context arm spans all of them. Regime A
+    and Regime B use different datasets, so `dc_tables` maps arm -> DC table.
+
+    DC power flow predicts no reactive power, so its Q column is 0 by convention
+    (ENGAGE's) and its Q error is the full spread of the AC reactive power. That
+    is a real number, not a missing one, and the ratio is reported -- but read it
+    as "the GNN against a model that does not attempt Q". The `PVtheta` row is
+    the aggregate over the three quantities DC does solve, which is the fairer
+    comparison and the one to quote out of distribution. That row is the mean of
+    the three per-quantity NRMSEs on BOTH sides: the DC table also carries a
+    pooled three-column NRMSE (`dc_nrmse_PVtheta`), but the stored GNN rows have
+    no pooled counterpart, so using it here would compare two estimators.
     """
-    dc_mean = {q: float(dc[f"dc_nrmse_{q}"].mean()) for q in QUANTITIES}
-    dc_mean["aggregate"] = float(dc["dc_nrmse"].mean())
     rows = []
     for arm, df in frames.items():
+        dc = dc_tables[arm]
+        dc_mean = {q: float(dc[f"dc_nrmse_{q}"].mean()) for q in QUANTITIES}
+        dc_mean["aggregate"] = float(dc["dc_nrmse"].mean())
+        dc_mean["PVtheta"] = float(
+            np.mean([dc_mean[c] for c in ("P", "V", "theta")]))
         for model, sub in df.groupby("model"):
-            for q in QUANTITIES + ["aggregate"]:
-                col = "nrmse" if q == "aggregate" else f"nrmse_{q}"
-                gnn = float(sub[col].mean())
+            for q in QUANTITIES + ["aggregate", "PVtheta"]:
+                if q == "aggregate":
+                    gnn = float(sub["nrmse"].mean())
+                elif q == "PVtheta":
+                    gnn = float(sub[[f"nrmse_{c}" for c in ("P", "V", "theta")]]
+                                .mean(axis=1).mean())
+                else:
+                    gnn = float(sub[f"nrmse_{q}"].mean())
                 ref = dc_mean[q]
-                ratio = float("nan") if (q == "Q" or ref == 0) else gnn / ref
+                ratio = float("nan") if ref == 0 else gnn / ref
                 rows.append({"arm": arm, "model": model, "quantity": q,
                              "gnn_nrmse": gnn, "dc_nrmse": ref,
                              "gnn_over_dc": ratio})
@@ -139,7 +171,9 @@ def main():
     within = pd.read_csv(args.within)
     cross = pd.read_csv(args.cross)
     ood = pd.read_csv(args.ood)
-    lap, pooled, dc = topology_inputs(args.topology)
+    lap, pooled, _ = topology_inputs(args.topology)
+    dc_a = pd.read_csv(args.dc_regime_a)
+    dc_b = pd.read_csv(args.dc_regime_b)
 
     models = sorted(set(cross.model) | set(ood.model) | set(within.model))
     grids = list(lap.index)
@@ -154,7 +188,7 @@ def main():
     gs = per_seed(compute_gscores, cc_records, cc_seeds, lap, models, grids)
     pd.DataFrame(gs).to_csv(os.path.join(args.out, "gscore.csv"), index=False)
 
-    dc_rows = dc.to_dict("records")
+    dc_rows = dc_b.to_dict("records")
     agg = per_seed(compute_cc_aggregate_gscores, cc_records, cc_seeds,
                    lap, dc_rows, models, grids)
     agg = pd.DataFrame(agg)
@@ -168,7 +202,8 @@ def main():
     frames = {"regime_a": within, "cross_context": cross, "ood": ood}
     per_quantity(frames).to_csv(
         os.path.join(args.out, "per_quantity.csv"), index=False)
-    dc_comparison(frames, dc).to_csv(
+    dc_tables = {"regime_a": dc_a, "cross_context": dc_b, "ood": dc_b}
+    dc_comparison(frames, dc_tables).to_csv(
         os.path.join(args.out, "dc_comparison.csv"), index=False)
 
     pd.set_option("display.width", 150)
