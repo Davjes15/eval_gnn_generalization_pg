@@ -377,7 +377,29 @@ diagonal (0.0053 mean) versus off-diagonal (0.5789 mean) shows the transfer
 penalty the study is about — a two-orders-of-magnitude gap that the diverged
 runs could not have measured at all.
 
-## 8. A caution on sharding
+## 8. Which models are on disk, and which reproduce from seed
+
+`gcn`, `gat`, `gin` and `transformer` have their trained weights in `ckpt_a/`
+(Regime A) and `ckpt_b/` (Regime B), one file per grid and seed.
+
+**`arma_gnn` and `nnconv` have no checkpoints; they reproduce from the recorded
+seed instead.** Their arms were launched without `--save_models`, so only the
+metric rows were written. Re-running the command in §6/§7 with the same seed
+regenerates the model and its numbers — every run records `model`,
+`num_layers`, `hidden`, `learning_rate` and `seed` in its own CSV rows, and the
+seeds are fixed (`0, 100, 300, 700, 1000`; `0, 100, 300` for `nnconv`).
+
+ARMA's checkpoints were *deleted* rather than kept: the only ones that existed
+were from the pre-fix definition of §4.2, and many of their tensors were NaN
+because those runs diverged. Keeping NaN weights next to valid ones invites a
+superseded checkpoint into a result, and they carried no information the result
+CSVs do not already hold — the divergence evidence itself is preserved as data
+in `results_a/within_arma_gnn/` and `results_tuned/arma_gnn/`, and a
+`PROVENANCE.txt` is left in each emptied directory. Note the consequence for
+resumability: `--skip_existing` needs `--save_models`, so an interrupted ARMA or
+NNConv arm restarts from its first grid.
+
+## 9. A caution on sharding
 
 **Two processes must never share an output
 directory.** Each loads the shard's `tuning.csv` at start and rewrites it at
