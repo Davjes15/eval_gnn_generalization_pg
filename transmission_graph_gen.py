@@ -17,8 +17,12 @@ WHY THIS STEP EXISTS (design decisions D2, D6, D9, D10, D11)
       gendataopf.m).
     - D6 (masking): node inputs are masked by bus type via the vendored ENGAGE
       contract (engage_contract.py).
-    - D9 (comparability): features are ENGAGE per-unit; downstream normalization
-      is handled in training, not here.
+    - D9 (comparability): node features and targets are written in RAW physical
+      units (MW, Mvar, p.u., degrees), exactly as ENGAGE's graph_gen.py does;
+      only the edge features are per-unit impedances. Any scaling is a training
+      choice, selected with `experiments.py --normalize` (see normalization.py).
+      An earlier version of this docstring claimed per-unit node features, which
+      was never true.
     - D11 (harvest contingencies): the contingency sampler is pluggable so a
       future option can inject outage sets harvested from PowerGraph-Graph
       instead of random N-k.
@@ -155,6 +159,7 @@ def generate_dataset(
     contingency_source: str = "random",
     pg_graph_raw: str | None = None,
     used_t: set[int] | None = None,
+    t_range: tuple[int, int] | None = None,
 ):
     """Generate `n_samples` valid (demand, contingency) operating points for `code`.
 
@@ -168,6 +173,12 @@ def generate_dataset(
     demand snapshots disjoint. This matters for the fixed-topology regime
     (`max_k=0`), where a repeated snapshot is an exact duplicate sample and a
     repeat across splits is test-set leakage.
+
+    `t_range`: half-open [lo, hi) window of the demand time axis to draw from.
+    Giving each split its own window makes the split BLOCKED in time, which is
+    stricter than uniqueness: consecutive 15-minute snapshots are near-duplicates
+    even when their indices differ, so a randomly-drawn test snapshot can be the
+    neighbour of a training one (audit item A5).
     """
     base = load_case(code)
     demand = load_hourly_demand(code)
@@ -199,7 +210,8 @@ def generate_dataset(
         net = deepcopy(base)
 
         # 1) demand snapshot
-        t = int(rng.integers(0, n_time))
+        lo, hi = t_range if t_range is not None else (0, n_time)
+        t = int(rng.integers(lo, hi))
         if used_t is not None and t in used_t:
             continue
         _apply_demand(net, demand[:, t])
@@ -248,6 +260,35 @@ def generate_dataset(
     return samples, metas
 
 
+def blocked_time_ranges(n_time: int, counts: dict[str, int], gap: int):
+    """Contiguous, mutually-exclusive demand-time windows per split (A5).
+
+    The time axis is divided in proportion to each split's sample count, with
+    `gap` steps discarded between consecutive windows so no test snapshot is
+    adjacent to a training one. Returns {split: (lo, hi)}.
+
+    Raises if a window would be too small to supply its split with distinct
+    snapshots -- silently drawing duplicates is what A5 is about.
+    """
+    splits = [s for s in ("train", "val", "test") if counts.get(s, 0) > 0]
+    total = sum(counts[s] for s in splits)
+    usable = n_time - gap * (len(splits) - 1)
+    if usable <= total:
+        raise ValueError(
+            f"demand axis of {n_time} steps cannot supply {total} distinct "
+            f"snapshots with a gap of {gap}")
+    out, cursor = {}, 0
+    for i, split in enumerate(splits):
+        width = (usable * counts[split]) // total
+        if width < counts[split]:
+            raise ValueError(
+                f"{split} window of {width} steps is smaller than its "
+                f"{counts[split]} samples")
+        out[split] = (cursor, cursor + width)
+        cursor += width + (gap if i < len(splits) - 1 else 0)
+    return out
+
+
 def _save_split(out_dir: str, code: str, split: str, samples, metas):
     split_dir = os.path.join(out_dir, code, split)
     os.makedirs(split_dir, exist_ok=True)
@@ -274,6 +315,15 @@ def parse_args():
                    help="draw each demand snapshot at most once per grid, across "
                         "all splits (required for the fixed-topology regime, "
                         "where a repeated snapshot is an exact duplicate)")
+    p.add_argument("--time_split", choices=["random", "blocked"], default="random",
+                   help="'random' draws every split's demand snapshots from the "
+                        "whole year (the original behaviour); 'blocked' gives "
+                        "each split a disjoint contiguous time window, so a test "
+                        "snapshot is never the neighbour of a training one "
+                        "(audit item A5). Implies --unique_demand.")
+    p.add_argument("--time_gap", type=int, default=96,
+                   help="demand steps discarded between blocked windows "
+                        "(96 = one day at 15-minute resolution)")
     p.add_argument("--contingency_source", choices=["random", "harvest"],
                    default="random",
                    help="'random' N-k outages, or 'harvest' real outage sets "
@@ -292,7 +342,14 @@ def main():
               f"max_k={args.max_k}, redispatch={args.redispatch})")
         # One RNG per grid, seeded deterministically (stable across processes).
         rng = np.random.default_rng(args.seed * 100 + _GRID_SEED_OFFSET.get(code, 0))
-        used_t = set() if args.unique_demand else None
+        blocked = args.time_split == "blocked"
+        used_t = set() if (args.unique_demand or blocked) else None
+        counts = {"train": args.n_train, "val": args.n_val, "test": args.n_test}
+        windows = None
+        if blocked:
+            n_time = load_hourly_demand(code).shape[1]
+            windows = blocked_time_ranges(n_time, counts, args.time_gap)
+            print(f"  blocked time windows: {windows}")
         for split, n in [("train", args.n_train), ("val", args.n_val), ("test", args.n_test)]:
             if n <= 0:
                 continue
@@ -302,6 +359,7 @@ def main():
                 contingency_source=args.contingency_source,
                 pg_graph_raw=args.pg_graph_raw,
                 used_t=used_t,
+                t_range=windows[split] if windows else None,
             )
             _save_split(args.out_dir, code, split, samples, metas)
 

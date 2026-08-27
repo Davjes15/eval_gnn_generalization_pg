@@ -20,6 +20,10 @@ WHAT IT CHECKS
     C. Masking correctness  -- masked input columns are NaN per bus type.
     D. Topology variation   -- contingencies actually change the edge count.
     E. MMD non-degeneracy   -- within-grid MMD < cross-grid MMD, not constant.
+    H. Split hygiene        -- no demand snapshot shared between splits, no
+                               repeated (snapshot, outage) scenario, and with
+                               --expect_blocked, disjoint contiguous time
+                               windows per split (audit item A5).
 
 FIXED-TOPOLOGY REGIME (`--regime a`)
     The fixed-topology control arm inverts gate D: every sample in a grid must
@@ -221,6 +225,44 @@ def gate_split_disjointness(g: Gate, data_dir, grids):
                     len(s) == len(meta), f"{len(s)} distinct of {len(meta)}")
 
 
+def gate_split_hygiene(g: Gate, data_dir, grids, expect_blocked: bool):
+    """H. Split hygiene for the varying-topology regime (audit item A5).
+
+    With topology varying, a repeated demand snapshot is no longer an exact
+    duplicate, so gate G's criterion is too weak on its own. What must hold is:
+      * no demand snapshot is shared between two splits (a shared snapshot means
+        the test set re-uses an operating point the model was fitted on);
+      * no exact (snapshot, outage-set) scenario is repeated inside a split;
+      * with --expect_blocked, each split's snapshots occupy a contiguous window
+        disjoint from the others', so a test snapshot is not the 15-minute
+        neighbour of a training one either.
+    """
+    print("\nH. Split hygiene (demand snapshots and scenarios across splits)")
+    for code in grids:
+        metas = {s: _load_meta(data_dir, code, s)
+                 for s in ("train", "val", "test")}
+        if any(m is None for m in metas.values()):
+            g.check(f"{code} metadata present for all splits", False)
+            continue
+        sets = {s: set(m["t_idx"].tolist()) for s, m in metas.items()}
+        overlaps = {f"{a}|{b}": len(sets[a] & sets[b])
+                    for a, b in (("train", "val"), ("train", "test"), ("val", "test"))}
+        g.check(f"{code} splits share no demand snapshot",
+                all(v == 0 for v in overlaps.values()), str(overlaps))
+        for split, meta in metas.items():
+            pairs = list(zip(meta["t_idx"].tolist(),
+                             meta["out_lines"].astype(str).tolist()))
+            g.check(f"{code}/{split} no repeated scenario",
+                    len(set(pairs)) == len(pairs),
+                    f"{len(set(pairs))} distinct of {len(pairs)}")
+        if expect_blocked:
+            spans = {s: (min(v), max(v)) for s, v in sets.items()}
+            ordered = sorted(spans.items(), key=lambda kv: kv[1][0])
+            disjoint = all(ordered[i][1][1] < ordered[i + 1][1][0]
+                           for i in range(len(ordered) - 1))
+            g.check(f"{code} split time windows are disjoint", disjoint, str(spans))
+
+
 def gate_mmd(g: Gate, data_dir, grids):
     print("\nE. MMD non-degeneracy (within-grid < cross-grid, not constant)")
     from mmd_utils import evaluate_mmd
@@ -258,8 +300,12 @@ def parse_args():
                    help="if given, also run data/contract/topology/MMD gates")
     p.add_argument("--grids", nargs="+", default=None)
     p.add_argument("--regime", choices=["a", "b"], default="b",
-                   help="'b' (default): topology varies -- gates B-E. "
+                   help="'b' (default): topology varies -- gates B-E, H. "
                         "'a': fixed topology -- gates B, C, D', F, G.")
+    p.add_argument("--expect_blocked", action="store_true",
+                   help="additionally require each split's demand snapshots to "
+                        "occupy a contiguous window disjoint from the other "
+                        "splits' (datasets built with --time_split blocked)")
     return p.parse_args()
 
 
@@ -280,6 +326,7 @@ def main():
                   "MMD is 0 by construction and the g-score is undefined.)")
         else:
             gate_topology_variation(g, args.data_dir, grids)
+            gate_split_hygiene(g, args.data_dir, grids, args.expect_blocked)
             gate_mmd(g, args.data_dir, grids)
     else:
         print("\n(Skipping data-dependent gates B-E; pass --data_dir to enable.)")

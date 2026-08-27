@@ -32,6 +32,28 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 
 ---
 
+## Remediation status (updated as work lands)
+
+| # | Finding | Status | What closes it | Retraining? |
+|---|---|---|---|---|
+| A1 | DC baseline carried AC reactive power | **closed** | Q ≡ 0 enforced at generation *and* at scoring (`apply_dc_convention`); `nrmse_PVtheta` added as the fair-to-DC secondary aggregate; `pandapower==3.5.4` pinned; regression tests | no |
+| A2 | Node features/targets never scaled | **implemented, campaign running** | `normalization.py` + `experiments.py --normalize pu_zscore`, de-normalized before scoring (Decision 20). Within-grid arm training now; Regime B follows A5 | **yes** (final campaign) |
+| A3 | Aggregate metric hides the physics | open | evaluation pass over the saved checkpoints: per-quantity metrics as primary, metrics over genuinely predicted entries only, AC-mismatch feasibility, V/line violation rates, p95/p99/max tails | no |
+| A4 | Not reproducible from the repository | partly closed | tuning artifacts + version pins committed; `dataset_src.csv` committed for the final datasets; remaining: checkpoint index + one-command replay | no |
+| A5 | Split hygiene (shared demand snapshots in Regime B) | **fix implemented, data regenerating** | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` regenerating | **yes** (Regime B only, once) |
+| A6 | g-score affine in (mean, sd) here | open | derivation + explicit statement of what the MMD term can and cannot contribute with four grids | no |
+| A7 | MMD estimator details unstated | open | documentation of estimator, kernel, sigmas, sample sizes | no |
+| A8 | Statistics weaker than claimed | partly closed | permutation test run (A↔OOD τ = 0.222, p = 0.21; A↔cross-context −0.022, p = 0.91) and the wording corrected; remaining: optional NNConv 3 → 5 seeds | additive only |
+
+**Ordering constraint that drove the plan:** A5 changes the Regime B *data*, and A2 changes the
+*training representation*. Doing them in either order separately would mean training the same six
+architectures twice on the cross-context and OOD arms. They are therefore bundled: Regime A (which
+uses `data_a`, unaffected by A5) trains under A2 immediately; Regime B waits for `data_full_v2` and
+then trains once. A3/A4/A6/A7 are evaluation and documentation passes over the resulting
+checkpoints, which is why checkpointing every final run was made a requirement.
+
+---
+
 ## A1 — DC baseline reactive power is the AC ground truth. CONFIRMED (critical)
 
 Verified empirically:

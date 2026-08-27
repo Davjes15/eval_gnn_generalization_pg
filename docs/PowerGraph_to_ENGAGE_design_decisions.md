@@ -129,6 +129,15 @@ Unified target set: **`GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NNConv`.*
 ---
 
 ## Decision 9 — Cross-grid comparability: per-unit normalization + fix the MMD defects
+> **Superseded in part by Decision 20 (read that first).** The intent below — that a
+> model must not see grid B in a different unit system than grid A — is correct and
+> retained. Two claims in it were wrong in fact: (i) ENGAGE's feature extractors do
+> **not** deliver per-unit *node* features (only edge impedances are per-unit; node
+> quantities are raw MW/Mvar/p.u./degrees, in ENGAGE's code and in ours), and (ii)
+> per-unit conversion could not have fixed the cross-grid scale problem here anyway,
+> because all four transmission cases share `sn_mva = 100`, so it is a division by
+> one common constant. No node-level scaling was implemented until Decision 20.
+
 **Decision:** For any cross-grid comparison, **normalize on a physically consistent per-unit basis** (`baseMVA`/`baseKV`), not PowerGraph's per-grid max-abs. Also fix the two MMD defects before trusting topological distance: (a) retune kernel sigmas so the Gaussian is not saturated, and (b) compute topology on the **physical one-line graph, not the Ybus sparsity pattern with self-loops**.
 
 **Why:**
@@ -257,6 +266,72 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 **Decision:** every headline number — rankings, g-score, per-quantity P/Q/V/θ, DC-baseline comparison — is recomputed from the **tuned-configuration** runs (`results_a/`, `results_tuned/`). The earlier `full_run/results/` tables were produced under the **inherited** ENGAGE configuration (before the equal-budget sweep of Decision 15) and are retained only as the historical run, marked in `RUN_METADATA.txt`, and never mixed into a tuned table.
 
 **Why:** the two sets differ in depth, width and learning rate per architecture, so a table that mixed them would compare architectures at unequal budgets — precisely the confound the sweep exists to remove.
+
+---
+
+## Decision 20 — Feature/target scaling is an explicit training option, and the benchmark protocol uses `pu_zscore` (audit item A2)
+**Decision:** scaling lives in one module, `normalization.py`, and is selected per run with
+`experiments.py --normalize {none,pu,pu_zscore}`.
+
+| mode | meaning | role |
+|---|---|---|
+| `none` | raw physical units | the protocol every pre-existing artifact was produced with; kept as the **default** so those rows stay bit-identically reproducible, and reported as an ablation |
+| `pu` | powers ÷ `sn_mva`, angles → radians | engineering per-unit only; documented, not used for headline results |
+| `pu_zscore` | per-unit, then per-quantity z-score with **training-split statistics** | **the benchmark protocol** for all final results |
+
+Statistics are fitted on training data only — per grid for the within-grid arm, on the
+source grid for cross-context, on the pooled training grids for leave-one-grid-out — and
+applied unchanged to validation and test. Node features (columns 3:7) and targets are
+scaled with the *same* statistics, which is what keeps the known-value re-injection in
+`models.py::inference` legal. Predictions are de-normalized before any metric is
+computed, so every reported number stays in physical units, and the DC baseline is never
+scaled at all.
+
+**Why:** the defect is not primarily the cross-grid magnitude gap the audit pointed at — it
+is *inside each sample*. In raw units the four target quantities differ by up to ten orders
+of magnitude in the loss, so the fraction of the training loss attributable to voltage
+magnitude is ≈ 5·10⁻⁸ on IEEE24 and ≈ 1·10⁻¹¹ on UK: voltage is effectively not optimized.
+That is exactly what the raw-unit results show — every architecture is worse than the
+constant predictor `V ≡ 1.0` p.u. even in-distribution. A 15-epoch control on IEEE24/`gcn`
+moves voltage NRMSE from 2.97 to 0.021 with no loss on P, Q or θ.
+
+**Field grounding:** ENGAGE does not scale node features, and gets away with it because its
+SimBench LV/MV feeders have MW injections of the same order as `vm_pu ≈ 1`; our
+transmission systems carry 10³–10⁴ MW. **PowerGraph-Node's released code does scale** —
+per-dimension max-abs on both X and Y, de-normalized for reporting. PowerFlowNet z-scores
+X, Y and edge features on train-split statistics; Hansen et al. (the source of our ARMA
+setup) divides powers by `baseMVA`. Scaling with de-normalized reporting is the field norm;
+ENGAGE is the exception. Details and measurements: `Normalization_assessment.md`.
+
+**What it does *not* fix:** the UK system genuinely moves an order of magnitude more power
+than IEEE24, and no unit system removes that. A train-grid-fitted scaler is the honest
+choice, but the transfer claim must then read "generalization to an unseen *system*"
+(topology **and** scale), not "to an unseen topology".
+
+---
+
+## Decision 21 — Regime B is regenerated with a blocked temporal split (audit item A5)
+**Decision:** the final varying-topology datasets (`data_full_v2`) are generated with
+`transmission_graph_gen.py --time_split blocked`, which gives train, validation and test
+**disjoint contiguous windows of the demand year**, separated by a one-day gap
+(`--time_gap 96` steps at 15-minute resolution), and draws each demand snapshot at most
+once. Validation gate H (`validate.py --regime b --expect_blocked`) asserts the resulting
+properties, and `tests/test_split_hygiene.py` asserts that the gate actually catches a
+leaky dataset. `data_full` is retained as provenance for the superseded results, never
+mixed into a final table.
+
+**Why:** the original Regime B data drew every split's snapshots uniformly from the whole
+year, so splits shared demand snapshots outright (4/3/1/0 shared snapshots across the four
+grids). Uniqueness alone is still too weak, because consecutive 15-minute snapshots are
+near-duplicates: a test point drawn one step after a training point is not an independent
+operating condition. Blocking in time is the standard remedy for temporally correlated
+data and is what makes "unseen operating conditions" defensible. Regime A (`data_a`) was
+already generated with `--unique_demand` and is unaffected, which is why only Regime B is
+regenerated.
+
+**Sequencing consequence (why this came before training):** A5 changes the Regime B data, so
+the cross-context and OOD arms had to be trained *after* regeneration, not before —
+otherwise the same six architectures would have been trained twice on those two arms.
 
 ---
 

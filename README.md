@@ -19,21 +19,113 @@ Each grid is turned into a **distribution of topologies** by sampling credible N
 IEEE24, IEEE39, IEEE118, and the UK 29-bus system (PowerGraph's own `System.m` cases).
 
 ## Task & data contract
-Node-level AC PF state estimation — predict per-bus `[P, Q, V, θ]`.
-- `x`: `(N, 7)` = `[Slack?, PV?, PQ?, p_mw, q_mvar, vm_pu, va_degree]` (unknown inputs masked by bus type)
-- `edge_index`: `(2, 2E)`
-- `edge_attr`: `(2E, 4)` = `[transformer?, r_pu, x_pu, sc_voltage]`
-- `y`: `(N, 4)` = `[p_mw, q_mvar, vm_pu, va_degree]`
-- `dc_pf`: `(N, 4)` DC power-flow baseline
+Node-level AC power-flow (PF) state estimation — predict the per-bus state
+`[P, Q, V, θ]`. Each grid loading (one demand snapshot + one contingency topology)
+is a single PyTorch-Geometric `Data` graph; buses are **nodes**, lines/transformers
+are **edges**. `N` = number of buses, `E` = number of lines/transformers. Values are
+**per-unit** (pandapower AC PF solution). This is the same ENGAGE contract (which
+adapts PowerGraph's `X/Y/edge_*` layout into a single edge-aware `Data` object).
+
+### Data attributes (each `Data` object in `data/<GRID>/<split>/dataset.pt`)
+- **`x`** — node **input** feature matrix, dim **`(N, 7)`** = `[Slack?, PV?, PQ?, p_mw, q_mvar, vm_pu, va_degree]`:
+  - `Slack?, PV?, PQ?` — one-hot **bus type** (exactly one is 1). Tells the model which
+    two of `[P,Q,V,θ]` are *known* for that bus (slack: V,θ · PV: P,V · PQ: P,Q).
+  - `p_mw` — active power injection (MW); `q_mvar` — reactive power injection (MVar).
+  - `vm_pu` — voltage magnitude (per-unit, ≈ 1.0); `va_degree` — voltage angle (degrees).
+  - **Masking:** entries that are *unknown* for a bus type are `NaN` (→ 0 in `forward`),
+    so only the known boundary conditions are actually given as inputs.
+- **`edge_index`** — connectivity, dim **`(2, 2E)`**. Each line appears in **both**
+  directions (undirected grid stored as directed pairs), hence `2E`.
+- **`edge_attr`** — edge **input** feature matrix, dim **`(2E, 4)`** = `[transformer?, r_pu, x_pu, sc_voltage]`:
+  - `transformer?` — 1 if the branch is a transformer, 0 if a line.
+  - `r_pu` — series resistance (per-unit); `x_pu` — series reactance (per-unit).
+  - `sc_voltage` — transformer short-circuit voltage `vk_percent` (%); `NaN` for
+    lines (→ 0 in `forward`).
+- **`y`** — node **target/label** matrix, dim **`(N, 4)`** = `[p_mw, q_mvar, vm_pu, va_degree]`.
+  The **complete** solved AC PF state (no masking, no NaNs) — the supervision signal.
+- **`dc_pf`** — **DC power-flow baseline**, dim **`(N, 4)`**, same columns as `y`.
+  pandapower's `rundcpp` on the *same* (contingency-applied) net: the linear DC
+  approximation solves real-power flows and angles, holds voltage magnitudes at their
+  controlled setpoints (≈ 1.0, non-controlled buses at 1.0), and carries the DC-solution
+  reactive power. Stored per graph so "the GNN beats a cheap linear solver" is
+  demonstrated, not assumed.
+
+> Note vs PowerGraph: PowerGraph stores separate `X.mat`, `Y_polar.mat`,
+> `edge_index.mat`, `edge_attr.mat` (edges as conductance `G`/susceptance `B`). We use
+> ENGAGE's single `Data` object, bus-type one-hots + masking on `x`, and edges as
+> `[transformer?, r_pu, x_pu, sc_voltage]`. Full field-by-field rationale is in
+> `docs/PowerGraph_to_ENGAGE_design_decisions.md`.
 
 ## Model zoo
 `GCN`, `ARMA_GNN` (ENGAGE) plus `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph), all under one ENGAGE-style interface (edge-aware, with per-bus-type known-value re-injection).
+
+## Pipeline flow (what the code does, file by file)
+```mermaid
+flowchart TD
+    A["PowerGraph-Node<br/>System.m + hourlyDemandBus.mat<br/>(IEEE24/39/118/UK)"] -->|Octave| B["transmission/convert_cases.m<br/>Step 1: .m → .mat"]
+    B --> C["transmission_grids.py<br/>Step 2: load case + demand → pandapower net<br/>(per-unit, base PF sanity)"]
+    C --> D["transmission_graph_gen.py<br/>Step 3: for each (demand snapshot, contingency)"]
+    H["contingency_harvest.py<br/>(optional) real PowerGraph outage sets"] -.->|--contingency_source harvested| D
+    D --> D1["apply N-k outage → runpp (AC PF solve)"]
+    D1 --> D2["engage_contract.py<br/>build x (masked by bus type), edge_attr, y, dc_pf"]
+    D2 --> E["data/&lt;grid&gt;/&lt;split&gt;/dataset.pt<br/>(800 train / 100 val / 100 test per grid)"]
+    E --> F["experiments.py<br/>Step 5: train + evaluate"]
+    M["models.py<br/>MODELS = gcn, arma_gnn, gat, gin, transformer, nnconv"] --> F
+    T["training_utils.py<br/>weighted-MSE loss, NRMSE, DC baseline"] --> F
+    X["mmd_utils.py<br/>degree/Laplacian MMD"] --> F
+    F --> R1["results/*.csv<br/>transfer_matrix_*, cross_context, ood,<br/>mmd_*, gscore*, ood_distance, dc_baseline"]
+    F --> R2["models/*.pt<br/>cc_&lt;model&gt;_&lt;grid&gt; · ood_&lt;model&gt;_heldout_&lt;grid&gt;"]
+    E --> V["validate.py<br/>Step 6: contract/masking/topology/MMD gates"]
+```
+
+## Training method (encode → process → decode, per node)
+This is the shared skeleton in `models.py` (`BasePFGNN.forward`), ported from
+ENGAGE's GCN/ARMA design with the four PowerGraph models slotted into the same
+skeleton. **The entire path below runs on every forward pass — during both training
+and evaluation.** Read the diagram top-to-bottom as one forward pass; the only
+train-vs-eval difference is the last step (the dashed branch).
+
+Terminology, since these names trip people up:
+- **Encoder** = a small MLP that lifts the raw 7-dim node vector into a 64-dim
+  latent so the GNN has capacity to work with (nothing to do with autoencoders).
+- **Edge encoder** = a *separate, tiny* module (**not** the GNN) that turns the 4
+  edge attributes into something the GNN layer can consume. The label in parentheses
+  says *which kind* each model uses: a scalar weight (GCN/ARMA), a vector embedding
+  (GAT/GIN/Transformer), or a per-edge weight-matrix net (NNConv).
+- **Processor** = **the GNN we actually train** — the message-passing layers. This is
+  the *only* block that differs across the six architectures.
+- **Skip-concat** = re-attach the raw `x` (residual connection) so the decoder keeps
+  direct access to the original features, incl. the known boundary values. Shared by all.
+- **Decoder** = a small MLP that projects the 64-dim latent back down toward the answer.
+- **Readout** = the final `Linear(64→4)` giving the four outputs **per bus** (node-level,
+  *not* graph pooling).
+
+The **loss is identical for every model and both experiments**: weighted MSE over
+all four outputs.
+```mermaid
+flowchart TD
+    X["x (N,7): [Slack?,PV?,PQ?,p,q,vm,va]<br/>unknowns NaN→0"] --> ENC["ENCODER — node MLP<br/>Linear(7→64) → Linear(64→64)"]
+    EA["edge_attr (2E,4): [trafo?,r_pu,x_pu,sc_V]"] --> EE["EDGE ENCODER (small module, NOT the GNN)<br/>scalar weight (GCN/ARMA) · vector embed (GAT/GIN/Transformer) · edge-net 64×64 (NNConv)"]
+    ENC --> MP["PROCESSOR = the GNN we train (message passing)<br/>the ONLY block that differs: GCN · ARMA · GAT · GIN · Transformer · NNConv"]
+    EE -->|edge weight / embedding| MP
+    MP --> SK["SKIP-CONCAT: [ raw x ‖ node_emb ] → (N, 7+64)<br/>(shared by all models)"]
+    X -.->|residual| SK
+    SK --> DEC["DECODER — MLP<br/>Linear(71→64) → Linear(64→64)"]
+    DEC --> RO["READOUT (per bus) — Linear(64→4)<br/>pred = [P, Q, V, θ]"]
+    RO --> TRAIN["TRAINING step: weighted_mse_loss(pred, y)<br/>over ALL 4 outputs, weight 1/‖y‖ · Adam + early stopping"]
+    RO -.->|EVAL ONLY| RI["known-value re-injection<br/>slack→V,θ · PV→P,V · PQ→P,Q"]
+    RI -.-> OUT["reported pred → NRMSE (per-quantity + aggregate)"]
+```
+*The solid path (down to the TRAINING box) is what happens every training step. The
+dashed branch is applied only at evaluation: it overwrites the known quantities with
+their true inputs before scoring, so re-injection never leaks into the loss.*
 
 ## Repository layout
 ```
 eval_gnn_generalization_pg/
 ├── README.md                     # this file — start here
 ├── docs/                         # design & experiment documents (the "why")
+│   ├── Pipeline_Report.md        # ← as-built report: flow diagram + run guide
 │   ├── PowerGraph_to_ENGAGE_design_decisions.md
 │   ├── Experimental_Design_transmission_GNN_generalization.md
 │   ├── Layer2_implementation_plan.md
@@ -44,7 +136,22 @@ eval_gnn_generalization_pg/
     └── README.md                 # per-step instructions for this folder
 ```
 
+## Detailed pipeline report
+For a full walkthrough — **flow diagram**, technical grounding, file-by-file
+explanation of how the pieces connect, and a run guide (incl. single grid /
+single architecture) — see [`docs/Pipeline_Report.md`](docs/Pipeline_Report.md).
+
+## Hardware / GPU
+Training and evaluation use a **GPU automatically** when available
+(`get_device()` → `cuda:0` if `torch.cuda.is_available()`, else CPU) — no code
+change needed. **Data generation is CPU-only** (pandapower Newton-Raphson AC
+power-flow solves do not use the GPU).
+
 ## How to run the experiments (step by step)
+> **On Windows with a GPU and no environment yet?** Follow the dedicated
+> copy‑paste guide: [`docs/Reproduce_on_Windows.md`](docs/Reproduce_on_Windows.md)
+> (venv, CUDA PyTorch + PyG, data generation, and running one model at a time).
+
 This guide is built up **incrementally, one implementation step per branch**. Each
 step below is marked with its status so you always know what is runnable today.
 
@@ -140,14 +247,41 @@ pip install -r requirements.txt
 # quick smoke test (few epochs, two models, two grids):
 python3 experiments.py --experiment both --models gcn gat --epochs 20 \
     --grids IEEE24 IEEE39 --data_dir data --out results
-# full run (all grids + all models):
-python3 experiments.py --experiment both --data_dir data --out results
+# full run (all grids + all models), and SAVE the trained models:
+python3 experiments.py --experiment both --data_dir data --out results \
+    --epochs 200 --save_models models
 ```
 Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 (incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
-`gscore.csv`, `ood.csv`. Supporting code: `training_utils.py` (training loop +
+`gscore.csv` (cross-context g-score) + `gscore_smallN.csv`, `gscore_ood.csv`
+(OOD g-score — per model over held-out grids; the better-posed one at N=4),
+`ood.csv`. Supporting code: `training_utils.py` (training loop +
 metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
 version).
+
+**Saving / reusing trained models.** Pass `--save_models <dir>` to write every
+trained model's weights, named `cc_<model>_<train_grid>.pt` (cross-context) and
+`ood_<model>_heldout_<grid>.pt` (OOD). Reload one with:
+```python
+import torch; from models import MODELS
+m = MODELS["gat"](input_dim=7); m.load_state_dict(torch.load("models/cc_gat_IEEE39.pt")); m.eval()
+```
+
+### Run only ONE grid or ONE architecture
+Both scripts take subset flags, so you never have to run everything:
+```bash
+# generate a single grid
+python3 transmission_graph_gen.py --grid IEEE39 --n_train 800 --n_val 100 --n_test 100 --out_dir data
+
+# a single architecture (all grids)
+python3 experiments.py --experiment both --models gat --data_dir data --out results --save_models models
+
+# a subset of grids (needed for meaningful transfer) + one model, quick
+python3 experiments.py --experiment cross --models gcn --grids IEEE24 IEEE39 \
+    --epochs 20 --data_dir data --out results
+```
+> Cross-grid transfer needs ≥2 grids; `--grids IEEE39` alone yields only the
+> within-grid diagonal.
 
 ### Step 6 — Validation gates  ✅ available on `step-6-validation`
 Automatic checks that catch the failures that would make the study *invalid*
@@ -213,8 +347,51 @@ python3 validate.py --data_dir data
 python3 experiments.py --experiment both --data_dir data --out results
 
 # 7. Read the results
-ls results/         # transfer_matrix_*.csv, gscore.csv, ood.csv, dc_baseline.csv, ...
+ls results/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
 ```
+
+## Reproducing the reported benchmark (the final protocol)
+
+The walkthrough above is the generic pipeline. The numbers in
+[`docs/Regime_comparison_results.md`](docs/Regime_comparison_results.md) come from this exact
+sequence — the differences from the generic commands (`--time_split blocked`, `--normalize
+pu_zscore`, `--save_models`) are the two audit remediations and the checkpointing
+requirement, and they are what make the results defensible and replayable. The protocol
+itself is specified in
+[`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md#final-protocol-as-executed);
+the reasoning per decision is in
+[`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md)
+(Decisions 20 and 21) and the audit trail in
+[`docs/Audit_response.md`](docs/Audit_response.md).
+
+```bash
+# A. In-distribution control: one fixed topology per grid, each demand snapshot used once
+python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+python3 validate.py --data_dir data_a --regime a
+
+# B. Varying topology: N-k contingencies, blocked temporal split (no leakage of
+#    neighbouring demand snapshots into the test set)
+python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+python3 validate.py --data_dir data_full_v2 --regime b --expect_blocked
+
+# Training: frozen equal-budget configs, train-statistics scaling, checkpoints for replay.
+# Metrics are always reported in physical units (predictions are de-normalized first).
+python3 experiments.py --experiment within --data_dir data_a       --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/within --save_models ckpt_norm/within
+python3 experiments.py --experiment cross  --data_dir data_full_v2 --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/cross --save_models ckpt_norm/cross
+python3 experiments.py --experiment ood    --data_dir data_full_v2 --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/ood --save_models ckpt_norm/ood
+```
+
+`--normalize none` (the default) reproduces the raw-unit ablation instead, bit-identically to
+the earlier `results/` tables. `launch_normalized.sh` runs the same campaign sharded across
+cores; every job is resumable with `--skip_existing` because it checkpoints.
 
 ## Status
 **Steps 1–7 implemented** (grid conversion → loader → data generation → model

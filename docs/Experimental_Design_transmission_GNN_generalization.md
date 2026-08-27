@@ -19,6 +19,29 @@ A single aggregate NRMSE **overstates** performance, because the four targets ar
 - **The DC-PF baseline** (`training_utils.test_dc_pf`), and ideally a warm-started single Newton step, so "the GNN beats trivial physics" is *demonstrated*, not assumed.
 - **Topological distance via MMD** (degree + Laplacian). Because power engineers reason in **electrical distance** (impedance-weighted), optionally complement MMD with an electrical measure (e.g. X/R or short-circuit-ratio distribution distance, or a PTDF-based distance) to strengthen power-systems credibility. MMD stays the primary distance for the g-score; the electrical measure is a corroborating cross-check.
 
+## Experimental design at a glance
+```mermaid
+flowchart TD
+    G["4 grids: IEEE24, IEEE39, IEEE118, UK<br/>each = distribution of topologies<br/>(demand snapshots × N-k contingencies)"] --> DS["per grid: 800 train / 100 val / 100 test graphs"]
+
+    DS --> CC["EXP 1 — Cross-Context (CC)<br/>train on ONE grid → test on ALL grids"]
+    DS --> OOD["EXP 2 — Out-of-Distribution (OOD)<br/>train on 3 grids → test on held-out grid<br/>(leave-one-grid-out)"]
+
+    CC --> CCM["4×4 transfer matrix per model<br/>diag = within-grid · off-diag = single-grid transfer"]
+    OOD --> OODM["1 held-out NRMSE per grid per model"]
+
+    MMD["MMD topological distance<br/>(degree + Laplacian histograms)<br/>grid ↔ grid, model-independent"] --> GS
+    CCM --> GS["g-score = NRMSE vs MMD<br/>CC: per training grid (small-N)<br/>OOD: per model over held-out grids (better-posed)"]
+    OODM --> GS
+    MMD --> OODD["ood_distance.csv<br/>held-out grid → POOLED MMD to the training-grid mixture<br/>MMD(held, A∪B∪C), ENGAGE-consistent (the OOD g-score x-axis)"]
+    OODD --> GS
+
+    DC["DC-PF baseline (per grid)"] --> REP
+    CCM --> REP["Reporting: per-quantity P/Q/V/θ NRMSE,<br/>transfer matrices, generalizability curves,<br/>g-score tables, DC comparison"]
+    OODM --> REP
+    GS --> REP
+```
+
 ---
 
 # The two-layer approach (and why it is split this way)
@@ -82,7 +105,7 @@ Sub-questions:
 
 Sub-questions:
 - **RQ2a:** Does a physically consistent, ENGAGE-format dataset (per-unit, bus-type NaN masking, `dc_pf` baseline) change the architecture ranking vs Layer 1?
-- **RQ2b:** How does each architecture's g-score compare, and does edge-awareness (GAT/GIN/Transformer/NNConv using `edge_attr`) help on transmission grids?
+- **RQ2b:** How does each architecture's g-score compare (both the cross-context g-score and the better-posed **OOD g-score** over held-out grids), and does edge-awareness (GAT/GIN/Transformer/NNConv using `edge_attr`) help on transmission grids?
 - **RQ2c (secondary — scientific stress test):** Out-of-distribution across *different* grids — leave-one-grid-out (train on three grids, test on the fourth, incl. IEEE24↔UK). Reported as a limit test, not the operational headline.
 - **RQ2d:** Per-quantity behaviour — is the apparent accuracy driven by trivially-bounded **V**, and how do the harder **θ** and **Q** generalize?
 
@@ -106,7 +129,7 @@ Sub-questions:
    ```
    Use `pp.runpp` (slack absorbs imbalance) or `pp.runopp` (generator re-dispatch, more realistic post-contingency); `pp.rundcpp` for the `dc_pf` baseline. This runs in **ENGAGE's** pandapower pipeline (`graph_gen.py` + `powerdata-gen`), not PowerGraph's MATLAB `gendataopf.m`.
 5. **Filter:** drop non-converged / islanded / voltage-violating / overloaded solutions.
-6. **Convert:** `get_node_features` + `get_edge_features` → ENGAGE `Data` (per-unit, bus-type one-hot, NaN masking, `dc_pf`).
+6. **Convert:** `get_node_features` + `get_edge_features` → ENGAGE `Data` (bus-type one-hot, NaN masking, `dc_pf`; **per-unit applies to the edge impedances only** — node quantities are written in raw MW/Mvar/p.u./degrees, and any node-level scaling is a training-time choice, see "Final protocol" below).
 7. Repeat → each grid becomes a **cloud of graphs with varying topology + loading** = the distribution the MMD/g-score requires.
 
 ### Optional — harvest contingencies from PowerGraph-Graph
@@ -117,11 +140,14 @@ PowerGraph-**Graph** is a cascading-failure dataset: each sample is an outage st
 Caveats: use only their **topology**, then **re-solve AC PF yourself** (step 4) for node targets; drop cascade end-states that are islanded/blackout (no converged single-grid PF).
 
 ## Methodology — evaluation
-- **Per-unit normalization** and **ENGAGE bus-type NaN masking + norm-weighted MSE** throughout (Decision 6).
+- **ENGAGE bus-type NaN masking + norm-weighted MSE** throughout (Decision 6), with node feature/target scaling selected explicitly per run (`--normalize`, Decision 20) and **all metrics computed in physical units after de-normalization**.
 - **Metrics:** `nrmse_range` **broken out per quantity (V, θ, P, Q)** as well as aggregate; degree + Laplacian **MMD** on the **physical** topology with tuned sigmas; **g-score** now well-posed because each grid is a distribution of topologies.
 - **Baselines:** always report the **DC-PF baseline** (`test_dc_pf`), optionally a warm-started single Newton step, so improvement over trivial physics is explicit.
 - **Distance:** MMD is primary; optionally add an **electrical-distance** cross-check (X/R or short-circuit-ratio distribution distance, or PTDF-based) since MMD ignores impedances/loading.
-- **Cross-Context matrix** and **OOD leave-one-out** g-scores per architecture, with seeds → error bars.
+- **Two g-score flavours** (both produced by `experiments.py`):
+  - **Cross-context g-score** (`gscore.csv`) — *per training grid* over its unseen TEST grids. At only 3 points/training grid the ENGAGE 2/98 trim collapses it, so a no-trim `gscore_smallN.csv` is the appropriate reading.
+  - **OOD g-score** (`gscore_ood.csv`, `compute_ood_gscores`) — *per model* over the held-out grids of the leave-one-grid-out experiment (one point per held-out grid, up to 4), with the topological distance = **pooled Laplacian-MMD from each held-out grid to the pooled training-grid mixture** (`MMD(held, A∪B∪C)`, ENGAGE-consistent — not a mean of pairwise MMDs; see Decision 14), no trim, NaN cells dropped. This is the **better-posed** g-score at N=4 and the one most aligned with the operational question (generalize to a new grid after training on several); mirrors ENGAGE reporting a g-score for both its CC and OOD experiments.
+- **Cross-Context matrix** and **OOD leave-one-out** results per architecture, with seeds → error bars.
 - **Benchmark vs PowerGraph:** compare within-topology (PowerGraph regime) to unseen-topology (this study) for the shared architectures, reported as **relative degradation** under our own consistent pipeline (numeric values are not directly comparable across the two masking/normalization conventions).
 
 ## Deliverables
@@ -136,6 +162,48 @@ Caveats: use only their **topology**, then **re-solve AC PF yourself** (step 4) 
 - **Topological vs electrical distance** — MMD captures pure structure, not impedance/loading; the optional electrical-distance cross-check mitigates over-interpretation.
 - **Sigma/kernel tuning** for MMD — validate against ENGAGE's `ggme` reference.
 - **Demand coverage** (Route B) — ensure the hourly profile spans seasonal/daily range.
+
+---
+
+# Final protocol (as executed)
+
+This section is the authoritative statement of what the reported benchmark actually does;
+earlier sections record the design as it was planned. The two differences that matter arose
+from the external audit (see [`Audit_response.md`](Audit_response.md)).
+
+**Datasets.**
+
+| dataset | regime | topology | demand split | role |
+|---|---|---|---|---|
+| `data_a` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
+| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k, islanding rejected | `--time_split blocked` (disjoint contiguous windows, one-day gap) | cross-context + leave-one-grid-out |
+| `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
+
+800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).
+Every split ships its `dataset_src.csv` (grid, `t_idx`, `k`, outaged branches, contingency
+source), which is what makes the split property checkable rather than asserted.
+
+**Validation gates before training.** `validate.py --data_dir data_full_v2 --regime b
+--expect_blocked` must pass: data contract, bus-type masking, topology variation, MMD
+non-degeneracy, and gate H (no demand snapshot shared between splits, no repeated
+(snapshot, outage) scenario, disjoint contiguous time windows).
+
+**Representation.** `--normalize pu_zscore`: per-unit, then per-quantity z-score with
+training-split statistics only — fitted per grid (within-grid), on the source grid
+(cross-context), or on the pooled training grids (leave-one-grid-out). Features and targets
+share statistics; predictions are de-normalized before scoring; the DC baseline is never
+scaled. `--normalize none` reproduces the raw-unit ablation bit-identically.
+
+**Training.** Six architectures at frozen equal-budget configurations
+(`configs/arch_config.json`, see [`Model_configurations.md`](Model_configurations.md)),
+seeds 0/100/300/700/1000 (NNConv 0/100/300, a compute decision), three arms: within-grid,
+cross-context, leave-one-grid-out. Every final run writes a checkpoint so results are
+replayable without retraining.
+
+**Reporting.** Primary metrics are **per quantity** (P, Q, V, θ) in physical units, with the
+aggregate `nrmse_range` (ENGAGE Eq. 3) reported alongside and never on its own; DC power flow
+under both conventions (Q ≡ 0 primary, P/V/θ secondary); degree and Laplacian MMD separately;
+g-score with its small-N caveat; rank correlations with permutation p-values.
 
 ---
 
