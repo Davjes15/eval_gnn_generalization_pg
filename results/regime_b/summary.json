@@ -1,0 +1,22 @@
+{
+  "epochs": 200,
+  "data_dir": "data_full",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "merged_from": [
+    "results_tuned/gcn",
+    "results_tuned/gat",
+    "results_tuned/gin",
+    "results_tuned/transformer",
+    "results_tuned/arma_v2",
+    "results_tuned/nnconv_ood"
+  ],
+  "merged_file": "ood.csv"
+}

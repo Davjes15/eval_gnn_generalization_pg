@@ -416,3 +416,33 @@ final run names its own model. `tune_budget.merge_config` now folds a sweep's
 result into whatever is already frozen, replacing only the swept models'
 entries and keeping the provenance keys earlier sweeps recorded
 (`tests/test_tune_budget.py::test_config_merge_keeps_other_models`).
+
+## 10. Final run inventory (all six architectures, all three arms)
+
+Every arm is complete. Consolidated files, audited row by row against
+`configs/arch_config.json`:
+
+| Arm | file | rows | per-architecture |
+|---|---|---:|---|
+| Regime A within-grid | `results/regime_a/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime B cross-context | `results/regime_b/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
+| Regime B OOD | `results/regime_b/ood.csv` | 112 | 20 each; `nnconv` 12 |
+
+The audit checks, for every architecture in every arm: the expected row count,
+the expected seed set (`0, 100, 300, 700, 1000`; `0, 100, 300` for `nnconv`), all
+four grids present, every numeric column finite, and `num_layers` / `hidden` /
+`learning_rate` equal to the frozen configuration on **every row** — so no run
+can have picked up the configuration file that §9 describes being overwritten.
+Result: **0 non-finite values and 0 configuration mismatches**.
+
+`nnconv`'s OOD arm was the last to finish; its four leave-one-grid-out folds are
+0.103 (IEEE118), 0.174 (IEEE24), 6.038 (IEEE39) and 0.153 (UK). The IEEE39 fold
+is a *transfer* failure, not a training failure — finite throughout, consistent
+across all three seeds, and 0.013 NRMSE within IEEE39 in Regime A — and is
+reported as a result in
+[`Regime_comparison_results.md`](Regime_comparison_results.md) §6.
+
+The only non-finite values anywhere in the result tree are in the archived
+pre-fix ARMA directories (`results_a/within_arma_gnn/`, `results_a/arma_stability/`,
+`results_a/arma_lowlr/`, `results_tuned/arma_gnn/`), kept deliberately as the
+evidence for §4.2 and excluded from every analysis input.
