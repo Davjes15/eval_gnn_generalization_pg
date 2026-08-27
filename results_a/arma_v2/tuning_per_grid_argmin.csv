@@ -1,0 +1,5 @@
+model,grid,num_layers,hidden,learning_rate,val_loss
+arma_gnn,IEEE118,8,128,0.001,0.0376013010181486
+arma_gnn,IEEE24,8,128,0.001,0.0063405923126265
+arma_gnn,IEEE39,8,128,0.001,0.0003332122910069
+arma_gnn,UK,3,128,0.001,0.013919084854424
