@@ -1,7 +1,27 @@
-# Does the architecture ranking survive generalization? (final)
+# Does the architecture ranking survive generalization? (raw-unit campaign)
 
-> **Status: FINAL — all six architectures.** Every number below is computed from
-> the consolidated tuned-configuration runs: `gcn`, `gat`, `gin`, `transformer`
+> **Status: SUPERSEDED AS THE HEADLINE RESULT — kept as the raw-unit ablation.**
+> Every number below was produced with `--normalize none` on the first Regime B
+> dataset. Two audit findings moved the ground under it:
+>
+> - **A2 (representation).** Training in raw MW / Mvar / degrees gave voltage
+>   magnitude a `~5e-8` share of the loss, so `vm_pu` was effectively not
+>   optimized in any of these runs. The protocol is now `pu_zscore`
+>   (`docs/Normalization_results.md`), which changes the per-quantity numbers and
+>   can change the ordering.
+> - **A5 (split hygiene).** The Regime B data used here (`full_run/data/`) drew
+>   demand snapshots independently per split, so a test snapshot could be the
+>   neighbouring 15-minute step of a training one. Regime B is now
+>   `data_full_v2`, blocked in time with a one-day gap.
+>
+> What survives unchanged is the *design*: one frozen configuration per
+> architecture across regimes, the pre-registered τ decision rule, and the
+> per-seed / per-grid stability reporting. The τ values below are re-derived on
+> the normalized campaign before any of them is quoted as a result; the final
+> tables land in `docs/Normalization_results.md`.
+
+> Provenance of this campaign: the consolidated tuned-configuration runs —
+> `gcn`, `gat`, `gin`, `transformer`
 > and `arma_gnn` at 5 seeds (`0, 100, 300, 700, 1000`) and **`nnconv` at 3 seeds
 > (`0, 100, 300`)** — a reduced replication, disclosed here and in design
 > decision D17. No inherited-configuration result (`full_run/results/`) enters
