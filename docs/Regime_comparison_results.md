@@ -197,7 +197,12 @@ section ("DC-PF carries no reactive power, so Q ratios are NaN") described the
 intent, not what was computed. The convention Q ≡ 0 is now enforced explicitly at
 generation time and re-applied at scoring time (`training_utils.apply_dc_convention`),
 so the already-generated datasets are corrected without retraining anything.
-`pandapower` is pinned in `requirements.txt`. No GNN number changes.
+`pandapower` is pinned in `requirements.txt`. No GNN number changes. The
+convention itself is documented in ENGAGE's *code*, not in their paper; the paper
+scores DC over all output dimensions alongside the GNNs, which is consistent with
+it — see [`Paper_verification.md`](Paper_verification.md) §1, where every claim
+this section makes about ENGAGE and PowerGraph is checked against the published
+PDFs, including ENGAGE's own DC ratios (10.5× cross-context, 2.1× OOD).
 
 Two conventions are reported, both from `results/analysis/dc_comparison.csv`.
 
@@ -216,7 +221,13 @@ ENGAGE's published `dc_pf_data.csv`:
 
 **(b) The fair-to-DC convention: P, V and θ only** (mean of the three
 per-quantity NRMSEs on both sides, `quantity = PVtheta`), since Q is not a
-quantity DC attempts:
+quantity DC attempts. **Read these as V-dominated:** this estimator averages
+three separately range-normalised NRMSEs, so voltage magnitude — whose own range
+is tiny — carries the column. It is *not* ENGAGE's Equation 3 restricted to three
+columns; that pooled version is `dc_nrmse_PVtheta` in
+`results/analysis/dc_baseline_regime_*.csv` (0.018 vs 0.084 for DC on Regime A)
+and cannot be computed for the GNNs without re-scoring their predictions. A unit
+test enforces that both sides of the ratio use the same estimator:
 
 | model | Regime A | cross-context | OOD |
 |---|---:|---:|---:|
@@ -241,7 +252,10 @@ Readings, in order of how much they survive scrutiny:
    entirely by voltage magnitude (see §5's per-quantity table and the
    `V ≡ 1.0` constant-predictor check in `docs/Audit_response.md` A3). So the
    in-distribution win is a property of the metric's unit mixture, not evidence
-   that the GNNs have learned the voltage sub-problem.
+   that the GNNs have learned the voltage sub-problem. The 23–108× figure is
+   specific to the V-dominated estimator described above; the defensible form of
+   the statement is *"on voltage magnitude the GNNs lose to DC even
+   in-distribution"*, which the per-quantity table in §5 shows directly.
 3. DC-PF is a linearization with no learned parameters, so it has nothing to
    transfer and its error is topology-agnostic — which is exactly why it is the
    right floor. Its g-score is an artifact (`mmd_range = 0`): a reference bar,

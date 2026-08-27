@@ -13,6 +13,16 @@ current wording.
 Nothing found here changes the training runs: no model needs retraining for A1, A4, A6, A7,
 A8. A2 and A3 need an eval/regeneration pass.
 
+**Update 2026-07-18.** The first version of this response argued about ENGAGE's and
+PowerGraph's conventions from their *released code only*, because the publication sites are
+outside this session's network allowlist. Both papers were then supplied directly and every
+such claim is now verified against them in [`Paper_verification.md`](Paper_verification.md).
+Net effect: the DC-convention reasoning holds and is strengthened (ENGAGE publishes DC ratios
+of 10.5× cross-context and 2.1× OOD, bracketing ours), A2 and A3 turn out to describe
+*standard practice in both papers* rather than deviations — which sharpens them into reporting
+duties rather than bugs — and one number I quoted (23–108×) had to be relabelled as an
+estimator artefact.
+
 ---
 
 ## A1 — DC baseline reactive power is the AC ground truth. CONFIRMED (critical)
@@ -58,6 +68,15 @@ by preference: their `graph_gen.py` uses the same deepcopy→`rundcpp` pattern w
 arrive as NaN. So Q ≡ 0 is ENGAGE's convention and our bug is a version regression of that
 one line. PowerGraph-Node publishes no DC baseline, so there is no competing convention.
 
+Both papers have since been read directly and every claim of that kind is checked
+line by line in [`Paper_verification.md`](Paper_verification.md). Summary for this
+item: ENGAGE's paper scores DC PF over all output dimensions in the same column as
+the GNNs (Table 3), reports DC beating the GNNs by 10.5× cross-context and 2.1×
+OOD, and gives DC `ΔMMD = 0` so its g-score equals its mean — all consistent with
+what is written here. The `NaN`→0 mechanism itself appears only in their code, so
+that part of the provenance is now labelled code-level rather than paper-level.
+PowerGraph's only non-GNN baseline is Gradient Boosted Trees, website-only.
+
 Implemented:
 
 - `transmission_graph_gen._build_sample` zeroes the reactive column explicitly after
@@ -78,10 +97,19 @@ Implemented:
 - `docs/Regime_comparison_results.md` §7 rewritten, `docs/Findings.md` §3 marked superseded.
 
 The recomputed result confirms the direction stated above and adds one finding: under the
-Q-excluded (P/V/θ) convention **DC beats every GNN in every arm, including in-distribution**
-(23–108× in Regime A), because the per-quantity V-NRMSE is where the GNNs are weak. The
-four-quantity aggregate is the only view under which the GNNs win in-distribution. Both are
-now printed side by side so neither can be quoted alone.
+Q-excluded (P/V/θ) convention **DC beats every GNN in every arm, including in-distribution**,
+because the per-quantity V-NRMSE is where the GNNs are weak. The four-quantity aggregate is
+the only view under which the GNNs win in-distribution. Both are now printed side by side so
+neither can be quoted alone.
+
+One correction to my own wording after reading ENGAGE's Equation 3: the "23–108×" figure I
+quoted for the Q-excluded convention comes from averaging the three separately
+range-normalised per-quantity NRMSEs, which is **dominated by voltage magnitude** and is not
+Equation 3 restricted to three columns (that pooled form gives 0.018 rather than 0.084 for DC
+on Regime A). The comparison is still apples-to-apples — a unit test enforces the same
+estimator on both sides — but the multiplier is an artefact of the estimator, so the claim is
+now stated as "the GNNs lose to DC on voltage magnitude even in-distribution", which the
+per-quantity table shows directly.
 
 ## A2 — Node features and targets are never normalized. CONFIRMED (critical)
 
@@ -109,6 +137,13 @@ supportable. This is the audit's most consequential point for the paper's story.
 Fix requires regeneration in p.u. plus a re-run of at least one or two architectures on the
 cross-context and OOD arms as an ablation (~1 day).
 
+Paper check (2026-07-18): **neither source paper normalizes node features or targets either** —
+ENGAGE relies on the metric's range normalization *"to balance the difference of scale across
+feature dimension"* (p. 5) and PowerGraph reports raw per-quantity MSE. So this is not a
+deviation from the literature; it is our documentation claiming something we never did, plus a
+real confound that ENGAGE's ten same-voltage-class feeders largely avoid and our four
+transmission systems do not.
+
 ## A3 — The aggregate metric hides the physics. CONFIRMED (critical, and a result)
 
 Two mechanisms, both confirmed in code:
@@ -121,6 +156,13 @@ of the four target columns with ground-truth inputs. Precisely:
 | PQ | P, Q | V, θ |
 | PV | P, V | Q, θ |
 | slack | V, θ | P, Q |
+
+Paper check (2026-07-18): re-injection is what both source papers do — ENGAGE *"incorporate[s]
+the known values at inference time"* (p. 5) and PowerGraph masks known variables during
+training (Fig. 1, p. 4) — and the pooled mixed-unit aggregate **is** ENGAGE's Equation 3,
+reproduced faithfully. So neither mechanism is an implementation error; what stands is the
+reporting duty (state the predicted fraction, always show the per-quantity table), which is
+why this item is filed as a result rather than a bug. Details in `Paper_verification.md`.
 
 So in the **P** column only the slack bus (1 of N) is ever predicted; **Q** is predicted only
 at PV + slack, **V** only at PQ buses, **θ** at PQ + PV. Metrics are then computed over all
