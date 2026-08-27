@@ -167,20 +167,29 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
 
 
 @torch.no_grad()
-def evaluate(model, device, dataset, batch_size=32, full=False):
+def evaluate(model, device, dataset, batch_size=32, full=False, scaler=None):
     """Evaluate a trained model on a dataset.
 
     Returns (aggregate_nrmse, per_quantity_nrmse_dict), and additionally the
     flat `all_metrics` dict when `full=True` (opt-in, so existing two-value
     unpacking keeps working).
+
+    ``scaler`` un-scales the prediction before any metric is computed, so every
+    reported number is in physical units whatever the training representation
+    was. The dataset then carries the physical targets as `y_raw`.
     """
     model.eval()
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     preds, ys = [], []
     for batch in loader:
         batch = batch.to(device)
-        preds.append(model(batch).cpu())
-        ys.append(batch.y.cpu())
+        pred = model(batch).cpu()
+        truth = batch.y.cpu()
+        if scaler is not None and not scaler.identity:
+            pred = scaler.inverse_targets(pred)
+            truth = batch.y_raw.cpu()
+        preds.append(pred)
+        ys.append(truth)
     y_pred, y_true = torch.cat(preds), torch.cat(ys)
     nrmse, per_q = nrmse_range(y_true, y_pred), nrmse_per_quantity(y_true, y_pred)
     if full:
@@ -227,7 +236,10 @@ def test_dc_pf(dataset, batch_size=32, full=False):
     dc, ys = [], []
     for batch in loader:
         dc.append(batch.dc_pf.cpu())
-        ys.append(batch.y.cpu())
+        # `y_raw` is present when the dataset was scaled for training; DC is an
+        # analytical solution in physical units, so it is scored against those.
+        truth = batch.y_raw if "y_raw" in batch else batch.y
+        ys.append(truth.cpu())
     dc_pf, y_true = apply_dc_convention(torch.cat(dc)), torch.cat(ys)
     nrmse, per_q = nrmse_range(y_true, dc_pf), nrmse_per_quantity(y_true, dc_pf)
     if full:

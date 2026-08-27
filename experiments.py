@@ -60,6 +60,7 @@ import torch
 
 from models import MODELS
 from mmd_utils import evaluate_mmd
+from normalization import MODES, Scaler
 from training_utils import (
     evaluate,
     get_device,
@@ -112,10 +113,13 @@ def _build_model(name, cfg, device):
     return MODELS[name](input_dim=7, **kwargs).to(device)
 
 
-def _config_columns(name, cfg):
+def _config_columns(name, cfg, scaler=None):
     """Configuration provenance, carried on every result row."""
-    return {"num_layers": cfg.get("num_layers"), "hidden": cfg.get("hidden"),
-            "learning_rate": cfg.get("learning_rate", 1e-3)}
+    out = {"num_layers": cfg.get("num_layers"), "hidden": cfg.get("hidden"),
+           "learning_rate": cfg.get("learning_rate", 1e-3)}
+    if scaler is not None:
+        out["normalize"] = scaler.mode
+    return out
 
 
 def _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
@@ -153,28 +157,36 @@ def _mmd_matrix(data, grids):
 
 
 def run_within(data, grids, model_names, device, epochs, seeds, arch_cfg,
-               batch_size=32, save_dir=None, skip_existing=False, regime_tag=""):
+               batch_size=32, save_dir=None, skip_existing=False, regime_tag="",
+               normalize="none"):
     """Fixed-topology control arm: train and test on the SAME grid.
 
     This is the PowerGraph-like regime -- no unseen grid, no unseen topology --
     and the reference ranking the generalization arms are compared against.
+
+    The scaler is fitted per grid on that grid's training split (`normalize`,
+    see normalization.py); metrics are always reported in physical units.
     """
     records = []
     for name in model_names:
         cfg = arch_cfg[name]
         for grid in grids:
+            scaler = Scaler.fit([data[grid]["train"]], normalize)
+            splits = {s: scaler.transform(data[grid][s])
+                      for s in ("train", "val", "test")}
             for seed in seeds:
                 torch.manual_seed(seed)
                 model = _build_model(name, cfg, device)
                 ckpt = (os.path.join(save_dir, f"within_{name}_{grid}_s{seed}.pt")
                         if save_dir else None)
-                _fit(model, device, data[grid]["train"], data[grid]["val"],
+                _fit(model, device, splits["train"], splits["val"],
                      epochs, cfg, batch_size, ckpt, skip_existing)
-                nrmse, _, metrics = evaluate(model, device, data[grid]["test"],
-                                             full=True)
+                nrmse, _, metrics = evaluate(model, device, splits["test"],
+                                             full=True, scaler=scaler)
                 records.append({
                     "model": name, "grid": grid, "seed": seed,
-                    "regime": regime_tag, **_config_columns(name, cfg), **metrics,
+                    "regime": regime_tag,
+                    **_config_columns(name, cfg, scaler), **metrics,
                 })
                 print(f"  [{name}] grid={grid} seed={seed} nrmse={nrmse:.4f} "
                       f"mse={metrics['mse']:.4g}")
@@ -183,34 +195,42 @@ def run_within(data, grids, model_names, device, epochs, seeds, arch_cfg,
 
 def run_cross_context(data, grids, model_names, device, epochs, seeds, arch_cfg,
                       batch_size=32, save_dir=None, skip_existing=False,
-                      regime_tag=""):
+                      regime_tag="", normalize="none"):
     """Train on each grid, test on every grid. Returns records + trained matrices.
 
     If save_dir is given, each trained model's state_dict is written to
     save_dir/cc_<model>_<train_grid>_s<seed>.pt so the exact trained GNNs are
     reusable. The seed is part of the filename so seed replicates cannot
     overwrite one another.
+
+    The scaler is fitted on the TRAINING grid only and applied unchanged to the
+    unseen grids -- the deployment-realistic protocol, and the one that does not
+    leak the target grid's statistics.
     """
     records = []
     for name in model_names:
         cfg = arch_cfg[name]
         for train_grid in grids:
+            scaler = Scaler.fit([data[train_grid]["train"]], normalize)
+            train_ds = scaler.transform(data[train_grid]["train"])
+            val_ds = scaler.transform(data[train_grid]["val"])
+            test_ds = {g: scaler.transform(data[g]["test"]) for g in grids}
             for seed in seeds:
                 torch.manual_seed(seed)
                 model = _build_model(name, cfg, device)
                 ckpt = (os.path.join(save_dir, f"cc_{name}_{train_grid}_s{seed}.pt")
                         if save_dir else None)
-                _fit(model, device, data[train_grid]["train"],
-                     data[train_grid]["val"], epochs, cfg, batch_size,
+                _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
                      ckpt, skip_existing)
                 for test_grid in grids:
                     nrmse, _, metrics = evaluate(model, device,
-                                                 data[test_grid]["test"], full=True)
+                                                 test_ds[test_grid], full=True,
+                                                 scaler=scaler)
                     records.append({
                         "model": name, "train_grid": train_grid,
                         "test_grid": test_grid, "unseen": train_grid != test_grid,
                         "seed": seed, "regime": regime_tag,
-                        **_config_columns(name, cfg), **metrics,
+                        **_config_columns(name, cfg, scaler), **metrics,
                     })
                     print(f"  [{name}] train={train_grid} test={test_grid} "
                           f"seed={seed} nrmse={nrmse:.4f} "
@@ -219,7 +239,8 @@ def run_cross_context(data, grids, model_names, device, epochs, seeds, arch_cfg,
 
 
 def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
-            batch_size=96, save_dir=None, skip_existing=False, regime_tag=""):
+            batch_size=96, save_dir=None, skip_existing=False, regime_tag="",
+            normalize="none"):
     """Leave-one-grid-out: train on the other grids, test on the held-out grid.
 
     If save_dir is given, each trained model's state_dict is written to
@@ -232,8 +253,12 @@ def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
         cfg = arch_cfg[name]
         for held in grids:
             train_grids = [g for g in grids if g != held]
-            train_ds = [d for g in train_grids for d in data[g]["train"]]
-            val_ds = [d for g in train_grids for d in data[g]["val"]]
+            scaler = Scaler.fit([data[g]["train"] for g in train_grids], normalize)
+            train_ds = [d for g in train_grids
+                        for d in scaler.transform(data[g]["train"])]
+            val_ds = [d for g in train_grids
+                      for d in scaler.transform(data[g]["val"])]
+            held_ds = scaler.transform(data[held]["test"])
             for seed in seeds:
                 torch.manual_seed(seed)
                 model = _build_model(name, cfg, device)
@@ -242,11 +267,12 @@ def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
                         if save_dir else None)
                 _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
                      ckpt, skip_existing)
-                nrmse, _, metrics = evaluate(model, device, data[held]["test"],
-                                             full=True)
+                nrmse, _, metrics = evaluate(model, device, held_ds, full=True,
+                                             scaler=scaler)
                 records.append({
                     "model": name, "held_out_grid": held, "seed": seed,
-                    "regime": regime_tag, **_config_columns(name, cfg), **metrics,
+                    "regime": regime_tag,
+                    **_config_columns(name, cfg, scaler), **metrics,
                 })
                 print(f"  [{name}] held_out={held} seed={seed} nrmse={nrmse:.4f}")
     return records
@@ -415,6 +441,10 @@ def parse_args():
                    help="within-grid and cross-context batch size")
     p.add_argument("--batch_size_ood", type=int, default=96,
                    help="OOD batch size (3 grids pooled -- see module docstring)")
+    p.add_argument("--normalize", choices=list(MODES), default="none",
+                   help="feature/target scaling (normalization.py). 'none' is "
+                        "the raw-unit protocol every existing artifact was "
+                        "produced with; 'pu_zscore' is the A2 remediation")
     p.add_argument("--regime_tag", default="",
                    help="label carried on every result row, e.g. A or B")
     p.add_argument("--skip_existing", action="store_true",
@@ -442,7 +472,8 @@ def main():
     # the MMD matrix and every g-score built on it are degenerate.
     skip_mmd = args.skip_mmd or args.experiment == "within"
     print(f"device={device} grids={grids} models={args.models} "
-          f"epochs={args.epochs} seeds={seeds} regime={args.regime_tag or '-'}")
+          f"epochs={args.epochs} seeds={seeds} regime={args.regime_tag or '-'} "
+          f"normalize={args.normalize}")
     print(f"arch_config: {json.dumps(arch_cfg)}")
 
     save_dir = args.save_models
@@ -455,7 +486,8 @@ def main():
                "epochs": args.epochs, "arch_config_path": args.arch_config,
                "arch_config": arch_cfg,
                "batch_size": args.batch_size,
-               "batch_size_ood": args.batch_size_ood}
+               "batch_size_ood": args.batch_size_ood,
+               "normalize": args.normalize}
 
     lap_mmd = None
     if skip_mmd:
@@ -477,7 +509,7 @@ def main():
         wi = run_within(data, grids, args.models, device, args.epochs, seeds,
                         arch_cfg, batch_size=args.batch_size, save_dir=save_dir,
                         skip_existing=args.skip_existing,
-                        regime_tag=args.regime_tag)
+                        regime_tag=args.regime_tag, normalize=args.normalize)
         wi_df = pd.DataFrame(wi)
         wi_df.to_csv(os.path.join(args.out, "within_grid.csv"), index=False)
         print(wi_df.round(4).to_string(index=False))
@@ -489,7 +521,8 @@ def main():
                                seeds, arch_cfg, batch_size=args.batch_size,
                                save_dir=save_dir,
                                skip_existing=args.skip_existing,
-                               regime_tag=args.regime_tag)
+                               regime_tag=args.regime_tag,
+                               normalize=args.normalize)
         cc_df = pd.DataFrame(cc)
         cc_df.to_csv(os.path.join(args.out, "cross_context.csv"), index=False)
         summary["cross_context_rows"] = len(cc)
@@ -519,7 +552,7 @@ def main():
         ood = run_ood(data, grids, args.models, device, args.epochs, seeds,
                       arch_cfg, batch_size=args.batch_size_ood,
                       save_dir=save_dir, skip_existing=args.skip_existing,
-                      regime_tag=args.regime_tag)
+                      regime_tag=args.regime_tag, normalize=args.normalize)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)
