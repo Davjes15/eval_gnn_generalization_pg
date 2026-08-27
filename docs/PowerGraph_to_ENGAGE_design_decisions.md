@@ -335,6 +335,54 @@ otherwise the same six architectures would have been trained twice on those two 
 
 ---
 
+## Decision 22 — The aggregate NRMSE is kept for comparability, but the reported physics is per quantity and over predicted entries only (audit item A3)
+**Decision:** `physics_metrics.py` is the reporting layer for every final result, run over saved
+checkpoints by `eval_checkpoints.py`. It reports, in **physical units** after de-normalization:
+per-quantity NRMSE and MAE; the same restricted to the entries the model genuinely predicts;
+predicted-entry counts; p95/p99/max absolute error; and voltage-limit violation rate, missed-violation
+("false-secure") rate and false-alarm rate. ENGAGE's pooled `nrmse_range` stays in the tables as the
+comparability column, not as the headline.
+
+**Why:** two of the four target columns per bus are ground truth re-injected at inference (slack: V, θ
+known; PV: P, V known; PQ: P, Q known — Decision 6), so an aggregate over all four columns is partly
+a score of the inputs. And pooling MW with p.u. lets the large-magnitude quantities carry the number:
+the measured share of the loss is P 0.83, Q 0.15, θ 0.02, V 5e-8 on IEEE24, which is how every
+architecture came to be worse than the constant `V ≡ 1.0` in-distribution while the aggregate looked
+excellent. For a screening application the quantity of interest is exactly the one the aggregate
+hides, which is why the violation and false-secure rates are reported rather than only the error.
+
+## Decision 23 — Reproducibility is an artifact, not a claim (audit item A4)
+**Decision:** `docs/Reproducibility.md` is the single entry point: pinned versions,
+generation and training commands, `docs/provenance/*.csv` (all 24 `dataset_src.csv` files),
+the realised blocked windows per grid, and `checkpoint_index.py` → `docs/tables/checkpoint_index.csv`
+mapping every results row to a weight file by path, size, SHA-256 and parameter count. The tuning
+CSVs the configuration tables cite are committed. Two things are stated rather than fixed: the
+tensors and weights are too large for git and need a data release, and regeneration is a *fresh draw
+from the same protocol*, so it reproduces the protocol, not the numbers.
+
+**Why:** the repository is pushed as an explicit file list, so citations to uncommitted artifacts had
+accumulated silently — the selection tables referenced tuning CSVs that were not in the repo, and
+`requirements.txt` was unpinned even though the A1 bug was a pandapower version regression. A
+dead reference is indistinguishable from a fabricated one to a reader, which is the real cost.
+
+## Decision 24 — The g-score is reported as a risk-averse summary, not as a distance-aware ranking; MMD gains an electrical descriptor (audit items A6, A7)
+**Decision:** `μ` and `σ` are the primary transfer numbers and the g-score accompanies them for
+ENGAGE comparability, with the degeneracy stated: `Δ_MMD` is a property of the data, so within an arm
+it is one constant and `g = μ + 0.806σ` (cross-context) or `μ + 0.857σ` (OOD) — verified against all
+committed rows to 1e-4, with rank-by-g ≡ rank-by-mean (τ = 1.0). For the distance itself, `mmd()` is
+named as the biased V-statistic (with `unbiased=True` available), the per-pair median bandwidth is
+stated, and `mmd_utils.reactance_histogram` adds a `log10(x_pu)` electrical descriptor alongside the
+degree and Laplacian ones. Full write-up: `docs/Generalization_score_and_MMD.md`.
+
+**Why:** with a single dataset the MMD term cannot reorder architectures, so presenting the g-score as
+"the generalization metric" would imply information it does not carry; it is still worth reporting
+because it prefers uniform mediocrity over a catastrophic fold, which is the right preference for
+security screening. And a purely topological distance is blind to the ~20× load-scale spread between
+our cases — UK → IEEE24 is the closest off-diagonal pair by degree MMD (0.276) and far apart
+electrically (0.833), so an electrical complement is needed before any distance is used as a covariate.
+
+---
+
 ## Semantic mappings that must be preserved (implementation contract)
 - **Bus type → one-hot** `[Slack, PV, PQ]` from MATPOWER type (3/2/1).
 - **Per-unit base**: carry `baseMVA` / `baseKV` so `r_pu`, `x_pu` are correct (ENGAGE edge attr = `[trafo?, r_pu, x_pu, sc_voltage]`).
