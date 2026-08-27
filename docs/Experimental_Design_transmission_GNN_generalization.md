@@ -84,6 +84,14 @@ Sub-questions:
 5. **g-score = provisional.** Report it, but flag that with **one topology per grid** and only 3–4 grids the g-score is fit to 3–4 points and is statistically fragile; it is *not* the headline. Use `get_generalization_score_raw` (no percentile trim) given the tiny sample.
 6. **Validity checklist:** confirm (a) normalization harmonized, (b) MMD non-degenerate, (c) mask identical across pairs, (d) no target leakage from the training grid's scaling.
 
+> **Superseded on item 1.** Per-unit conversion turned out to be a *no-op* on these four cases:
+> all of them carry `sn_mva = 100`, so a per-unit basis divides P and Q by one shared constant and
+> changes no ratio and no cross-grid spread. The defect that actually mattered was inside each
+> sample — voltage magnitude contributed 5e-8 of the training loss — so the implemented protocol is
+> per-unit **followed by a per-quantity z-score fitted on training data only** (`--normalize
+> pu_zscore`, Decision 20, measurements in `docs/Normalization_assessment.md`). Item 6(d) is
+> honoured by the scaler-fitting rule in "Representation" below: never fit on a target grid.
+
 ## Deliverables
 - NRMSE transfer matrix per architecture (the headline).
 - Within-grid vs unseen-grid gap table (benchmark against PowerGraph).

@@ -1,5 +1,28 @@
 # Findings — GNN generalization for AC power flow on transmission grids
 
+> ## ⚠ Superseded — read as a historical record
+> This report interprets the **inherited-configuration, raw-unit, pre-audit run**
+> (`full_run/results/`). Four things have changed since, each of which affects
+> numbers on this page:
+> * **Architecture configurations were tuned and frozen** (`configs/arch_config.json`),
+>   and ARMA's divergence was traced to a negative learned edge weight, not to the
+>   architecture — so the "`arma_gnn` diverges on the UK split" reading below is wrong
+>   (Decision 16).
+> * **The DC baseline was leaking AC reactive power** (`rundcpp` does not write
+>   `res_bus.q_mvar`), so every DC number in §3 is optimistic (audit item A1).
+> * **Nothing was normalized**, so voltage carried ~5e-8 of the training loss; the
+>   V readings below are a training defect, not only a range artefact (audit item A2).
+> * **Regime B shared demand snapshots across splits**; the final transfer numbers
+>   come from `data_full_v2` with a blocked temporal split (audit item A5).
+>
+> For current results use `docs/Regime_comparison_results.md` and
+> `docs/Normalization_results.md`; for what changed and why,
+> `docs/Audit_response.md` and `docs/PowerGraph_to_ENGAGE_design_decisions.md`.
+> This file is kept because the qualitative mechanisms it describes — masking,
+> per-quantity reading, the fragility of single-grid transfer — still hold, and
+> because deleting the evidence a conclusion was revised from is worse than
+> labelling it.
+
 This report interprets the **full run**: 4 grids (IEEE24, IEEE39, IEEE118, UK),
 800/100/100 train/val/test graphs per grid (4,000 graphs total, each = a demand
 snapshot + a random N-1/N-2 contingency, AC-re-solved with pandapower), 6
