@@ -28,11 +28,11 @@ HOW TO RUN
     # fixed-topology control arm (Regime A), 5 seeds, tuned configs:
     python3 experiments.py --experiment within --data_dir data_a \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-        --regime_tag A --out results_tuned/regime_a
+        --normalize pu_zscore --regime_tag A --out results_norm/regime_a
     # generalization arms (Regime B), same frozen configs:
-    python3 experiments.py --experiment both --data_dir data_full \
+    python3 experiments.py --experiment both --data_dir data_full_v2 \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-        --regime_tag B --out results_tuned/regime_b
+        --normalize pu_zscore --regime_tag B --out results_norm/regime_b
 
 ARCHITECTURE CONFIGURATION
     `--arch_config` is a JSON file {model: {num_layers, hidden, learning_rate}}

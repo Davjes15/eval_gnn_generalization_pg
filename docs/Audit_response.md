@@ -43,7 +43,7 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 | A5 | Split hygiene (shared demand snapshots in Regime B) | **closed** (data and training) | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
 | A6 | g-score affine in (mean, sd) here | **closed** | `docs/Generalization_score_and_MMD.md` §1: the identity `g = μ + 0.806σ` (cross-context) / `μ + 0.857σ` (OOD) verified against the committed artifacts to 1e-4, and rank-by-g ≡ rank-by-mean (τ = 1.0) in both arms | no |
 | A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_full_v2.csv` | no |
-| A8 | Statistics weaker than claimed | partly closed | permutation test run (A↔OOD τ = 0.222, p = 0.21; A↔cross-context −0.022, p = 0.91) and the wording corrected; remaining: optional NNConv 3 → 5 seeds | additive only |
+| A8 | Statistics weaker than claimed | partly closed | permutation test moved into `rank_analysis.py` (exact, all 720 relabellings) and re-run on the normalized campaign: A↔cross-context τ = 0.067, p = 0.72; A↔OOD τ = 0.000, p = 1.00 (`results_norm/analysis/rank_permutation_test.csv`); wording corrected. Remaining: optional NNConv 3 → 5 seeds | additive only |
 
 **Non-finite accounting for the final tables.** Of the 672 replayed rows, exactly two are
 non-finite — `gcn`, seed 1000, cross-context IEEE39→IEEE118 and IEEE118→IEEE24 — and they are a
@@ -317,17 +317,24 @@ Details in `docs/Generalization_score_and_MMD.md` §2.
 The auditor noted τ = 0.32 at n = 6 is inside the null sd (0.355). I ran the test that was
 missing: a permutation test over model labels, on the 12 (grid, seed) cells where all six
 architectures exist, mean Kendall τ across cells as the statistic, all 720 relabelings as the
-null.
+null. It is no longer an ad-hoc script — `rank_analysis.permutation_test` runs it as part of
+the standard analysis and writes `rank_permutation_test.csv`, with two regression tests
+(`tests/test_rank_analysis.py`) pinning the exact p-value on a known reversal.
 
-| Comparison | Observed mean τ | Permutation p |
-|---|---:|---:|
-| Regime A ↔ cross-context | −0.022 | 0.91 |
-| Regime A ↔ OOD | 0.222 | 0.21 |
+| Comparison | Observed mean τ | Permutation p | campaign |
+|---|---:|---:|---|
+| Regime A ↔ cross-context | 0.067 | 0.72 | normalized (final) |
+| Regime A ↔ OOD | 0.000 | 1.00 | normalized (final) |
+| Regime A ↔ cross-context | −0.022 | 0.91 | raw-unit (ablation) |
+| Regime A ↔ OOD | 0.222 | 0.21 | raw-unit (ablation) |
 
-So the A↔OOD correlation is **not distinguishable from zero**, and the doc's "weak but
-positive information" is an over-read that must be removed. The cross-context claim ("no
-information") is safe. Note this makes the paper's thesis cleaner, not weaker: fixed-topology
-ranking predicts neither transfer arm.
+So neither correlation is **distinguishable from zero**, and the doc's earlier "weak but
+positive information" reading of the raw-unit A↔OOD τ is an over-read that must be removed —
+under the final protocol that τ is exactly 0.00. Note this makes the paper's thesis cleaner,
+not weaker: fixed-topology ranking predicts neither transfer arm.
+
+The 12 cells are 4 grids × 3 seeds: only the three seeds NNConv was run at have all six
+architectures present, which is the concrete cost of the reduced NNConv seed count.
 
 Also confirmed: n = 4 grids with size, density and load scale all confounded; NNConv has 3
 seeds while being the highest-variance model; and seeds vary training init only — there is no

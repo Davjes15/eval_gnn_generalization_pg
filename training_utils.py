@@ -27,12 +27,10 @@ ATTRIBUTION
 from __future__ import annotations
 
 import os
-import time
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
 TARGET_NAMES = ["P", "Q", "V", "theta"]  # order of columns in y
@@ -153,7 +151,9 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
         val /= max(len(loader_val.dataset), 1)
 
         if val < best_val:
-            best_val, best_weights, wait = val, {k: v.detach().clone() for k, v in model.state_dict().items()}, 0
+            best_val, wait = val, 0
+            best_weights = {k: v.detach().clone()
+                            for k, v in model.state_dict().items()}
         else:
             wait += 1
             if wait >= patience:

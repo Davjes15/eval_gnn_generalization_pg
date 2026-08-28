@@ -10,7 +10,9 @@ WHY (design decision D14/D15)
 
     Kendall tau-b is the primary statistic: with 6 architectures there are 15
     pairs, and tau-b = (concordant - discordant) / 15 (ties handled by the -b
-    correction). Spearman rho is reported as a secondary check.
+    correction). Spearman rho is reported as a secondary check. At n = 6 the
+    per-cell p-value is uninformative, so the mean tau over cells is tested
+    against an exact permutation null over the architecture labels.
 
     The decision rule is fixed IN ADVANCE so that tau ~ +1 is reported as a null
     result rather than reframed:
@@ -27,6 +29,7 @@ HOW IT CONNECTS
     results_tuned/cross_context.csv    (Regime B CC, Step 6)
     results_tuned/ood.csv              (Regime B OOD, Step 6)
         -> results/rank_correlation.csv   (tau-b / rho per grid, seed, metric)
+        -> results/rank_permutation_test.csv (exact null for the mean tau)
         -> results/ranking_table.csv      (mean +/- sd error, mean rank, modal rank)
         -> results/bump_chart_<metric>.png
 
@@ -162,6 +165,55 @@ def correlation_summary(corr):
             .reset_index())
 
 
+def permutation_test(arms, metrics, min_models=6):
+    """Is the mean tau over cells distinguishable from a random relabelling?
+
+    Kendall's own p-value is per cell and at n = 6 architectures it cannot resolve
+    anything; the statistic that carries the claim is the MEAN tau over the
+    (grid, seed) cells, and its null is obtained by permuting the architecture
+    labels of the Regime B ranking within every cell. All `min_models`!
+    relabellings are enumerated, so the p-value is exact, not sampled.
+
+    Cells with fewer than `min_models` architectures are dropped: a mean taken
+    over cells of different width is not a statistic with one null.
+    """
+    rows = []
+    a = arms["regime_a"]
+    perms = list(itertools.permutations(range(min_models)))
+    for arm in ARMS:
+        b = arms[arm]
+        for metric in metrics:
+            if metric not in a.columns or metric not in b.columns:
+                continue
+            pairs = []
+            keys = sorted(set(map(tuple, a[["grid", "seed"]].values))
+                          & set(map(tuple, b[["grid", "seed"]].values)))
+            for grid, seed in keys:
+                ra = ranks(a[(a.grid == grid) & (a.seed == seed)], metric)
+                rb = ranks(b[(b.grid == grid) & (b.seed == seed)], metric)
+                shared = sorted(set(ra.index) & set(rb.index))
+                if len(shared) != min_models:
+                    continue
+                pairs.append((ra[shared].to_numpy(), rb[shared].to_numpy()))
+            if not pairs:
+                continue
+            observed = float(np.mean([stats.kendalltau(x, y, variant="b").statistic
+                                      for x, y in pairs]))
+            null = np.array([
+                np.mean([stats.kendalltau(x, y[list(p)], variant="b").statistic
+                         for x, y in pairs])
+                for p in perms])
+            # two-sided: how often is a random relabelling at least this extreme
+            p_value = float(np.mean(np.abs(null) >= abs(observed) - 1e-12))
+            rows.append({"comparison": f"regime_a_vs_{arm}", "metric": metric,
+                         "n_cells": len(pairs), "n_models": min_models,
+                         "observed_mean_tau": observed,
+                         "null_mean": float(null.mean()),
+                         "null_sd": float(null.std(ddof=1)),
+                         "n_relabellings": len(perms), "p_value": p_value})
+    return pd.DataFrame(rows)
+
+
 def ranking_table(arms, metrics):
     """Per-arm error and ranking per architecture, with the modal rank.
 
@@ -243,6 +295,9 @@ def main():
     summary.to_csv(os.path.join(args.out, "rank_correlation_summary.csv"),
                    index=False)
 
+    perm = permutation_test(arms, args.metrics)
+    perm.to_csv(os.path.join(args.out, "rank_permutation_test.csv"), index=False)
+
     table = ranking_table(arms, args.metrics)
     table.to_csv(os.path.join(args.out, "ranking_table.csv"), index=False)
 
@@ -252,6 +307,10 @@ def main():
     print("== rank correlation (Regime A vs Regime B) ==")
     print(summary.round(4).to_string(index=False) if not summary.empty
           else "(no overlapping (grid, seed) keys)")
+    if not perm.empty:
+        print("\n== permutation test on the mean tau (exact, all 6! "
+              "relabellings per cell) ==")
+        print(perm.round(4).to_string(index=False))
     print("\n== ranking by arm ==")
     for arm, metric in itertools.product(arms, [args.bump_metric]):
         sub = table[(table.arm == arm) & (table.metric == metric)]

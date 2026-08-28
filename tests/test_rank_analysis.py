@@ -21,6 +21,7 @@ from rank_analysis import (  # noqa: E402
     correlation_summary,
     correlations,
     load_arms,
+    permutation_test,
     ranking_table,
     ranks,
 )
@@ -214,6 +215,42 @@ def test_nonfinite_transfer_voids_the_group():
         check(pd.notna(other.nrmse), "unaffected cells keep their value")
 
 
+def test_permutation_test_on_a_known_reversal():
+    """A perfectly reversed ranking is as extreme as a relabelling can get.
+
+    With 4 architectures there are 24 relabellings, and exactly two of them reach
+    |tau| = 1 (the identity and the reversal), so the exact two-sided p-value is
+    2/24. Hard-coding it catches a null built from the wrong permutation set.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        write_fixtures(tmp)
+        arms = load_arms(Args(tmp))
+        perm = permutation_test(arms, ["nrmse"], min_models=len(MODELS))
+        row = perm[perm.comparison == "regime_a_vs_cross_context"].iloc[0]
+        check(abs(row.observed_mean_tau + 1.0) < 1e-9,
+              "the reversed fixture gives mean tau = -1")
+        check(row.n_relabellings == 24, "all 4! relabellings are enumerated")
+        check(abs(row.p_value - 2 / 24) < 1e-9,
+              f"exact two-sided p = 2/24, got {row.p_value}")
+        check(abs(row.null_mean) < 1e-9, "the null is centred on zero")
+
+
+def test_permutation_test_skips_ragged_cells():
+    """A cell missing an architecture cannot enter a mean over fixed-width cells."""
+    with tempfile.TemporaryDirectory() as tmp:
+        write_fixtures(tmp)
+        path = os.path.join(tmp, "cross_context.csv")
+        df = pd.read_csv(path)
+        df = df[~((df.model == "gin") & (df.train_grid == GRIDS[0])
+                  & (df.seed == SEEDS[0]))]
+        df.to_csv(path, index=False)
+        arms = load_arms(Args(tmp))
+        perm = permutation_test(arms, ["nrmse"], min_models=len(MODELS))
+        row = perm[perm.comparison == "regime_a_vs_cross_context"].iloc[0]
+        check(row.n_cells == len(GRIDS) * len(SEEDS) - 1,
+              f"the incomplete cell is dropped, got n_cells={row.n_cells}")
+
+
 def test_metric_absent_is_skipped():
     with tempfile.TemporaryDirectory() as tmp:
         write_fixtures(tmp)
@@ -233,6 +270,8 @@ if __name__ == "__main__":
                test_overlap_flag,
                test_missing_model_is_dropped_not_fatal,
                test_nonfinite_transfer_voids_the_group,
+               test_permutation_test_on_a_known_reversal,
+               test_permutation_test_skips_ragged_cells,
                test_metric_absent_is_skipped):
         print(f"\n{fn.__name__}")
         fn()

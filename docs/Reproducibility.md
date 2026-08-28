@@ -188,7 +188,20 @@ leak, and a scaler fitted differently would not reproduce the reported number.
 checkpoints were deleted because they predated the softplus fix and contained NaN
 tensors (`ckpt_a/PROVENANCE.txt`, `ckpt_b/PROVENANCE.txt`). Those rows reproduce
 from seed only. Everything in the final normalized campaign has weights on disk
-and an index entry.
+and an index entry (336 checkpoints, all replayed).
+
+**The result tables themselves are in the repository**, so a reviewer can check
+every number without the weights or the tensors: the merged per-run rows
+(`results_norm/all_within/within_grid.csv`, `all_cross/cross_context.csv`,
+`all_ood/ood.csv`, each with the `summary.json` that records the protocol the
+shards were merged under), the 672-row physics replay
+(`results_norm/physics/physics_metrics.csv`), the topology and DC tables
+(`results_norm/topology/`, `results_norm/dc_baseline_regime_a.csv`) and everything
+derived from them (`results_norm/analysis/`, including `nonfinite_runs.csv` and
+the exact permutation test `rank_permutation_test.csv`). Re-running the two
+analysis commands in §5 on those CSVs
+must reproduce the tables in `docs/Normalization_results.md` §4 exactly; that is
+the cheapest end-to-end check of this repository.
 
 ---
 
@@ -273,10 +286,12 @@ the analysis input is identical to the one an unsharded run would have produced.
 `recompute_tables.py` still cross-checks the shards it is given and refuses to
 merge tables that disagree.
 
-Whole test suite:
+Whole test suite, then the style check (`setup.cfg` holds the settings, so the
+bare command is the check; it exits 0 on a clean tree):
 
 ```bash
 for t in tests/test_*.py; do python "$t" || echo "FAILED: $t"; done
+python -m flake8 .
 ```
 
 ---

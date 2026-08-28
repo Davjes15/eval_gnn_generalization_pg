@@ -64,7 +64,8 @@ def parse_args():
                    help="DC baseline table for the Regime A data (data_a), "
                         "from recompute_dc_baseline.py")
     p.add_argument("--dc_regime_b", required=True,
-                   help="DC baseline table for the Regime B data (data_full)")
+                   help="DC baseline table for the Regime B data "
+                        "(data_full_v2)")
     p.add_argument("--out", required=True)
     return p.parse_args()
 

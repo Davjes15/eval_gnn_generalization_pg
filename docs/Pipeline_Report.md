@@ -176,8 +176,10 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
   Two flavours are produced:
   - **Cross-context g-score** (`gscore.csv`), computed *per training grid* over its
     unseen TEST grids (3 points each). NOTE: the default `bounds=2` percentile trim
-    assumes many samples; with only 3 points it collapses (std=0, range=0), so a
-    small-N variant (no trim) is the appropriate reading — see `gscore_smallN.csv`.
+    assumes many samples; with only 3 points it collapses (std=0, range=0), so the
+    pooled no-trim variant `gscore_cc_aggregate.csv` is the appropriate reading.
+    (The exploratory run's `full_run/results/gscore_smallN.csv` was the earlier
+    form of that variant; the current pipeline does not emit it.)
   - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
     grids (one point per grid → up to 4 points), where the topological distance is
     the **pooled** Laplacian-MMD from each held-out grid to the **mixture** of its
@@ -396,7 +398,7 @@ Relevant CLI flags:
   four-column aggregate partly scores the inputs. Use the predicted-entry-only
   columns from `eval_checkpoints.py` for any statement about model quality.
 - The **cross-context** g-score is statistically under-powered at only 4 grids
-  (3 points/training grid); use `gscore_smallN.csv` for it. The **OOD** g-score
+  (3 points/training grid); use `gscore_cc_aggregate.csv` for it. The **OOD** g-score
   (`gscore_ood.csv`, up to 4 points/model, no trim) is better-posed and is the
   more meaningful generalization measure; still treat the transfer matrix + MMD
   as the headline given N=4. Stronger statement since A6: with one dataset per arm

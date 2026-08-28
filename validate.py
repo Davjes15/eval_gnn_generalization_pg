@@ -89,7 +89,7 @@ def gate_conversion(g: Gate, grids):
         try:
             pp.runpp(net)
             converged = bool(net.converged)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             converged = False
         exp = EXPECTED.get(code)
         detail = f"buses={n_bus} branches={n_branch} converged={converged}"

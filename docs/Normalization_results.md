@@ -107,6 +107,22 @@ individual cells ranging from -0.73 to +0.87. That is the study's headline: the
 within-grid leaderboard everyone reports carries essentially no information
 about which architecture survives an unseen grid.
 
+A mean tau near zero at n = 6 architectures needs a null to be worth anything, so
+the analysis also runs an **exact permutation test** over the architecture labels
+(`rank_permutation_test.csv`): the statistic is the mean tau over the 12 (grid,
+seed) cells that contain all six architectures, and the null enumerates all 720
+relabellings rather than sampling them.
+
+| comparison | observed mean tau | null sd | p |
+|---|---:|---:|---:|
+| A → cross-context | 0.067 | 0.145 | 0.72 |
+| A → OOD | 0.000 | 0.153 | 1.00 |
+
+Neither is distinguishable from a random relabelling. The correct statement is
+therefore "no evidence of rank transfer", not "weak positive transfer" — the
+earlier raw-unit reading (A ↔ OOD tau = 0.222, p = 0.21) does not survive the
+final protocol. The 12 cells are 4 grids × the 3 seeds NNConv was run at.
+
 ### 4.2 Per quantity (NRMSE, mean over seeds)
 
 | model | A: P / Q / V / θ | cross-context: P / Q / V / θ | OOD: P / Q / V / θ |

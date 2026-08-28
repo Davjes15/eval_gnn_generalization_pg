@@ -96,7 +96,8 @@ def load_case(code: str, cases_dir: str | None = None):
     mat_path = os.path.join(cases_dir, f"{code}.mat")
     if not os.path.exists(mat_path):
         raise FileNotFoundError(
-            f"Converted case not found: {mat_path}. Run Step 1 (transmission/convert_cases.m) first."
+            f"Converted case not found: {mat_path}. "
+            "Run Step 1 (transmission/convert_cases.m) first."
         )
     # casename_mpc_file defaults to 'mpc', which is the variable name Step 1 saved.
     net = from_mpc(mat_path)

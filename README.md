@@ -22,8 +22,10 @@ IEEE24, IEEE39, IEEE118, and the UK 29-bus system (PowerGraph's own `System.m` c
 Node-level AC power-flow (PF) state estimation — predict the per-bus state
 `[P, Q, V, θ]`. Each grid loading (one demand snapshot + one contingency topology)
 is a single PyTorch-Geometric `Data` graph; buses are **nodes**, lines/transformers
-are **edges**. `N` = number of buses, `E` = number of lines/transformers. Values are
-**per-unit** (pandapower AC PF solution). This is the same ENGAGE contract (which
+are **edges**. `N` = number of buses, `E` = number of lines/transformers. Node values
+are in **pandapower's native units** (MW, Mvar, p.u., degrees) — only the edge
+impedances are per-unit; converting the node quantities to a common scale is what
+`--normalize` does at training time. This is the same ENGAGE contract (which
 adapts PowerGraph's `X/Y/edge_*` layout into a single edge-aware `Data` object).
 
 ### Data attributes (each `Data` object in `data/<GRID>/<split>/dataset.pt`)
@@ -266,7 +268,7 @@ python3 experiments.py --experiment both --data_dir data --out results \
 ```
 Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 (incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
-`gscore.csv` (cross-context g-score) + `gscore_smallN.csv`, `gscore_ood.csv`
+`gscore.csv` (cross-context g-score) + `gscore_cc_aggregate.csv`, `gscore_ood.csv`
 (OOD g-score — per model over held-out grids; the better-posed one at N=4),
 `ood.csv`. Supporting code: `training_utils.py` (training loop +
 metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
@@ -365,8 +367,10 @@ ls results/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv
 
 ## Reproducing the reported benchmark (the final protocol)
 
-The walkthrough above is the generic pipeline. The numbers in
-[`docs/Regime_comparison_results.md`](docs/Regime_comparison_results.md) come from this exact
+The walkthrough above is the generic pipeline. The reported numbers
+([`docs/Normalization_results.md`](docs/Normalization_results.md) §4 — the raw-unit
+tables in [`docs/Regime_comparison_results.md`](docs/Regime_comparison_results.md) are
+the superseded ablation) come from this exact
 sequence — the differences from the generic commands (`--time_split blocked`, `--normalize
 pu_zscore`, `--save_models`) are the two audit remediations and the checkpointing
 requirement, and they are what make the results defensible and replayable. The protocol
@@ -421,6 +425,13 @@ and Decision 25 in [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerG
 **Steps 1–7 implemented** (grid conversion → loader → data generation → model
 zoo → experiments → validation gates → optional PowerGraph-Graph contingency
 harvesting). The pipeline runs end-to-end.
+
+**The benchmark campaign is complete**: six architectures × {within-grid,
+cross-context, leave-one-grid-out} under the frozen configs and `pu_zscore`, 336
+checkpoints, all replayed for physics-aware metrics. Results and their reading are
+in [`docs/Normalization_results.md`](docs/Normalization_results.md) §4, the tables
+themselves under `results_norm/`, and the audit status in
+[`docs/Audit_response.md`](docs/Audit_response.md).
 See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
 the full plan and the reasoning behind each step.
 

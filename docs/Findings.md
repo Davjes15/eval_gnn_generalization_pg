@@ -265,7 +265,9 @@ Off-diagonal transfer NRMSE, summarized per model:
 
 - **Cross-context g-score** (`gscore.csv`, ENGAGE 2/98 trim): **degenerate at this
   scale** — 3 unseen grids per training grid, so the trim collapses to one point
-  (std = mmd_range = 0). The no-trim `gscore_smallN.csv` is the correct reading
+  (std = mmd_range = 0). The no-trim `full_run/results/gscore_smallN.csv` is the
+  correct reading for this legacy run (the current pipeline emits the same idea as
+  `gscore_cc_aggregate.csv`)
   (one g-score per **model × training grid**, lower = better):
 
   | model | IEEE24 | IEEE39 | IEEE118 | UK |

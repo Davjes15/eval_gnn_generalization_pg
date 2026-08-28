@@ -205,7 +205,11 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 
 **Why:** reproducibility and reuse — the exact trained GNNs behind the reported numbers can be inspected, fine-tuned, or served without retraining.
 
-**Decision (g-score at small N):** the ENGAGE g-score uses a 2/98 percentile trim (`bounds=2`) that assumes many samples. With only 3 unseen grids per training grid it keeps a single point, forcing `std_nrmse=0` and `mmd_range=0` (degenerate). We therefore additionally report a **small-N g-score** (no percentile trim, all unseen grids) as `gscore_smallN.csv`, and treat the **transfer matrix + MMD** as the headline. This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
+**Decision (g-score at small N):** the ENGAGE g-score uses a 2/98 percentile trim (`bounds=2`) that assumes many samples. With only 3 unseen grids per training grid it keeps a single point, forcing `std_nrmse=0` and `mmd_range=0` (degenerate). We therefore additionally report a **small-N g-score** (no percentile trim, all unseen grids) as `gscore_smallN.csv`, and treat the **transfer matrix + MMD** as the headline.
+This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
+*Superseded in form, not in reasoning:* the current pipeline emits the no-trim
+reading as the pooled `gscore_cc_aggregate.csv` (ENGAGE Table-3 format, one row
+per model); `gscore_smallN.csv` survives only in the legacy `full_run/results/`.
 
 **Decision (OOD g-score — `compute_ood_gscores`, `gscore_ood.csv`):** the cross-context g-score is *per training grid* and therefore has only the 3 unseen TEST grids as points (the degeneracy above). We additionally compute an **OOD g-score** *per model* over the **held-out grids** of the leave-one-grid-out experiment: one point per held-out grid (up to 4 points). No percentile trim (`bounds=0`); NaN cells (e.g. a diverged ARMA split) are dropped. This is the **better-posed** g-score at N=4 (more points, no trim collapse) and is the flavour most aligned with the study's operational question — *generalize to a genuinely new grid after training on several*. ENGAGE itself reports a g-score for both its cross-context and OOD experiments; we had initially reported OOD only as per-grid NRMSE, and this decision closes that gap. The choice of the distance x-axis is fixed by Decision 14.
 
