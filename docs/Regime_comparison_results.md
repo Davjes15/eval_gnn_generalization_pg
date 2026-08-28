@@ -21,10 +21,14 @@
 > tables land in `docs/Normalization_results.md`.
 >
 > **Now re-derived.** On the normalized campaign the Regime A → Regime B rank
-> correlation is τ = 0.023 ± 0.369 (cross-context) and τ = 0.020 ± 0.380 (OOD),
-> i.e. the qualitative conclusion below — the within-grid ranking does not
-> predict the transfer ranking — survives the change of representation and of
-> data, while the individual numbers do not. Quote
+> correlation is τ = 0.067 ± 0.369 (cross-context, permutation p = 0.72) and
+> τ = 0.020 ± 0.380 (OOD, p = 1.00), i.e. the qualitative conclusion below — the
+> within-grid ranking does not predict the transfer ranking — survives the change
+> of representation and of data, while the individual numbers do not. Two
+> corrections to how it is read: the ranking **does** transfer across the harder
+> protocol on the same grid (τ = 0.663, p = 0.004), so the failure is specific to
+> changing the grid; and "τ indistinguishable from a random relabelling" means
+> rank *instability*, not a demonstrated zero correlation. Quote
 > `docs/Normalization_results.md` §4, not this page.
 
 > Provenance of this campaign: the consolidated tuned-configuration runs —

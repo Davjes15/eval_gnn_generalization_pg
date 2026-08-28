@@ -1,0 +1,19 @@
+comparison,metric,n_models,kendall_tau_b,spearman_rho,order_left,order_right
+regime_a_vs_regime_b_diagonal,nrmse,6,0.7333333333333333,0.8285714285714287,arma_gnn > gin > transformer > gat > nnconv > gcn,arma_gnn > transformer > gat > gin > nnconv > gcn
+regime_a_vs_cross_context,nrmse,6,0.6,0.7714285714285715,arma_gnn > gin > transformer > gat > nnconv > gcn,arma_gnn > transformer > gin > gcn > gat > nnconv
+regime_a_vs_ood,nrmse,6,0.2,0.4285714285714286,arma_gnn > gin > transformer > gat > nnconv > gcn,transformer > gat > gin > arma_gnn > gcn > nnconv
+regime_b_diagonal_vs_cross_context,nrmse,6,0.6,0.7142857142857143,arma_gnn > transformer > gat > gin > nnconv > gcn,arma_gnn > transformer > gin > gcn > gat > nnconv
+regime_b_diagonal_vs_ood,nrmse,6,0.4666666666666666,0.6,arma_gnn > transformer > gat > gin > nnconv > gcn,transformer > gat > gin > arma_gnn > gcn > nnconv
+cross_context_vs_ood,nrmse,6,0.3333333333333333,0.4285714285714286,arma_gnn > transformer > gin > gcn > gat > nnconv,transformer > gat > gin > arma_gnn > gcn > nnconv
+regime_a_vs_regime_b_diagonal,mse,6,0.8666666666666666,0.942857142857143,arma_gnn > transformer > gat > gin > nnconv > gcn,transformer > arma_gnn > gat > gin > nnconv > gcn
+regime_a_vs_cross_context,mse,6,0.6,0.7714285714285715,arma_gnn > transformer > gat > gin > nnconv > gcn,arma_gnn > transformer > gat > gcn > nnconv > gin
+regime_a_vs_ood,mse,6,0.4666666666666666,0.6571428571428573,arma_gnn > transformer > gat > gin > nnconv > gcn,transformer > gat > arma_gnn > gcn > gin > nnconv
+regime_b_diagonal_vs_cross_context,mse,6,0.4666666666666666,0.7142857142857143,transformer > arma_gnn > gat > gin > nnconv > gcn,arma_gnn > transformer > gat > gcn > nnconv > gin
+regime_b_diagonal_vs_ood,mse,6,0.6,0.7714285714285715,transformer > arma_gnn > gat > gin > nnconv > gcn,transformer > gat > arma_gnn > gcn > gin > nnconv
+cross_context_vs_ood,mse,6,0.6,0.7714285714285715,arma_gnn > transformer > gat > gcn > nnconv > gin,transformer > gat > arma_gnn > gcn > gin > nnconv
+regime_a_vs_regime_b_diagonal,mae,6,0.7333333333333333,0.8285714285714287,arma_gnn > transformer > gin > gat > nnconv > gcn,arma_gnn > transformer > gat > nnconv > gin > gcn
+regime_a_vs_cross_context,mae,6,0.3333333333333333,0.48571428571428577,arma_gnn > transformer > gin > gat > nnconv > gcn,arma_gnn > transformer > gcn > gat > nnconv > gin
+regime_a_vs_ood,mae,6,0.3333333333333333,0.48571428571428577,arma_gnn > transformer > gin > gat > nnconv > gcn,transformer > gat > arma_gnn > gcn > gin > nnconv
+regime_b_diagonal_vs_cross_context,mae,6,0.6,0.6571428571428573,arma_gnn > transformer > gat > nnconv > gin > gcn,arma_gnn > transformer > gcn > gat > nnconv > gin
+regime_b_diagonal_vs_ood,mae,6,0.3333333333333333,0.6,arma_gnn > transformer > gat > nnconv > gin > gcn,transformer > gat > arma_gnn > gcn > gin > nnconv
+cross_context_vs_ood,mae,6,0.4666666666666666,0.6571428571428573,arma_gnn > transformer > gcn > gat > nnconv > gin,transformer > gat > arma_gnn > gcn > gin > nnconv

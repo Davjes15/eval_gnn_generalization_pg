@@ -90,38 +90,74 @@ All numbers from `results_norm/analysis/` (`rank_analysis.py` +
 
 ### 4.1 Ranking per arm
 
-| rank | Regime A (within) | cross-context | OOD (leave-one-grid-out) |
-|---|---|---|---|
-| 1 | arma_gnn 0.00044 | arma_gnn 0.821 | transformer 0.269 |
-| 2 | gin 0.0037 | transformer 0.939 | gat 0.346 |
-| 3 | transformer 0.0039 | gin 1.004 | gin 0.387 |
-| 4 | gat 0.0040 | gcn 1.058 | arma_gnn 0.798 |
-| 5 | nnconv 0.0040 | gat 1.105 | gcn 1.043 |
-| 6 | gcn 0.0100 | nnconv 1.985 | nnconv 3.410 |
+Regime A and Regime B differ in **two** ways at once: Regime B uses a harder
+protocol (blocked temporal split, N-k contingency topologies) *and* a different
+grid. The same-grid **diagonal** of the cross-context table separates them — it
+is Regime B evaluated on the grid the model was trained on, so A → diagonal is
+the protocol step and diagonal → unseen is the grid step. Both are free from the
+runs already done, and reporting only A → unseen charges the whole gap to
+generalization.
 
-The in-distribution error is **3 orders of magnitude** below the transfer error,
-and the in-distribution ordering does not predict the transfer ordering:
-Kendall tau, computed per (grid, seed) and then averaged, is
-**0.023 ± 0.369** for A → cross-context and **0.020 ± 0.380** for A → OOD, with
-individual cells ranging from -0.73 to +0.87. That is the study's headline: the
-within-grid leaderboard everyone reports carries essentially no information
-about which architecture survives an unseen grid.
+| rank | Regime A (within, fixed topology) | Regime B diagonal (same grid, N-k) | cross-context (unseen grid) | OOD (leave-one-grid-out) |
+|---|---|---|---|---|
+| 1 | arma_gnn 0.00044 | arma_gnn 0.0047 | arma_gnn 0.821 | transformer 0.269 |
+| 2 | gin 0.0037 | transformer 0.0079 | transformer 0.939 | gat 0.346 |
+| 3 | transformer 0.0039 | gat 0.0082 | gin 1.004 | gin 0.387 |
+| 4 | gat 0.0040 | gin 0.0086 | gcn 1.058 | arma_gnn 0.798 |
+| 5 | nnconv 0.0040 | nnconv 0.0089 | gat 1.105 | gcn 1.043 |
+| 6 | gcn 0.0100 | gcn 0.0155 | nnconv 1.985 | nnconv 3.410 |
 
-A mean tau near zero at n = 6 architectures needs a null to be worth anything, so
-the analysis also runs an **exact permutation test** over the architecture labels
-(`rank_permutation_test.csv`): the statistic is the mean tau over the 12 (grid,
-seed) cells that contain all six architectures, and the null enumerates all 720
-relabellings rather than sampling them.
+Decomposed as multiplicative factors (`protocol_decomposition.csv`, aggregate
+NRMSE):
 
-| comparison | observed mean tau | null sd | p |
+| model | protocol step (A → diagonal) | grid step (diagonal → cross-context) | total |
 |---|---:|---:|---:|
-| A → cross-context | 0.067 | 0.145 | 0.72 |
-| A → OOD | 0.000 | 0.153 | 1.00 |
+| arma_gnn | 10.5× | 177× | 1861× |
+| gat | 2.1× | 134× | 279× |
+| gcn | 1.5× | 68× | 105× |
+| gin | 2.3× | 117× | 273× |
+| nnconv | 2.3× | 222× | 501× |
+| transformer | 2.0× | 119× | 240× |
 
-Neither is distinguishable from a random relabelling. The correct statement is
-therefore "no evidence of rank transfer", not "weak positive transfer" — the
-earlier raw-unit reading (A ↔ OOD tau = 0.222, p = 0.21) does not survive the
-final protocol. The 12 cells are 4 grids × the 3 seeds NNConv was run at.
+The harder protocol costs a factor of ~2 (ARMA ~10). **The unseen grid costs
+two orders of magnitude on top of that**, so the headline gap is a
+generalization result, not a split artefact — but it is 68–222×, not the ~1000×
+that the raw A → unseen ratio suggests.
+
+**Where the ranking survives and where it breaks.** Kendall tau per (grid, seed)
+cell, averaged, with an exact permutation null over all 720 architecture
+relabellings (`rank_correlation_summary.csv`, `rank_permutation_test.csv`):
+
+| comparison | mean tau ± sd | permutation p |
+|---|---|---:|
+| A → Regime B diagonal | **0.663 ± 0.206** | **0.004** |
+| A → cross-context | 0.067 ± 0.369 | 0.72 |
+| A → OOD | 0.020 ± 0.380 | 1.00 |
+
+The fixed-topology leaderboard **does** survive a harder protocol on the same
+grid, and stops predicting anything once the grid changes. That contrast is the
+result; the earlier version of this section reported only the second row and
+therefore could not distinguish "ranking is meaningless" from "ranking is
+grid-specific".
+
+**Pooled ordering vs per-cell ordering.** Ranking the architectures by their
+pooled mean error gives tau = 0.60 (A vs cross-context) and 0.20 (A vs OOD)
+(`rank_correlation_pooled.csv`) — visibly not zero. There is no contradiction:
+the pooled leaderboard is one ordering of six averages, dominated by the extremes
+(ARMA good, NNConv bad, and those hold everywhere), while the per-cell tau asks
+whether that ordering reproduces in an individual grid × seed environment, and it
+does not — cells range from -0.73 to +0.87.
+
+The defensible claim is therefore **rank instability**, not zero correlation. A
+permutation p of 1.00 says the data are consistent with random relabelling; it is
+not evidence that the true correlation is exactly zero, and with 12 cells and six
+architectures this design could not detect a modest true correlation anyway. What
+a practitioner can take from it: picking an architecture from a fixed-topology
+leaderboard gives no reliable guarantee on an unseen grid, though the extremes of
+that leaderboard do tend to stay extreme.
+
+The 12 cells are 4 grids × the 3 seeds NNConv was run at. The earlier raw-unit
+reading (A ↔ OOD tau = 0.222, p = 0.21) does not survive the final protocol.
 
 ### 4.2 Per quantity (NRMSE, mean over seeds)
 

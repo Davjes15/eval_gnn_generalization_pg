@@ -26,9 +26,11 @@ WHY (design decision D14/D15)
 
 HOW IT CONNECTS
     results_a/within_grid.csv          (Regime A, Step 5)
-    results_tuned/cross_context.csv    (Regime B CC, Step 6)
+    results_tuned/cross_context.csv    (Regime B CC + the same-grid diagonal, Step 6)
     results_tuned/ood.csv              (Regime B OOD, Step 6)
         -> results/rank_correlation.csv   (tau-b / rho per grid, seed, metric)
+        -> results/rank_correlation_pooled.csv (tau between the pooled leaderboards)
+        -> results/protocol_decomposition.csv  (protocol step vs unseen-grid step)
         -> results/rank_permutation_test.csv (exact null for the mean tau)
         -> results/ranking_table.csv      (mean +/- sd error, mean rank, modal rank)
         -> results/bump_chart_<metric>.png
@@ -54,7 +56,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402  (backend must be set first)
 
 METRICS = ["nrmse", "mse", "mae"]
-ARMS = ["cross_context", "ood"]
+# Ordered by how much they change relative to Regime A: the diagonal arm changes
+# only the protocol (blocked split + N-k topologies, SAME grid), the other two
+# additionally change the grid. Comparing A directly with the unseen arms alone
+# confounds those two effects (audit B2).
+ARMS = ["regime_b_diagonal", "cross_context", "ood"]
 
 
 def parse_args():
@@ -78,6 +84,11 @@ def load_arms(args):
       * cross-context -- error on UNSEEN test grids only, averaged over them,
         attributed to the grid the model was TRAINED on (that is the choice a
         practitioner makes: "I have data for grid X").
+      * regime_b_diagonal -- Regime B evaluated on the grid it was TRAINED on,
+        i.e. the same-grid rows of the cross-context table. Same grid as Regime
+        A, different protocol (blocked temporal split, N-k topologies), so the
+        A -> diagonal step isolates protocol difficulty from unseen-grid
+        difficulty.
       * OOD -- error on the held-out grid, attributed to that held-out grid.
     """
     arms = {}
@@ -85,8 +96,12 @@ def load_arms(args):
     a = pd.read_csv(args.regime_a)
     arms["regime_a"] = a.rename(columns={"grid": "grid"})
 
-    cc = pd.read_csv(args.cross)
-    cc = cc[cc.unseen] if "unseen" in cc.columns else cc
+    cc_all = pd.read_csv(args.cross)
+    if "unseen" in cc_all.columns:
+        diag = cc_all[~cc_all.unseen].rename(columns={"train_grid": "grid"})
+        arms["regime_b_diagonal"] = diag.drop(columns=["test_grid"],
+                                              errors="ignore")
+    cc = cc_all[cc_all.unseen] if "unseen" in cc_all.columns else cc_all
     value_cols = [c for c in cc.columns
                   if c not in ("model", "train_grid", "test_grid", "unseen",
                                "seed", "regime")
@@ -214,6 +229,74 @@ def permutation_test(arms, metrics, min_models=6):
     return pd.DataFrame(rows)
 
 
+def pooled_correlations(arms, metrics):
+    """tau between arms after pooling, i.e. between the LEADERBOARDS.
+
+    `correlations` asks whether the ordering holds inside a single (grid, seed)
+    cell, which is the question a practitioner faces. This asks the weaker
+    question the pooled tables answer: rank the architectures by their mean error
+    over everything, then compare those two orderings. The two can disagree --
+    a pooled ordering can be reproducible while no individual cell reproduces it
+    -- and reporting only the per-cell statistic overstates the instability
+    (audit B3), so both are emitted.
+    """
+    rows = []
+    names = ["regime_a"] + [a for a in ARMS if a in arms]
+    for metric in metrics:
+        pooled = {}
+        for name in names:
+            frame = arms[name]
+            if metric not in frame.columns:
+                continue
+            pooled[name] = frame.groupby("model")[metric].mean()
+        for left, right in itertools.combinations(pooled, 2):
+            shared = sorted(set(pooled[left].index) & set(pooled[right].index))
+            if len(shared) < 3:
+                continue
+            x = pooled[left][shared].rank().to_numpy()
+            y = pooled[right][shared].rank().to_numpy()
+            tau = stats.kendalltau(x, y, variant="b")
+            rho = stats.spearmanr(x, y)
+            rows.append({"comparison": f"{left}_vs_{right}", "metric": metric,
+                         "n_models": len(shared),
+                         "kendall_tau_b": tau.statistic,
+                         "spearman_rho": rho.statistic,
+                         "order_left": " > ".join(pooled[left][shared]
+                                                  .sort_values().index),
+                         "order_right": " > ".join(pooled[right][shared]
+                                                   .sort_values().index)})
+    return pd.DataFrame(rows)
+
+
+def protocol_decomposition(arms, metric="nrmse"):
+    """Split the transfer gap into a protocol step and an unseen-grid step.
+
+    Regime A -> regime_b_diagonal changes the evaluation protocol on the SAME
+    grid; regime_b_diagonal -> cross_context/ood then changes the grid. Quoting
+    a single A -> unseen ratio attributes both to generalization.
+    """
+    if "regime_a" not in arms:
+        return pd.DataFrame()
+    base = arms["regime_a"].groupby("model")[metric].mean()
+    rows = []
+    for model in base.index:
+        row = {"model": model, "metric": metric, "regime_a": float(base[model])}
+        for name in ARMS:
+            frame = arms.get(name)
+            if frame is None or metric not in frame.columns:
+                continue
+            sub = frame[frame.model == model][metric]
+            row[name] = float(sub.mean()) if len(sub) else float("nan")
+        diag = row.get("regime_b_diagonal", float("nan"))
+        row["protocol_factor"] = diag / row["regime_a"]
+        for name in ("cross_context", "ood"):
+            if name in row:
+                row[f"unseen_grid_factor_{name}"] = row[name] / diag
+                row[f"total_factor_{name}"] = row[name] / row["regime_a"]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def ranking_table(arms, metrics):
     """Per-arm error and ranking per architecture, with the modal rank.
 
@@ -256,7 +339,7 @@ def ranking_table(arms, metrics):
 
 def bump_chart(table, metric, path):
     """Regime A -> cross-context -> OOD rank trajectory per architecture."""
-    order = [a for a in ("regime_a", "cross_context", "ood")
+    order = [a for a in ("regime_a", "regime_b_diagonal", "cross_context", "ood")
              if a in set(table.arm)]
     sub = table[(table.metric == metric) & (table.arm.isin(order))]
     if sub.empty:
@@ -271,8 +354,11 @@ def bump_chart(table, metric, path):
                     xytext=(6, 0), textcoords="offset points",
                     va="center", fontsize=9)
     ax.set_xticks(range(len(order)))
-    ax.set_xticklabels(["Regime A\n(fixed topology)", "Cross-context\n(unseen grid)",
-                        "OOD\n(leave-one-grid-out)"][:len(order)])
+    labels = {"regime_a": "Regime A\n(fixed topology)",
+              "regime_b_diagonal": "Regime B\n(same grid, N-k)",
+              "cross_context": "Cross-context\n(unseen grid)",
+              "ood": "OOD\n(leave-one-grid-out)"}
+    ax.set_xticklabels([labels[a] for a in order])
     ax.set_ylabel(f"rank by {metric} (1 = best)")
     ax.set_yticks(range(1, len(pivot) + 1))
     ax.invert_yaxis()
@@ -298,6 +384,14 @@ def main():
     perm = permutation_test(arms, args.metrics)
     perm.to_csv(os.path.join(args.out, "rank_permutation_test.csv"), index=False)
 
+    pooled = pooled_correlations(arms, args.metrics)
+    pooled.to_csv(os.path.join(args.out, "rank_correlation_pooled.csv"),
+                  index=False)
+
+    decomp = protocol_decomposition(arms, args.bump_metric)
+    decomp.to_csv(os.path.join(args.out, "protocol_decomposition.csv"),
+                  index=False)
+
     table = ranking_table(arms, args.metrics)
     table.to_csv(os.path.join(args.out, "ranking_table.csv"), index=False)
 
@@ -311,6 +405,15 @@ def main():
         print("\n== permutation test on the mean tau (exact, all 6! "
               "relabellings per cell) ==")
         print(perm.round(4).to_string(index=False))
+    if not pooled.empty:
+        print("\n== pooled-leaderboard correlation (ordering of the arm means) ==")
+        print(pooled[pooled.metric == args.bump_metric]
+              [["comparison", "kendall_tau_b", "spearman_rho"]]
+              .round(4).to_string(index=False))
+    if not decomp.empty:
+        print("\n== protocol step vs unseen-grid step ==")
+        print(decomp.round(4).to_string(index=False))
+
     print("\n== ranking by arm ==")
     for arm, metric in itertools.product(arms, [args.bump_metric]):
         sub = table[(table.arm == arm) & (table.metric == metric)]

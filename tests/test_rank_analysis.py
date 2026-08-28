@@ -22,6 +22,8 @@ from rank_analysis import (  # noqa: E402
     correlations,
     load_arms,
     permutation_test,
+    pooled_correlations,
+    protocol_decomposition,
     ranking_table,
     ranks,
 )
@@ -107,10 +109,11 @@ def test_ranks_and_reversal():
 
         corr = correlations(arms, ["nrmse", "mse", "mae"])
         check(not corr.empty, "correlations produced rows")
-        check(set(corr.comparison) == {"regime_a_vs_cross_context",
+        check(set(corr.comparison) == {"regime_a_vs_regime_b_diagonal",
+                                       "regime_a_vs_cross_context",
                                        "regime_a_vs_ood"},
-              "both Regime A vs Regime B comparisons are present")
-        n_expect = 2 * len(GRIDS) * len(SEEDS) * 3
+              "all three Regime A vs Regime B comparisons are present")
+        n_expect = 3 * len(GRIDS) * len(SEEDS) * 3
         check(len(corr) == n_expect,
               f"one row per (comparison, grid, seed, metric) = {n_expect}")
         check(all(abs(t + 1.0) < 1e-12 for t in corr.kendall_tau_b),
@@ -142,9 +145,10 @@ def test_ranking_table_and_bump_chart():
         args = Args(tmp)
         arms = load_arms(args)
         table = ranking_table(arms, ["nrmse"])
-        check(set(table.arm) == {"regime_a", "cross_context", "ood"},
-              "ranking table covers all three arms")
-        check(len(table) == 3 * len(MODELS), "one row per (arm, model)")
+        check(set(table.arm) == {"regime_a", "regime_b_diagonal",
+                                 "cross_context", "ood"},
+              "ranking table covers all four arms")
+        check(len(table) == 4 * len(MODELS), "one row per (arm, model)")
 
         a = table[table.arm == "regime_a"].sort_values("rank_overall")
         check(list(a.model) == MODELS, "Regime A ordering matches the fixture")
@@ -251,6 +255,91 @@ def test_permutation_test_skips_ragged_cells():
               f"the incomplete cell is dropped, got n_cells={row.n_cells}")
 
 
+def test_diagonal_arm_is_the_same_grid_rows():
+    """The diagonal arm holds Regime B evaluated on the training grid itself.
+
+    Without it, the A -> unseen comparison mixes two changes -- a harder protocol
+    and a different grid -- and attributes both to generalization.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        write_fixtures(tmp)
+        arms = load_arms(Args(tmp))
+        diag = arms["regime_b_diagonal"]
+        check(len(diag) == len(MODELS) * len(GRIDS) * len(SEEDS),
+              "one diagonal row per (model, grid, seed)")
+        raw = pd.read_csv(os.path.join(tmp, "cross_context.csv"))
+        seen = raw[~raw.unseen]
+        expect = seen.set_index(["model", "train_grid", "seed"]).nrmse
+        got = diag.set_index(["model", "grid", "seed"]).nrmse
+        check(all(abs(got.loc[k] - v) < 1e-12 for k, v in expect.items()),
+              "the diagonal arm takes the same-grid rows, not the unseen ones")
+        check("test_grid" not in diag.columns,
+              "the redundant test_grid column is dropped")
+
+
+def test_pooled_and_per_cell_correlations_answer_different_questions():
+    """Pooled means can agree while no individual cell does.
+
+    Cell 1 reverses the Regime A order and cell 2 restores it, so the per-cell
+    taus are -1 and +1 (mean 0) while the pooled means keep the original order
+    (tau +1). Reporting only the per-cell mean would call that no information.
+    """
+    a_rows, cc_rows, ood_rows = [], [], []
+    for i, m in enumerate(MODELS):
+        for g, flip in zip(GRIDS, (True, False)):
+            j = (len(MODELS) - 1 - i) if flip else i
+            a_rows.append({"model": m, "grid": g, "seed": 0, "nrmse": 0.1 * (i + 1)})
+            ood_rows.append({"model": m, "held_out_grid": g, "seed": 0,
+                             "nrmse": 0.1 * (j + 1) + 0.001 * i})
+            for tg in GRIDS:
+                cc_rows.append({"model": m, "train_grid": g, "test_grid": tg,
+                                "unseen": tg != g, "seed": 0,
+                                "nrmse": 0.1 * (j + 1) + 0.001 * i})
+    with tempfile.TemporaryDirectory() as tmp:
+        pd.DataFrame(a_rows).to_csv(os.path.join(tmp, "within_grid.csv"),
+                                    index=False)
+        pd.DataFrame(cc_rows).to_csv(os.path.join(tmp, "cross_context.csv"),
+                                     index=False)
+        pd.DataFrame(ood_rows).to_csv(os.path.join(tmp, "ood.csv"), index=False)
+        arms = load_arms(Args(tmp))
+        per_cell = correlations(arms, ["nrmse"])
+        ood_cells = per_cell[per_cell.comparison == "regime_a_vs_ood"]
+        check(abs(ood_cells.kendall_tau_b.mean()) < 1e-12,
+              "the per-cell mean tau is zero by construction")
+        pooled = pooled_correlations(arms, ["nrmse"])
+        row = pooled[pooled.comparison == "regime_a_vs_ood"].iloc[0]
+        check(abs(row.kendall_tau_b - 1.0) < 1e-12,
+              f"the pooled leaderboards still agree, got {row.kendall_tau_b}")
+        check(row.order_left == row.order_right,
+              "the two pooled orderings are recorded and identical")
+
+
+def test_protocol_decomposition_splits_the_two_steps():
+    """The A -> unseen factor must factor through the same-grid protocol step."""
+    rows_a = [{"model": "gcn", "grid": "G", "seed": 0, "nrmse": 0.01}]
+    rows_cc = [
+        {"model": "gcn", "train_grid": "G", "test_grid": "G", "unseen": False,
+         "seed": 0, "nrmse": 0.05},
+        {"model": "gcn", "train_grid": "G", "test_grid": "H", "unseen": True,
+         "seed": 0, "nrmse": 0.50},
+    ]
+    rows_ood = [{"model": "gcn", "held_out_grid": "G", "seed": 0, "nrmse": 0.25}]
+    with tempfile.TemporaryDirectory() as tmp:
+        pd.DataFrame(rows_a).to_csv(os.path.join(tmp, "within_grid.csv"),
+                                    index=False)
+        pd.DataFrame(rows_cc).to_csv(os.path.join(tmp, "cross_context.csv"),
+                                     index=False)
+        pd.DataFrame(rows_ood).to_csv(os.path.join(tmp, "ood.csv"), index=False)
+        d = protocol_decomposition(load_arms(Args(tmp)), "nrmse").iloc[0]
+        check(abs(d.protocol_factor - 5.0) < 1e-9,
+              f"same-grid protocol costs 5x, got {d.protocol_factor}")
+        check(abs(d.unseen_grid_factor_cross_context - 10.0) < 1e-9,
+              f"the unseen grid costs a further 10x, got "
+              f"{d.unseen_grid_factor_cross_context}")
+        check(abs(d.total_factor_cross_context - 50.0) < 1e-9,
+              "the two steps multiply to the headline factor")
+
+
 def test_metric_absent_is_skipped():
     with tempfile.TemporaryDirectory() as tmp:
         write_fixtures(tmp)
@@ -272,6 +361,9 @@ if __name__ == "__main__":
                test_nonfinite_transfer_voids_the_group,
                test_permutation_test_on_a_known_reversal,
                test_permutation_test_skips_ragged_cells,
+               test_diagonal_arm_is_the_same_grid_rows,
+               test_pooled_and_per_cell_correlations_answer_different_questions,
+               test_protocol_decomposition_splits_the_two_steps,
                test_metric_absent_is_skipped):
         print(f"\n{fn.__name__}")
         fn()
