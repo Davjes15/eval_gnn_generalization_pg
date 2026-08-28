@@ -43,6 +43,7 @@ import os
 from collections import Counter
 
 import matplotlib
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -87,9 +88,23 @@ def load_arms(args):
                   if c not in ("model", "train_grid", "test_grid", "unseen",
                                "seed", "regime")
                   and pd.api.types.is_numeric_dtype(cc[c])]
-    arms["cross_context"] = (cc.groupby(["model", "train_grid", "seed"],
-                                        as_index=False)[value_cols].mean()
-                             .rename(columns={"train_grid": "grid"}))
+    # A transfer that produced a non-finite error is a failure of that
+    # (model, train_grid, seed), not a missing observation: pandas would drop it
+    # and average the remaining test grids, which reports a model as better than
+    # the run where it broke down. The whole group is voided instead and counted.
+    cc = cc.copy()
+    cc[value_cols] = cc[value_cols].replace([np.inf, -np.inf], np.nan)
+    grouped = cc.groupby(["model", "train_grid", "seed"], as_index=False)
+    means = grouped[value_cols].mean()
+    voided = grouped[value_cols].agg(lambda s: bool(s.isna().any()))
+    means[value_cols] = means[value_cols].mask(
+        voided[value_cols].to_numpy().astype(bool))
+    arms["cross_context"] = means.rename(columns={"train_grid": "grid"})
+    lost = int(voided["nrmse"].sum()) if "nrmse" in voided else 0
+    if lost:
+        print(f"note: {lost} cross-context (model, train grid, seed) group(s) "
+              f"voided by a non-finite transfer error; they are excluded from "
+              f"the ranking and listed in the arm table as NaN")
 
     ood = pd.read_csv(args.ood)
     arms["ood"] = ood.rename(columns={"held_out_grid": "grid"})

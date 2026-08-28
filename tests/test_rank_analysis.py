@@ -194,6 +194,26 @@ def test_missing_model_is_dropped_not_fatal():
               "other (grid, seed) cells keep all architectures")
 
 
+def test_nonfinite_transfer_voids_the_group():
+    """One unseen grid where the model broke down must void that whole
+    (model, train grid, seed) cross-context cell: averaging the remaining grids
+    would report the run as better than the transfer where it failed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        write_fixtures(tmp)
+        path = os.path.join(tmp, "cross_context.csv")
+        df = pd.read_csv(path)
+        sel = ((df.model == "gin") & (df.train_grid == GRIDS[0])
+               & (df.seed == SEEDS[0]) & df.unseen)
+        df.loc[df.index[sel][0], "nrmse"] = float("inf")
+        df.to_csv(path, index=False)
+        cc = load_arms(Args(tmp))["cross_context"]
+        row = cc[(cc.model == "gin") & (cc.grid == GRIDS[0])
+                 & (cc.seed == SEEDS[0])].iloc[0]
+        check(pd.isna(row.nrmse), "the failed cell is voided, not averaged")
+        other = cc[(cc.model == "gin") & (cc.grid == GRIDS[1])].iloc[0]
+        check(pd.notna(other.nrmse), "unaffected cells keep their value")
+
+
 def test_metric_absent_is_skipped():
     with tempfile.TemporaryDirectory() as tmp:
         write_fixtures(tmp)
@@ -212,6 +232,7 @@ if __name__ == "__main__":
                test_ranking_table_and_bump_chart,
                test_overlap_flag,
                test_missing_model_is_dropped_not_fatal,
+               test_nonfinite_transfer_voids_the_group,
                test_metric_absent_is_skipped):
         print(f"\n{fn.__name__}")
         fn()

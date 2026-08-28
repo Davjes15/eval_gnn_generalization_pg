@@ -37,13 +37,23 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 | # | Finding | Status | What closes it | Retraining? |
 |---|---|---|---|---|
 | A1 | DC baseline carried AC reactive power | **closed** | Q ≡ 0 enforced at generation *and* at scoring (`apply_dc_convention`); `nrmse_PVtheta` added as the fair-to-DC secondary aggregate; `pandapower==3.5.4` pinned; regression tests | no |
-| A2 | Node features/targets never scaled | **implemented, campaign running** | `normalization.py` + `experiments.py --normalize pu_zscore`, de-normalized before scoring (Decision 20). Within-grid arm training now; Regime B follows A5 | **yes** (final campaign) |
-| A3 | Aggregate metric hides the physics | **implemented, awaiting final checkpoints** | `physics_metrics.py` (per-quantity, predicted-entries-only, p95/p99/max tails, V-violation / false-secure / false-alarm rates) + `eval_checkpoints.py` replay driver + `tests/test_physics_metrics.py`. Runs over the final checkpoints when the campaign ends | no |
+| A2 | Node features/targets never scaled | **closed** | `normalization.py` + `experiments.py --normalize pu_zscore`, de-normalized before scoring (Decision 20). Final campaign complete: 6 architectures × 3 arms, 336 checkpoints, tables regenerated in `results_norm/analysis/` and reported in `docs/Normalization_results.md` §4. In-distribution voltage NRMSE 5.8–27 → 0.001–0.015 | **done** |
+| A3 | Aggregate metric hides the physics | **closed** | `physics_metrics.py` (per-quantity, predicted-entries-only, p95/p99/max tails, V-violation / false-secure / false-alarm rates) + `eval_checkpoints.py` replay driver + `tests/test_physics_metrics.py`. All 336 checkpoints replayed → 672 rows in `results_norm/physics/physics_metrics.csv`, summarised in `docs/tables/physics_summary_norm.csv` | no |
 | A4 | Not reproducible from the repository | **closed** | `docs/Reproducibility.md`: pinned versions, exact generation/training commands, `dataset_src.csv` provenance + realised split windows, `checkpoint_index.py` (path, size, SHA-256, parameter count) and one-command replay via `eval_checkpoints.py`; the 21 tuning artifacts the configuration tables cite are now committed. Remaining limits (one data realization, four grids, NNConv seeds) are stated, not fixed | no |
-| A5 | Split hygiene (shared demand snapshots in Regime B) | **closed for the data; training in progress** | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
+| A5 | Split hygiene (shared demand snapshots in Regime B) | **closed** (data and training) | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
 | A6 | g-score affine in (mean, sd) here | **closed** | `docs/Generalization_score_and_MMD.md` §1: the identity `g = μ + 0.806σ` (cross-context) / `μ + 0.857σ` (OOD) verified against the committed artifacts to 1e-4, and rank-by-g ≡ rank-by-mean (τ = 1.0) in both arms | no |
 | A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_full_v2.csv` | no |
 | A8 | Statistics weaker than claimed | partly closed | permutation test run (A↔OOD τ = 0.222, p = 0.21; A↔cross-context −0.022, p = 0.91) and the wording corrected; remaining: optional NNConv 3 → 5 seeds | additive only |
+
+**Non-finite accounting for the final tables.** Of the 672 replayed rows, exactly two are
+non-finite — `gcn`, seed 1000, cross-context IEEE39→IEEE118 and IEEE118→IEEE24 — and they are a
+reproducible architecture failure, not a numerical accident: GCN's learned scalar edge weight can
+go negative on an unseen grid, so `GCNConv`'s symmetric normalization takes `deg^(-1/2)` of a
+negative weighted degree (`docs/Normalization_results.md` §4bis). They are listed in
+`results_norm/analysis/nonfinite_runs.csv`, and `rank_analysis.py` voids the whole
+(model, train grid, seed) cell rather than averaging the surviving test grids, which would have
+reported the run as better than the transfer where it broke. The other 168 non-finite *cells* are
+`vm_false_secure` on splits with zero true voltage violations, i.e. 0/0, reported as undefined.
 
 **Ordering constraint that drove the plan:** A5 changes the Regime B *data*, and A2 changes the
 *training representation*. Doing them in either order separately would mean training the same six

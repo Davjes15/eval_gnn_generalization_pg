@@ -119,7 +119,28 @@ def per_quantity(frames):
                     col = f"{m}_{q}"
                     row[f"{m}_mean"] = float(sub[col].mean())
                     row[f"{m}_sd"] = float(sub[col].std(ddof=1))
+                    row[f"{m}_n_nonfinite"] = int(
+                        (~np.isfinite(sub[col])).sum())
                 rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def nonfinite_report(frames):
+    """Runs whose error is NaN or inf, listed instead of silently averaged out.
+
+    A non-finite error is a model that broke down on that transfer, not a
+    missing measurement, so the count belongs next to every mean computed here.
+    """
+    rows = []
+    for arm, df in frames.items():
+        cols = [c for c in df.columns
+                if c.startswith("nrmse") or c in ("mae", "mse")]
+        bad = df[~np.isfinite(df[cols].to_numpy()).all(axis=1)]
+        for r in bad.to_dict("records"):
+            rows.append({"arm": arm, "model": r["model"], "seed": r["seed"],
+                         "train_grid": r.get("train_grid", ""),
+                         "test_grid": r.get("test_grid", r.get("grid", "")),
+                         "held_out_grid": r.get("held_out_grid", "")})
     return pd.DataFrame(rows)
 
 
@@ -171,6 +192,8 @@ def main():
     within = pd.read_csv(args.within)
     cross = pd.read_csv(args.cross)
     ood = pd.read_csv(args.ood)
+    nonfinite = nonfinite_report({"regime_a": within, "cross_context": cross,
+                                  "ood": ood})
     lap, pooled, _ = topology_inputs(args.topology)
     dc_a = pd.read_csv(args.dc_regime_a)
     dc_b = pd.read_csv(args.dc_regime_b)
@@ -206,7 +229,12 @@ def main():
     dc_comparison(frames, dc_tables).to_csv(
         os.path.join(args.out, "dc_comparison.csv"), index=False)
 
+    nonfinite.to_csv(os.path.join(args.out, "nonfinite_runs.csv"), index=False)
+
     pd.set_option("display.width", 150)
+    if len(nonfinite):
+        print("\nnon-finite runs excluded from the means above")
+        print(nonfinite.to_string(index=False))
     print("\ncross-context aggregate g-score (mean over seeds)")
     print(agg.groupby("model")[["mean_nrmse", "std_nrmse", "g_score"]]
           .mean().sort_values("g_score").to_string())
