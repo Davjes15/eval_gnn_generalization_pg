@@ -212,14 +212,33 @@ merge that is not consistent with one frozen protocol (an architecture in two sh
 disagreeing seeds/epochs/data_dir/batch size, two configurations for one
 architecture), which is the failure that would silently invalidate the ranking.
 
+The merge is two-stage, because a seed/fold-sharded architecture is consolidated
+into a single directory first and that directory is then merged with the other
+five as an ordinary shard. `--seed_shards` is required at *both* stages here:
+NNConv carries three seeds where the other five architectures carry five, so
+even the final cross-architecture merge is a merge of shards with different seed
+lists. Under `--seed_shards` a run is identified by model, seed and the arm's
+grid columns, so two architectures sharing a `(seed, grid)` merge cleanly while
+one shard silently redoing another's run is still refused. `MODELS` below is the
+six architectures.
+
 ```bash
-# 1. merge the per-architecture shards into one file per arm
-python gather_results.py --shards results_norm/within_*  --file within_grid.csv \
-    --out results_norm/within_grid.csv
-python gather_results.py --shards results_norm/cross_*   --file cross_context.csv \
-    --out results_norm/cross_context.csv
-python gather_results.py --shards results_norm/ood_*     --file ood.csv \
-    --out results_norm/ood.csv
+MODELS="gcn arma_gnn gat gin transformer nnconv"
+
+# 1a. consolidate the architectures whose runs were split by seed / held-out grid
+python gather_results.py --shards "results_norm/ood_arma_gnn_s*" --file ood.csv \
+    --out results_norm/ood_arma_gnn_merged --models arma_gnn --seed_shards
+python gather_results.py --shards "results_norm/ood_nnconv_s*" --file ood.csv \
+    --out results_norm/ood_nnconv_merged --models nnconv --seed_shards
+
+# 1b. merge the six architectures into one directory per arm
+python gather_results.py --shards "results_norm/within_*" --file within_grid.csv \
+    --out results_norm/all_within --models $MODELS --seed_shards
+python gather_results.py --shards "results_norm/cross_*" --file cross_context.csv \
+    --out results_norm/all_cross --models $MODELS --seed_shards
+python gather_results.py --shards "results_norm/ood_*merged" "results_norm/ood_g*" \
+    "results_norm/ood_transformer" --file ood.csv \
+    --out results_norm/all_ood --models $MODELS --seed_shards
 
 # 2. the model-independent tables (see below) -- one shared copy
 python experiments.py --only_topology --experiment ood --data_dir data_full_v2 \
@@ -231,11 +250,13 @@ python recompute_dc_baseline.py --data_dir data_a \
     --out results_norm/dc_baseline_regime_a.csv
 
 # 4. ranking and downstream tables
-python rank_analysis.py --regime_a results_norm/within_grid.csv \
-    --cross results_norm/cross_context.csv --ood results_norm/ood.csv \
+python rank_analysis.py --regime_a results_norm/all_within/within_grid.csv \
+    --cross results_norm/all_cross/cross_context.csv \
+    --ood results_norm/all_ood/ood.csv \
     --out results_norm/analysis
-python recompute_tables.py --within results_norm/within_grid.csv \
-    --cross results_norm/cross_context.csv --ood results_norm/ood.csv \
+python recompute_tables.py --within results_norm/all_within/within_grid.csv \
+    --cross results_norm/all_cross/cross_context.csv \
+    --ood results_norm/all_ood/ood.csv \
     --topology results_norm/topology \
     --dc_regime_a results_norm/dc_baseline_regime_a.csv \
     --dc_regime_b results_norm/topology/dc_baseline.csv \
