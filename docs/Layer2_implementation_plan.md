@@ -1,6 +1,8 @@
 # Layer 2 — Detailed Implementation Plan (the clean, single-pipeline solution)
 
-Status: **implementation plan, not yet executed.** Companion to `PowerGraph_to_ENGAGE_design_decisions.md` (the *why*) and `Experimental_Design_transmission_GNN_generalization.md` (the *experiment*). This file is the *how*: every file we create or modify, what it contains, how it connects to the rest of the pipeline under the **new mental model**, the design decision behind each step, and how it serves the final goal.
+Status: **IMPLEMENTED (Steps 1–7) and run end-to-end.** Companion to `PowerGraph_to_ENGAGE_design_decisions.md` (the *why*), `Experimental_Design_transmission_GNN_generalization.md` (the *experiment*), and `Pipeline_Report.md` (the *as-built* report with flow diagram + run guide). This file is the *how*: every file we create or modify, what it contains, how it connects to the rest of the pipeline under the **new mental model**, the design decision behind each step, and how it serves the final goal.
+
+> **As-built note (differs from the original plan below).** Rather than *modifying* ENGAGE files in place (`graph_gen.py`, `cross_context_experiment.py`, …), the final implementation is **fully self-contained** (Decision 12): ENGAGE's extractors are **vendored** into `engage_contract.py`; the experiment core is a single new `experiments.py`; MMD is a new `mmd_utils.py`; training/metrics are `training_utils.py`. The step→branch mapping actually shipped is: `step-1-grid-conversion`, `step-2-grid-loader`, `step-3-data-generation`, `step-4-model-zoo`, `step-5-experiments`, `step-6-validation`, `step-7-harvest-contingencies`. `experiments.py` also gained `--save_models` (Decision 13) writing `cc_<model>_<grid>.pt` / `ood_<model>_heldout_<grid>.pt`, and a **two-flavour g-score**: the cross-context `gscore.csv` (+ the pooled no-trim reading, emitted then as `gscore_smallN.csv` and now as `gscore_cc_aggregate.csv`) and the better-posed **OOD g-score** `gscore_ood.csv` via `compute_ood_gscores` (per model over held-out grids, distance = mean Laplacian-MMD from each held-out grid to its training grids, no trim — Decision 13). See the corrected file map at the bottom.
 
 ## The new mental model (drop "map two repos")
 We build **one clean pipeline**: *ENGAGE's methodology applied to PowerGraph's transmission grids.* We do **not** interoperate with PowerGraph's generated data format or its training code. We borrow only three things: (1) PowerGraph's **grid models** (`System.m`) and **real demand** (`hourlyDemandBus.mat`), (2) pandapower as the **solver**, and (3) standard `torch_geometric` **layers**. Everything else is ENGAGE's existing machinery, which already implements the generalization study correctly.
@@ -130,18 +132,22 @@ for t in sampled_hours:
 ---
 
 # File map (new mental model)
+**Corrected AS-BUILT file map** (what actually shipped; supersedes the original plan's "modify ENGAGE in place" rows):
+
 | File | New/Modified | Role | Connects to |
 |---|---|---|---|
 | `transmission/convert_cases.m` | new | Octave `.m`→`.mat` (once) | `transmission_grids.load_case` |
 | `transmission/cases/*.mat` | new (committed) | converted MATPOWER cases | pandapower `from_mpc` |
 | `transmission_grids.py` | new | load nets + demand; grid list | generator, experiments |
-| `transmission_graph_gen.py` | new | Route B + contingency **re-solve** → `Data` | reuses `graph_gen` extractors; writes `data_dir/<grid>/train/dataset.pt` |
-| `graph_gen.py` | modified (refactor) | expose `get_node_features`/`get_edge_features`/`dc_pf` as shared helpers | imported by new generator |
-| `models.py` | modified | fix+add `GAT/GIN/TRANSFORMER/NNConv` with `inference()` | experiment `model_classes` |
-| `cross_context_experiment.py` | modified | transmission grid list + model set | `training_utils`, datasets |
-| `out_of_distribution_experiment.py` | modified | same, leave-one-out | `training_utils`, datasets |
-| `transmission/validate.py` | new | conversion/MMD/contract gates | all of the above |
-| `training_utils.py`, `graph_utils.py` | **unchanged** | training, MMD, g-score, loaders | reused as-is |
+| `engage_contract.py` | new (**vendored** ENGAGE) | contingency-aware `get_node_features`/`get_edge_features` | imported by the generator |
+| `transmission_graph_gen.py` | new | Route B + contingency **re-solve** → `Data` | uses `engage_contract`; writes `data_dir/<grid>/<split>/dataset.pt` |
+| `contingency_harvest.py` | new | Step 7: harvest real outages from PowerGraph-Graph | optional source for the generator |
+| `models.py` | new | six edge-aware GNNs + shared `inference()` | `MODELS` registry, imported by `experiments.py` |
+| `training_utils.py` | new | training loop, per-quantity NRMSE, DC baseline, g-score | `experiments.py` |
+| `mmd_utils.py` | new | distribution-based MMD (non-degenerate) | `experiments.py` |
+| `experiments.py` | new | single driver: CC + OOD + MMD + DC + g-score (+ `--save_models`) | datasets + `MODELS` |
+| `validate.py` | new | conversion/contract/masking/topology/MMD gates | all of the above |
+| `requirements.txt` | new | pinned deps (incl. optional `mat73` for Step 7) | environment |
 
 # Dependency / sequencing
 Step 0 → Step 1 → Step 2 → Step 3 (needs 1,2) → Step 4 (parallel with 1–3) → Step 5 (needs 3,4) → Step 6 (gates 1–5) → Step 7. The generator (Step 3) and the models (Step 4) are the only substantial new code; everything else is small glue or reuse.

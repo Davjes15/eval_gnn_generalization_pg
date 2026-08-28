@@ -203,6 +203,18 @@ analysis commands in §5 on those CSVs
 must reproduce the tables in `docs/Normalization_results.md` §4 exactly; that is
 the cheapest end-to-end check of this repository.
 
+**Which branch holds what.** `step-8-regime-comparison` is the complete pipeline:
+`step-1` … `step-4` and `step-7` are strict ancestors of it, and the only commits
+`step-5`/`step-6` hold that it does not are earlier forms of `experiments.py`
+(OOD g-score, pooled MMD, no-trim CC aggregate) that were all forward-propagated,
+so no code or document is stranded on a step branch. The exception is `main`,
+which carries the **exploratory run** and is not an ancestor: the committed
+`full_run/` datasets, checkpoints and result tables, `docs/figures/` and
+`docs/Presentation_5min.md` exist only there. Documents here that cite
+`full_run/results/...` (e.g. the legacy `gscore_smallN.csv`) are pointing at
+`main`, deliberately — those numbers predate A1-A8 and are never the reported
+result.
+
 ---
 
 ## 5. Downstream analysis, from the committed artifacts
