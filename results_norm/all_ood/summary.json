@@ -1,0 +1,22 @@
+{
+  "epochs": 200,
+  "data_dir": "data_full_v2",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "merged_from": [
+    "results_norm/ood_gcn",
+    "results_norm/ood_gat",
+    "results_norm/ood_gin",
+    "results_norm/ood_transformer",
+    "results_norm/ood_arma_gnn_merged",
+    "results_norm/ood_nnconv_merged"
+  ],
+  "merged_file": "ood.csv"
+}

@@ -1,0 +1,22 @@
+{
+  "epochs": 200,
+  "data_dir": "data_full_v2",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "merged_from": [
+    "results_norm/cross_arma_gnn",
+    "results_norm/cross_gat",
+    "results_norm/cross_gcn",
+    "results_norm/cross_gin",
+    "results_norm/cross_nnconv",
+    "results_norm/cross_transformer"
+  ],
+  "merged_file": "cross_context.csv"
+}

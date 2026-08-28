@@ -1,0 +1,22 @@
+{
+  "epochs": 200,
+  "data_dir": "data_a",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "merged_from": [
+    "results_norm/within_arma_gnn",
+    "results_norm/within_gat",
+    "results_norm/within_gcn",
+    "results_norm/within_gin",
+    "results_norm/within_nnconv",
+    "results_norm/within_transformer"
+  ],
+  "merged_file": "within_grid.csv"
+}
