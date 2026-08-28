@@ -19,6 +19,13 @@
 > per-seed / per-grid stability reporting. The τ values below are re-derived on
 > the normalized campaign before any of them is quoted as a result; the final
 > tables land in `docs/Normalization_results.md`.
+>
+> **Now re-derived.** On the normalized campaign the Regime A → Regime B rank
+> correlation is τ = 0.023 ± 0.369 (cross-context) and τ = 0.020 ± 0.380 (OOD),
+> i.e. the qualitative conclusion below — the within-grid ranking does not
+> predict the transfer ranking — survives the change of representation and of
+> data, while the individual numbers do not. Quote
+> `docs/Normalization_results.md` §4, not this page.
 
 > Provenance of this campaign: the consolidated tuned-configuration runs —
 > `gcn`, `gat`, `gin`, `transformer`

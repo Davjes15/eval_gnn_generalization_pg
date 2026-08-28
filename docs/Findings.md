@@ -15,8 +15,8 @@
 > * **Regime B shared demand snapshots across splits**; the final transfer numbers
 >   come from `data_full_v2` with a blocked temporal split (audit item A5).
 >
-> For current results use `docs/Regime_comparison_results.md` and
-> `docs/Normalization_results.md`; for what changed and why,
+> For current results use `docs/Normalization_results.md` §4 (the final normalized
+> campaign); `docs/Regime_comparison_results.md` is the raw-unit ablation; for what changed and why,
 > `docs/Audit_response.md` and `docs/PowerGraph_to_ENGAGE_design_decisions.md`.
 > This file is kept because the qualitative mechanisms it describes — masking,
 > per-quantity reading, the fragility of single-grid transfer — still hold, and
