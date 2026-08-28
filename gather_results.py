@@ -127,11 +127,13 @@ def gather(dirs, fname, models, seed_shards=False):
         id_cols = [c for c in RUN_ID_COLS if c in frame.columns]
         for model in frame.model.unique():
             if seed_shards:
-                rows = frame.loc[frame.model == model, ["seed"] + id_cols]
+                rows = frame.loc[frame.model == model,
+                                 ["model", "seed"] + id_cols]
                 for key in rows.itertuples(index=False, name=None):
                     if key in claimed:
                         raise SystemExit(
-                            f"{model} run {key} appears in both {claimed[key]} "
+                            f"{model} run {key[1:]} appears in both "
+                            f"{claimed[key]} "
                             f"and {d}: duplicated runs must not be merged")
                     claimed[key] = d
                 owners.setdefault(model, d)

@@ -214,6 +214,27 @@ def test_merged_dir_is_a_valid_shard():
               str(owners))
 
 
+def test_seed_shards_across_architectures():
+    """NNConv runs three seeds where the others run five, so the final merge of
+    the six per-architecture shards is a seed-shard merge too. Two architectures
+    sharing a (seed, grid) is the normal case there, not a duplicated run."""
+    print("\n== seed shards across architectures ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        gcn = _write(tmp, "within_gcn", _rows("gcn", seeds=(0, 100)))
+        gat = _write(tmp, "within_gat", _rows("gat", seeds=(0,)),
+                     summary={"seeds": [0]})
+        df, owners = gather([gcn, gat], "within_grid.csv", MODELS_2,
+                            seed_shards=True)
+        check("architectures sharing a (seed, grid) are not a duplicate",
+              len(df) == 3, str(len(df)))
+        check("both architectures are attributed", set(owners) == set(MODELS_2),
+              str(owners))
+        _expect_exit(
+            lambda: gather([gcn, gcn], "within_grid.csv", ["gcn"],
+                           seed_shards=True),
+            "a genuinely repeated run is still refused")
+
+
 def main():
     test_clean_merge()
     test_duplicate_model_refused()
@@ -222,6 +243,7 @@ def main():
     test_two_configs_for_one_model_refused()
     test_seed_shards()
     test_fold_shards()
+    test_seed_shards_across_architectures()
     test_merged_dir_is_a_valid_shard()
     print("\n" + "=" * 50)
     if FAILURES:
