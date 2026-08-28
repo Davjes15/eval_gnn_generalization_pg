@@ -237,10 +237,10 @@ def main():
         print("\nnon-finite runs excluded from the means above")
         print(nonfinite.to_string(index=False))
     print("\ncross-context aggregate g-score (mean over seeds)")
-    print(agg.groupby("model")[["mean_nrmse", "std_nrmse", "g_score"]]
+    print(agg.groupby("model")[["finite_rate", "mean_nrmse", "std_nrmse", "g_score"]]
           .mean().sort_values("g_score").to_string())
     print("\nOOD g-score (mean over seeds)")
-    print(ood_gs.groupby("model")[["n_points", "mean_nrmse", "g_score"]]
+    print(ood_gs.groupby("model")[["n_finite", "finite_rate", "mean_nrmse", "g_score"]]
           .mean().sort_values("g_score").to_string())
     print(f"\ntables -> {args.out}")
 

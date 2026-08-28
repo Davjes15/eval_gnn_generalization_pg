@@ -64,7 +64,7 @@ from normalization import MODES, Scaler
 from training_utils import (
     evaluate,
     get_device,
-    get_generalization_score,
+    gscore_row,
     load_grid_dataset,
     make_loaders,
     test_dc_pf,
@@ -284,7 +284,13 @@ def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
 
 
 def compute_gscores(cc_records, lap_mmd, model_names, grids):
-    """g-score per (model, train grid) over the UNSEEN test grids."""
+    """g-score per (model, train grid) over the UNSEEN test grids.
+
+    With only three unseen grids per training grid the ENGAGE percentile trim keeps
+    a single point, which turns `mean_nrmse` into a median and forces `std_nrmse`
+    to zero; `bounds=0` is used here so this table means what its column names say
+    and agrees with the pooled and OOD tables.
+    """
     df = pd.DataFrame(cc_records)
     rows = []
     for name in model_names:
@@ -294,10 +300,8 @@ def compute_gscores(cc_records, lap_mmd, model_names, grids):
                 continue
             nrmses = sub["nrmse"].values
             mmds = np.array([lap_mmd.loc[train_grid, tg] for tg in sub["test_grid"]])
-            mean_n, std_n, mmd_rng, score = get_generalization_score(mmds, nrmses)
             rows.append({"model": name, "train_grid": train_grid,
-                         "mean_nrmse": mean_n, "std_nrmse": std_n,
-                         "mmd_range": mmd_rng, "g_score": score})
+                         **gscore_row(mmds, nrmses)})
     return rows
 
 
@@ -312,27 +316,23 @@ def compute_cc_aggregate_gscores(cc_records, lap_mmd, dc_rows, model_names, grid
     is also un-trimmed (with only 4 grids the ENGAGE default trim is degenerate; see
     design decision D13). A DC-PF reference row is appended with mmd=0 (so its distance
     term vanishes); note DC-PF's g-score is an artifact (Dmmd=0 + the Q==0 bookkeeping),
-    a reference bar rather than a competitor.
+    a reference bar rather than a competitor, and it aggregates one point per grid
+    rather than one per ordered pair, so its `n_expected` differs from the models'.
     """
     df = pd.DataFrame(cc_records)
     rows = []
     for name in model_names:
-        sub = df[(df.model == name) & (df.unseen)].dropna(subset=["nrmse"])
+        sub = df[(df.model == name) & (df.unseen)]
         if sub.empty:
             continue
         nrmses = sub["nrmse"].values
         mmds = np.array([lap_mmd.loc[r.train_grid, r.test_grid]
                          for _, r in sub.iterrows()])
-        mean_n, std_n, mmd_rng, score = get_generalization_score(mmds, nrmses, bounds=0)
-        rows.append({"model": name, "n_pairs": len(nrmses),
-                     "mean_nrmse": mean_n, "std_nrmse": std_n,
-                     "mmd_range": mmd_rng, "g_score": score})
+        rows.append({"model": name, "basis": "unseen_pairs",
+                     **gscore_row(mmds, nrmses)})
     dc = np.array([r["dc_nrmse"] for r in dc_rows])
-    mean_n, std_n, mmd_rng, score = get_generalization_score(
-        np.zeros(len(dc)), dc, bounds=0)
-    rows.append({"model": "dc_pf", "n_pairs": len(dc),
-                 "mean_nrmse": mean_n, "std_nrmse": std_n,
-                 "mmd_range": mmd_rng, "g_score": score})
+    rows.append({"model": "dc_pf", "basis": "one_point_per_grid",
+                 **gscore_row(np.zeros(len(dc)), dc)})
     return rows
 
 
@@ -374,25 +374,19 @@ def compute_ood_gscores(ood_records, pooled_lap, model_names, grids):
 
     No percentile trim is used (bounds=0): with only a handful of grids the
     ENGAGE default trim collapses the statistics (see design decision D13).
-    NaN NRMSE cells (e.g. a diverged model) are dropped before scoring.
+    Non-finite cells void the score and are reported through `finite_rate`.
     """
     df = pd.DataFrame(ood_records)
     rows = []
     for name in model_names:
         sub = df[df.model == name]
-        nrmses, mmds = [], []
-        for _, r in sub.iterrows():
-            if not np.isfinite(r["nrmse"]):
-                continue
-            mmds.append(float(pooled_lap[r["held_out_grid"]]))
-            nrmses.append(float(r["nrmse"]))
-        if len(nrmses) < 2:
+        if sub.empty:
+            continue
+        mmds = np.array([float(pooled_lap[g]) for g in sub["held_out_grid"]])
+        nrmses = sub["nrmse"].to_numpy(dtype=float)
+        if int(np.isfinite(nrmses).sum()) < 2:
             continue  # need >=2 points for std / mmd_range
-        mean_n, std_n, mmd_rng, score = get_generalization_score(
-            np.array(mmds), np.array(nrmses), bounds=0)
-        rows.append({"model": name, "n_points": len(nrmses),
-                     "mean_nrmse": mean_n, "std_nrmse": std_n,
-                     "mmd_range": mmd_rng, "g_score": score})
+        rows.append({"model": name, **gscore_row(mmds, nrmses)})
     return rows
 
 

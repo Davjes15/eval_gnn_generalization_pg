@@ -167,17 +167,35 @@ has to clear this bar first.
 
 ### 4.4 g-scores
 
-Cross-context aggregate (`mean + 0.806 sd`) and OOD (`mean + 0.857 sd`):
+Cross-context aggregate (`mean + 0.806 sd`) and OOD (`mean + 0.857 sd`), averaged
+over the seeds whose cell is complete:
 
-| model | cc mean | cc sd | cc g | OOD mean | OOD g |
-|---|---|---|---|---|---|
-| arma_gnn | 0.821 | 1.490 | 2.020 | 0.798 | 1.311 |
-| gcn | 1.019 | 1.818 | 2.482 | 1.043 | 1.976 |
-| transformer | 0.939 | 1.937 | 2.497 | 0.269 | 0.412 |
-| gin | 1.004 | 2.103 | 2.696 | 0.387 | 0.652 |
-| gat | 1.105 | 2.265 | 2.928 | 0.346 | 0.528 |
-| nnconv | 1.985 | 3.133 | 4.507 | 3.410 | 6.713 |
-| dc_pf | 0.067 | 0.023 | **0.067** | — | — |
+| model | cc mean | cc sd | cc g | finite rate | OOD mean | OOD g |
+|---|---|---|---|---|---|---|
+| arma_gnn | 0.821 | 1.490 | 2.020 | 1.00 | 0.798 | 1.311 |
+| transformer | 0.939 | 1.937 | 2.497 | 1.00 | 0.269 | 0.412 |
+| gin | 1.004 | 2.103 | 2.696 | 1.00 | 0.387 | 0.652 |
+| gcn | 1.145 | 2.157 | 2.881 | **0.97** | 1.043 | 1.976 |
+| gat | 1.105 | 2.265 | 2.928 | 1.00 | 0.346 | 0.528 |
+| nnconv | 1.985 | 3.133 | 4.507 | 1.00 | 3.410 | 6.713 |
+| dc_pf | 0.067 | 0.023 | **0.067** | 1.00 | — | — |
+
+**Divergence does not earn a g-score.** GCN at seed 1000 fails on 2 of its 12
+unseen pairs (§4bis). Scoring it on the 10 survivors gave it `g = 0.888`, the
+best value in the table — the failed pairs are the hard ones, so dropping them is
+a reward for diverging. The score for an incomplete cell is therefore voided, and
+`finite_rate` in `gscore_cc_aggregate.csv` reports what fraction of the expected
+points survived, which is the same void-the-cell rule the rank analysis uses.
+GCN's row above is the mean over its four complete seeds.
+
+The per-training-grid table (`gscore.csv`) is also un-trimmed now. ENGAGE's 2/98
+percentile trim on three unseen grids keeps a single point, which silently turned
+`mean_nrmse` into a median and `std_nrmse` into a column of zeros; with `bounds=0`
+the columns mean what they say and agree with the pooled table.
+
+The `dc_pf` row aggregates one point per grid where the model rows aggregate one
+per ordered training→test pair (4 vs 12 points, recorded in the `basis` and
+`n_expected` columns), so it is a reference bar and not a seventh competitor.
 
 As derived for A6, with four grids the MMD term collapses to a constant, so the
 g-score is a monotone function of `mean + c·sd` and cannot reorder architectures

@@ -272,3 +272,36 @@ def get_generalization_score(mmds, nrmses, alpha=1.0, bounds=2):
     std_nrmse = nrmses[keep].std() if keep.any() else nrmses.std()
     score = mean_nrmse + alpha * std_nrmse * (np.log(mmd_range + 1) / (mmd_range + eps))
     return float(mean_nrmse), float(std_nrmse), float(mmd_range), float(score)
+
+
+def gscore_row(mmds, nrmses, alpha=1.0, bounds=0):
+    """g-score over the finite points, with the completeness of the cell attached.
+
+    A model that emits a non-finite error on some transfer pair would otherwise be
+    scored on its surviving pairs only -- i.e. rewarded for the divergence, because
+    the dropped pairs are the hard ones. The score is therefore VOIDED (NaN) unless
+    every expected point is finite, and `finite_rate` records what fraction survived
+    so the failure is visible in the table rather than absorbed into it. This is the
+    same void-the-cell policy the ranking analysis applies.
+
+    Returns a dict with the descriptive statistics over the finite points plus
+    `n_expected`, `n_finite`, `finite_rate` and the (possibly voided) `g_score`.
+    """
+    mmds, nrmses = np.asarray(mmds, float), np.asarray(nrmses, float)
+    finite = np.isfinite(nrmses)
+    n_expected = int(nrmses.size)
+    n_finite = int(finite.sum())
+    out = {
+        "n_expected": n_expected,
+        "n_finite": n_finite,
+        "finite_rate": float(n_finite / n_expected) if n_expected else float("nan"),
+    }
+    if n_finite == 0:
+        out.update(mean_nrmse=float("nan"), std_nrmse=float("nan"),
+                   mmd_range=float("nan"), g_score=float("nan"))
+        return out
+    mean_n, std_n, mmd_rng, score = get_generalization_score(
+        mmds[finite], nrmses[finite], alpha=alpha, bounds=bounds)
+    out.update(mean_nrmse=mean_n, std_nrmse=std_n, mmd_range=mmd_rng,
+               g_score=score if n_finite == n_expected else float("nan"))
+    return out
