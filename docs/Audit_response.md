@@ -43,7 +43,7 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 | A5 | Split hygiene (shared demand snapshots in Regime B) | **closed** (data and training) | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
 | A6 | g-score affine in (mean, sd) here | **closed** | `docs/Generalization_score_and_MMD.md` §1: the identity `g = μ + 0.806σ` (cross-context) / `μ + 0.857σ` (OOD) verified against the committed artifacts to 1e-4, and rank-by-g ≡ rank-by-mean (τ = 1.0) in both arms | no |
 | A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_full_v2.csv` | no |
-| A8 | Statistics weaker than claimed | partly closed | permutation test moved into `rank_analysis.py` (exact, all 720 relabellings) and re-run on the normalized campaign: A↔cross-context τ = 0.067, p = 0.72; A↔OOD τ = 0.000, p = 1.00 (`results_norm/analysis/rank_permutation_test.csv`); wording corrected. Remaining: optional NNConv 3 → 5 seeds | additive only |
+| A8 | Statistics weaker than claimed | **closed** (with L2 accepted) | permutation test moved into `rank_analysis.py` (exact, all 720 relabellings) and re-run on the normalized campaign: A↔cross-context τ = 0.067, p = 0.72; A↔OOD τ = 0.000, p = 1.00 (`results_norm/analysis/rank_permutation_test.csv`); wording corrected. The NNConv 3 → 5 seed expansion is declined as accepted limitation L2 | additive only, declined |
 
 **Non-finite accounting for the final tables.** Of the 672 replayed rows, exactly two are
 non-finite — `gcn`, seed 1000, cross-context IEEE39→IEEE118 and IEEE118→IEEE24 — and they are a
@@ -61,6 +61,12 @@ architectures twice on the cross-context and OOD arms. They are therefore bundle
 uses `data_a`, unaffected by A5) trains under A2 immediately; Regime B waits for `data_full_v2` and
 then trains once. A3/A4/A6/A7 are evaluation and documentation passes over the resulting
 checkpoints, which is why checkpointing every final run was made a requirement.
+
+---
+
+**A second audit (B1–B8) followed this one.** Its point-by-point response, the fixes applied
+without retraining, and the limitations accepted knowingly are at the end of this document,
+under *Second audit*.
 
 ---
 
@@ -339,6 +345,90 @@ architectures present, which is the concrete cost of the reduced NNConv seed cou
 Also confirmed: n = 4 grids with size, density and load scale all confounded; NNConv has 3
 seeds while being the highest-variance model; and seeds vary training init only — there is no
 data-generation seed variance anywhere, so all error bars understate total uncertainty.
+
+---
+
+# Second audit (B1–B8): response, fixes and knowingly-accepted limitations
+
+Every one of the eight new findings was re-checked against the code, the committed CSVs and
+what the training campaign actually did. **All eight are correct**; two carry small numerical
+slips that do not affect the conclusion (the auditor's B2 τ values recompute as 0.69 / 0.55 /
+0.60 rather than 0.73 / 0.60 / 0.60, a tie-handling difference; and A3's "partly closed"
+status was charitable — absent AC residuals it was open, and is now closed by B1).
+
+The decision taken on this round, deliberately and on the record: **no retuning and no
+retraining.** Everything that can be fixed from the 336 saved checkpoints and the committed
+tables is fixed; the two items that would need training are accepted as limitations and are
+listed as such below, so a later reviewer sees a choice rather than an oversight.
+
+| # | Finding | Status | What closes it |
+|---|---|---|---|
+| B1 | No AC feasibility check; the promised residual/thermal metrics were never delivered | **closed** | `ac_feasibility.py` (Ybus P/Q residual with the shunt double-count removed, branch loading against `max_i_ka`), `eval_checkpoints.py --feasibility`, `tests/test_ac_feasibility.py` (calibrated against pandapower's own solution: true-state residual ≤ 2.8e-2 MW, loading matches `res_line` to 1e-12). All 336 checkpoints replayed; results in `docs/Normalization_results.md` §4.6 and `docs/tables/ac_feasibility_norm.csv` |
+| B2 | Regime A → Regime B confounds protocol and grid | **closed** | `rank_analysis.py` now carries four arms (`regime_a`, `regime_b_diagonal`, `cross_context`, `ood`) and a `protocol_decomposition.csv` splitting the gap into a same-grid protocol factor (1.5–10.5×) and an unseen-grid factor (68–222×) |
+| B3 | The rank inference is stated backwards | **closed** | pooled leaderboard τ (0.60 / 0.20) reported alongside the per-cell mean τ in `rank_correlation_pooled.csv`; wording changed to rank *instability* and "no reliable guarantee", and the claim that p = 1.00 proves a zero correlation is removed |
+| B4 | Hyperparameters selected under the raw-unit loss | **accepted limitation** | see L1 below — not retuned |
+| B5 | Non-finite policy inconsistent; a diverging model was rewarded | **closed** | `training_utils.gscore_row` voids an incomplete cell and records `n_expected` / `n_finite` / `finite_rate`, the same void-the-cell policy the ranking uses (`tests/test_gscore_policy.py`) |
+| B6 | `gscore.csv` `mean_nrmse` was a trimmed median, `std_nrmse` identically 0 | **closed** | trimming removed (`bounds=0` on three unseen grids); the DC row is labelled `basis = one_point_per_grid` against the models' `unseen_pairs` |
+| B7 | Only active demand varies; Q pinned at base case, undisclosed | **closed** | stated in `transmission_graph_gen._apply_demand` and in the limitations below; it mirrors PowerGraph's `gendataopf.m`, which also varies PD only |
+| B8 | Merged metadata omits the objective; masked-input semantics undocumented | **closed** | `gather_results.py` refuses shards with different `--normalize` and records `normalize`, `models` and per-architecture `arch_config` in the merged `summary.json`; the mask sentinel's mode-dependent meaning is documented in `normalization.py` |
+
+## Knowingly-accepted limitations
+
+These are choices, not omissions. Each states what was not done and why.
+
+**L1 — hyperparameters were selected under a different objective (B4).** The sweep in
+`tune_budget.py` scored candidates in raw units, where the loss is dominated by MW/Mvar and
+voltage contributes ~1e-8 of the gradient; the final campaign trains and reports under
+`pu_zscore`, where the four quantities count roughly equally. The configurations were reused
+rather than re-selected. Re-tuning all six architectures costs ~1 day, and any change it
+produced would require retraining the affected architectures across three arms (1.5–4 days);
+that was declined. Mitigating evidence, which is reasoning and not measurement: the procedure
+was identical for all six architectures, so it does not favour any one of them, and all six
+selected the boundary of the search grid (hidden = 128, lr = 1e-3) with only depth differing,
+which is the pattern of a criterion that was not discriminating finely. **A reported number
+may therefore be slightly worse than that architecture's best achievable under the final
+objective.** The paper's claim is about the ranking's transfer, not about each architecture's
+optimum.
+
+**L2 — NNConv is replicated at 3 seeds, not 5.** A deliberate compute trade-off recorded as
+Decision 25 in `PowerGraph_to_ENGAGE_design_decisions.md`: NNConv emits a full 128×128
+transform per edge, an IEEE118 run takes ~3 h, and five seeds across three arms would be
+~1.5–2 days of extra wall clock for a variance estimate. The consequence is concrete and is
+stated wherever it bites: the permutation test has 12 complete (grid, seed) cells rather than
+20, because only the three NNConv seeds have all six architectures present, and NNConv's
+spread is the least reliable in the set.
+
+**L3 — GCN's unseen-grid NaN is reported, not fixed.** Two of 448 cross-context rows are
+non-finite from a real architectural defect (negative learned edge weight → `deg^(-1/2)` of a
+negative weighted degree; `Normalization_results.md` §4bis). The softplus that fixed the same
+defect in ARMA would remove it, at the cost of re-tuning and retraining GCN. Left as ENGAGE
+ships it, because an architecture that can return an undefined answer on an unseen grid
+without warning is one of the more informative results here. The affected cells are voided,
+never averaged away.
+
+**L4 — four grids, and the g-score is underpowered.** IEEE24 / IEEE39 / IEEE118 / UK differ in
+size, density and load scale simultaneously, so "unseen grid" is not isolated topology
+transfer. Each per-training-grid g-score cell has three unseen points and each OOD cell has
+one grid, so those spreads are descriptive rather than inferential, and the ENGAGE-style
+g-score is affine in (mean, sd) at this n (A6).
+
+**L5 — five seeds measure training randomness only.** They are repeated training runs, not a
+random sample from a population: they support "the gap is larger than run-to-run noise" and
+they do not support classical significance statements. There is no data-generation seed
+anywhere, so every error bar understates total uncertainty. Only the rank correlation is
+tested against a null, and that test is underpowered at 12 cells (it cannot detect a modest
+true correlation, which is why the wording is "no reliable guarantee", not "no correlation").
+
+**L6 — one data realization, and only active demand varies (B7).** Reactive demand stays at
+each case's base value, mirroring PowerGraph's `gendataopf.m`; the load trajectory is one
+realization of the PowerGraph-Node demand series, so nothing here estimates variability across
+alternative demand histories.
+
+**L7 — artifacts are VM-local.** The 336 checkpoints (611 MB) and both datasets are binaries
+that are not in git. The repository reproduces the *procedure* exactly (pinned versions, exact
+commands, `dataset_src.csv` provenance, `checkpoint_index.csv` with SHA-256 per file); exact
+number-for-number replication by an outside reader still needs a release or Zenodo drop, which
+is the open half of A4.
 
 ---
 

@@ -419,6 +419,36 @@ uncertainty of the dataset draw. Full statement: the *Final protocol* section of
 
 ---
 
+## Decision 26 — AC feasibility is scored by replay, and the second audit is answered without retraining
+**Decision:** the physical validity of a *prediction* is measured directly, not inferred from the
+regression error. `ac_feasibility.py` rebuilds every test network from `dataset_src.csv`, takes the
+post-contingency admittance matrix, the branch data and `max_i_ka` from pandapower's own internal
+representation, and reports (a) the AC power-balance residual of the predicted state,
+`dS = S_spec - (V conj(Y V) - S_shunt)`, in MW/Mvar and as a share of the snapshot's served load,
+and (b) the branch loading of the predicted state against the ratings, as an
+overload confusion (missed / false alarms). It runs as `eval_checkpoints.py --feasibility` over the
+saved checkpoints — **no retraining, no change to any weight**.
+
+Two details are load-bearing and were both found by calibrating against the labels. The shunt term
+must be subtracted, because pandapower books shunt consumption in `res_bus` while `Ybus` already
+contains the shunt admittance; without it the IEEE24 shunt bus shows a fictitious ~100 Mvar
+residual. And the true state is scored through the identical path in every run
+(`ac_dp_true_max_mw`, ≤ 2.8e-2 MW), so the reconstruction floor is reported next to the model's
+number rather than assumed to be zero. The predicted loading is likewise reported next to
+`line_loading_max_pct_true`, because several source OPF snapshots are not thermally secure
+themselves (true loadings up to ~680 % on IEEE118).
+
+**Why the rest of audit 2 was answered without training:** re-selecting hyperparameters under
+`pu_zscore` (finding B4) and lifting NNConv from 3 to 5 seeds are the only two items that need
+GPU-hours, and both change *how well* the models were trained rather than *what is claimed* about
+transfer. They are therefore declined and recorded as accepted limitations L1 and L2 in
+`docs/Audit_response.md`, with the concrete consequence of each spelled out, rather than left for a
+later reviewer to rediscover. Everything else — the non-finite policy, the g-score trim, the
+protocol/grid decomposition, the pooled-vs-cell rank reporting and the run metadata — is a
+recomputation over artifacts that already exist.
+
+---
+
 ## Semantic mappings that must be preserved (implementation contract)
 - **Bus type → one-hot** `[Slack, PV, PQ]` from MATPOWER type (3/2/1).
 - **Per-unit base**: carry `baseMVA` / `baseKV` so `r_pu`, `x_pu` are correct (ENGAGE edge attr = `[trafo?, r_pu, x_pu, sc_voltage]`).

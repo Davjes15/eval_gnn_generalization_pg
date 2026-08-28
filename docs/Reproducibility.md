@@ -178,6 +178,27 @@ python eval_checkpoints.py --ckpt_root ckpt_norm \
     --normalize pu_zscore --out results_norm/physics
 ```
 
+Adding `--feasibility` scores the AC power-balance residual and the branch
+loading of the predicted state as well (audit B1). It needs the source cases, so
+the environment variable that points at the PowerGraph-Node demand and case
+files must be set -- this is the only step in the replay that reads outside the
+generated datasets, because the post-contingency networks are rebuilt from
+`dataset_src.csv`:
+
+```bash
+POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
+python eval_checkpoints.py --ckpt_root ckpt_norm \
+    --data_a data_a --data_b data_full_v2 \
+    --normalize pu_zscore --out results_norm/physics --feasibility
+python tests/test_ac_feasibility.py     # same env var; calibrates the checker
+                                        # against pandapower's own solution
+```
+
+Every row carries `ac_dp_true_max_mw` and `line_loading_max_pct_true`, the same
+quantities evaluated on the labels, so a reader can see the reconstruction floor
+and the true thermal state next to the model's numbers. Neither this pass nor any
+other replay writes to `ckpt_norm/`.
+
 The replay re-fits the scaler exactly as training did -- train split of that grid
 for the within-grid and cross-context arms, pooled train splits of the three
 retained grids for an OOD fold -- because a scaler fitted on anything else would
