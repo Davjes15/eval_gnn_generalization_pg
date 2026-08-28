@@ -142,6 +142,50 @@ def test_seed_shards():
                      "a repeated (model, seed) pair is still refused")
 
 
+def _ood_rows(model, folds, seeds):
+    return [{"model": model, "held_out_grid": f, "seed": s, "regime": "B",
+             "num_layers": 2, "hidden": 128, "learning_rate": 0.001,
+             "nrmse": 0.2, "mse": 1.0, "mae": 0.5}
+            for f in folds for s in seeds]
+
+
+def _write_ood(tmp, name, rows, summary=None):
+    d = os.path.join(tmp, name)
+    os.makedirs(d, exist_ok=True)
+    pd.DataFrame(rows).to_csv(os.path.join(d, "ood.csv"), index=False)
+    with open(os.path.join(d, "summary.json"), "w") as fh:
+        json.dump({**SUMMARY, **(summary or {})}, fh)
+    return d
+
+
+def test_fold_shards():
+    """The OOD arm of an expensive architecture is split by held-out grid as
+    well as by seed, so the same seed legitimately appears in several shards --
+    but only ever once per fold."""
+    print("\n== OOD fold shards ==")
+    folds = ["IEEE24", "IEEE39", "IEEE118", "UK"]
+    with tempfile.TemporaryDirectory() as tmp:
+        dirs = [_write_ood(tmp, f"s0_{f}", _ood_rows("nnconv", [f], [0]),
+                           summary={"seeds": [0]}) for f in folds]
+        dirs += [_write_ood(tmp, f"s100_{f}", _ood_rows("nnconv", [f], [100]),
+                            summary={"seeds": [100]}) for f in folds]
+        df, owners = gather(dirs, "ood.csv", ["nnconv"], seed_shards=True)
+        check("every fold x seed row survives the merge", len(df) == 8,
+              str(len(df)))
+        check("one seed spread over four fold shards is accepted",
+              sorted(df.loc[df.seed == 0, "held_out_grid"]) == sorted(folds))
+        check("the architecture is attributed", set(owners) == {"nnconv"})
+
+    with tempfile.TemporaryDirectory() as tmp:
+        a = _write_ood(tmp, "a", _ood_rows("nnconv", ["UK"], [0]),
+                       summary={"seeds": [0]})
+        b = _write_ood(tmp, "b", _ood_rows("nnconv", ["UK"], [0]),
+                       summary={"seeds": [0]})
+        _expect_exit(lambda: gather([a, b], "ood.csv", ["nnconv"],
+                                    seed_shards=True),
+                     "the same fold trained twice is still refused")
+
+
 def test_merged_dir_is_a_valid_shard():
     print("\n== a merged directory can be merged again ==")
     with tempfile.TemporaryDirectory() as tmp:
@@ -177,6 +221,7 @@ def main():
     test_protocol_mismatch_refused()
     test_two_configs_for_one_model_refused()
     test_seed_shards()
+    test_fold_shards()
     test_merged_dir_is_a_valid_shard()
     print("\n" + "=" * 50)
     if FAILURES:

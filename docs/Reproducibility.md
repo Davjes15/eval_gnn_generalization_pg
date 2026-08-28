@@ -195,8 +195,20 @@ and an index entry.
 ## 5. Downstream analysis, from the committed artifacts
 
 The campaign is sharded one process per architecture, so each arm is merged
-first. `gather_results.py` refuses a merge that is not consistent with one
-frozen protocol (an architecture in two shards, a missing architecture,
+first. The two heavy architectures (ARMA, NNConv) are sharded further inside
+their arm -- by seed (`--seeds`) and, in the OOD arm, by held-out grid
+(`--held_out`) -- because a single process walks folds and seeds sequentially and
+would have left cores idle for tens of hours. Sharding is a scheduling change
+only: a seed shard trains the same seeds it would have trained in sequence, and
+an OOD fold shard still pools *all* other grids for training, so a fold's number
+does not depend on how the arm was split (asserted by
+`test_ood_fold_sharding_is_equivalent` in `tests/test_plumbing.py`, which runs
+one arm whole and one fold-per-process and requires identical per-fold NRMSE and
+identical checkpoint names). Each shard writes its own results directory and all
+shards of an arm share one checkpoint directory -- checkpoint names carry model,
+arm, grid/fold and seed, so they cannot collide -- and the glob in step 1 below
+picks up the extra directories without change. `gather_results.py` refuses a
+merge that is not consistent with one frozen protocol (an architecture in two shards, a missing architecture,
 disagreeing seeds/epochs/data_dir/batch size, two configurations for one
 architecture), which is the failure that would silently invalidate the ranking.
 

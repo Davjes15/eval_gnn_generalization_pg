@@ -243,6 +243,51 @@ def test_runners_seeds_and_checkpoints():
           any(not torch.equal(a[k], b[k]) for k in a))
 
 
+def test_ood_fold_sharding_is_equivalent():
+    """--held_out only splits the work: a fold's rows and weights must not
+    depend on whether it ran alone or alongside the other folds. Otherwise the
+    sharded campaign is not the experiment the unsharded command describes."""
+    print("\nOOD fold sharding changes scheduling, not results")
+    grids = ["G1", "G2", "G3"]
+    cfg = {"gcn": {"num_layers": 1, "hidden": 32, "learning_rate": 1e-3}}
+    seeds = [0]
+
+    def run(held_out, tmp):
+        torch.manual_seed(0)
+        return run_ood(_toy_data(grids), grids, ["gcn"], "cpu", 1, seeds, cfg,
+                       batch_size=4, save_dir=tmp, regime_tag="B",
+                       held_out=held_out)
+
+    with tempfile.TemporaryDirectory() as whole, \
+            tempfile.TemporaryDirectory() as shard:
+        full = run(None, whole)
+        shards = [r for g in grids for r in run([g], shard)]
+
+        check("unsharded run covers every fold", len(full) == len(grids),
+              str(len(full)))
+        check("one shard per fold reproduces the same row count",
+              len(shards) == len(full), str(len(shards)))
+        by_fold = {r["held_out_grid"]: r for r in shards}
+        check("shards cover exactly the same folds",
+              set(by_fold) == {r["held_out_grid"] for r in full})
+        same = all(by_fold[r["held_out_grid"]]["nrmse"] == r["nrmse"]
+                   for r in full)
+        check("per-fold nrmse is identical when sharded", same)
+        check("checkpoint names are the same either way",
+              set(os.listdir(whole)) == set(os.listdir(shard)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        only = run_ood(_toy_data(grids), grids, ["gcn"], "cpu", 1, seeds, cfg,
+                       batch_size=4, save_dir=tmp, regime_tag="B",
+                       held_out=["G2"])
+        check("a single-fold shard trains only that fold",
+              [r["held_out_grid"] for r in only] == ["G2"],
+              str([r["held_out_grid"] for r in only]))
+        check("and writes only that fold's checkpoint",
+              os.listdir(tmp) == ["ood_gcn_heldout_G2_s0.pt"],
+              str(os.listdir(tmp)))
+
+
 def main():
     test_default_is_unchanged()
     test_hidden_and_depth_are_honoured()
@@ -251,6 +296,7 @@ def main():
     test_arma_edge_weight_is_non_negative()
     test_grad_clip_is_opt_in()
     test_runners_seeds_and_checkpoints()
+    test_ood_fold_sharding_is_equivalent()
     print("\n" + "=" * 50)
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s): {FAILURES}")

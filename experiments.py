@@ -240,18 +240,23 @@ def run_cross_context(data, grids, model_names, device, epochs, seeds, arch_cfg,
 
 def run_ood(data, grids, model_names, device, epochs, seeds, arch_cfg,
             batch_size=96, save_dir=None, skip_existing=False, regime_tag="",
-            normalize="none"):
+            normalize="none", held_out=None):
     """Leave-one-grid-out: train on the other grids, test on the held-out grid.
 
     If save_dir is given, each trained model's state_dict is written to
     save_dir/ood_<model>_heldout_<held>_s<seed>.pt. The default batch size is
     larger than the cross-context one because three grids are pooled here (see
     the module docstring).
+
+    held_out restricts which folds this process runs, for sharding one arm
+    across processes; the pooled training set of a fold is unaffected, so a
+    fold's result does not depend on how the arm was sharded.
     """
+    folds = grids if held_out is None else [g for g in grids if g in held_out]
     records = []
     for name in model_names:
         cfg = arch_cfg[name]
-        for held in grids:
+        for held in folds:
             train_grids = [g for g in grids if g != held]
             scaler = Scaler.fit([data[g]["train"] for g in train_grids], normalize)
             train_ds = [d for g in train_grids
@@ -455,6 +460,12 @@ def parse_args():
                         "where one topology per grid makes them degenerate")
     p.add_argument("--save_models", default=None,
                    help="directory to write trained model state_dicts (.pt)")
+    p.add_argument("--held_out", nargs="+", default=None,
+                   help="restrict the OOD arm to these held-out grids, to shard "
+                        "one arm across processes; each fold still pools all "
+                        "other grids for training, so a fold's numbers do not "
+                        "depend on the sharding. Merge the shards with "
+                        "gather_results.py")
     p.add_argument("--only_topology", action="store_true",
                    help="write the model-independent tables (MMD matrices, "
                         "pooled OOD distances, DC baseline) and exit without "
@@ -474,6 +485,10 @@ def main():
                                 allow_default=args.allow_default_config)
     if args.skip_existing and args.save_models is None:
         raise SystemExit("--skip_existing requires --save_models")
+    unknown_folds = set(args.held_out or []) - set(grids)
+    if unknown_folds:
+        raise SystemExit(f"--held_out names no such grid: {sorted(unknown_folds)}; "
+                         f"available: {grids}")
     # With one topology per grid the within-grid MMD is 0 by construction, so
     # the MMD matrix and every g-score built on it are degenerate.
     skip_mmd = args.skip_mmd or args.experiment == "within"
@@ -493,7 +508,8 @@ def main():
                "arch_config": arch_cfg,
                "batch_size": args.batch_size,
                "batch_size_ood": args.batch_size_ood,
-               "normalize": args.normalize}
+               "normalize": args.normalize,
+               "held_out": args.held_out}
 
     lap_mmd = None
     if skip_mmd:
@@ -574,7 +590,8 @@ def main():
         ood = run_ood(data, grids, args.models, device, args.epochs, seeds,
                       arch_cfg, batch_size=args.batch_size_ood,
                       save_dir=save_dir, skip_existing=args.skip_existing,
-                      regime_tag=args.regime_tag, normalize=args.normalize)
+                      regime_tag=args.regime_tag, normalize=args.normalize,
+                      held_out=args.held_out)
         pd.DataFrame(ood).to_csv(os.path.join(args.out, "ood.csv"), index=False)
         print(pd.DataFrame(ood).round(4).to_string(index=False))
         summary["ood_rows"] = len(ood)

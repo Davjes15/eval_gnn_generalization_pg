@@ -16,13 +16,17 @@ WHAT IS CHECKED
       * all shards must agree on seeds, epochs, data_dir and batch size
       * each architecture must carry ONE (num_layers, hidden, learning_rate)
 
-SEED SHARDS
-    One architecture's seeds are sometimes split across processes too (one seed
-    each), which is the only way an expensive architecture fits the wall clock
-    available. `--seed_shards` accepts that layout: `seeds` may then differ
-    between shards and an architecture may appear in several of them, but every
-    (model, seed) pair must still occur exactly once, so a duplicated or
-    silently overwritten run is still refused.
+SEED AND FOLD SHARDS
+    One architecture's runs are sometimes split further across processes -- one
+    seed each (`--seeds`) and, in the OOD arm, one held-out grid each
+    (`--held_out`) -- which is the only way an expensive architecture fits the
+    wall clock available. `--seed_shards` accepts that layout: `seeds` may then
+    differ between shards and an architecture may appear in several of them, but
+    every individual run must still occur exactly once. A run is identified by
+    the model, the seed and whichever grid columns the arm carries (`grid`,
+    `train_grid`/`test_grid`, `held_out_grid`), so two shards holding different
+    folds of one seed merge cleanly while a genuinely repeated run -- one shard
+    silently redoing another's work -- is still refused.
 
     The merged directory carries a `summary.json` of the protocol it was verified
     against, so it can itself be a shard of a later merge: an architecture whose
@@ -45,6 +49,9 @@ from models import MODELS
 
 CONFIG_COLS = ["num_layers", "hidden", "learning_rate"]
 SHARED_KEYS = ["seeds", "epochs", "data_dir", "batch_size", "batch_size_ood"]
+# With the model and seed, these identify one run inside an arm. Which of them
+# exist depends on the arm, so only the columns actually present are used.
+RUN_ID_COLS = ["grid", "train_grid", "test_grid", "held_out_grid"]
 
 
 def parse_args():
@@ -57,8 +64,9 @@ def parse_args():
     p.add_argument("--models", nargs="+", default=list(MODELS.keys()),
                    help="architectures that must all be present")
     p.add_argument("--seed_shards", action="store_true",
-                   help="shards carry different seeds of the same architecture; "
-                        "uniqueness is then enforced per (model, seed)")
+                   help="shards carry different seeds or OOD folds of the same "
+                        "architecture; uniqueness is then enforced per run "
+                        "(model, seed and grid columns) instead of per shard")
     return p.parse_args()
 
 
@@ -116,13 +124,14 @@ def gather(dirs, fname, models, seed_shards=False):
     claimed: dict = {}
     for frame, d in zip(frames, [d for d in dirs
                                  if os.path.exists(os.path.join(d, fname))]):
+        id_cols = [c for c in RUN_ID_COLS if c in frame.columns]
         for model in frame.model.unique():
             if seed_shards:
-                for seed in frame.loc[frame.model == model, "seed"].unique():
-                    key = (model, int(seed))
+                rows = frame.loc[frame.model == model, ["seed"] + id_cols]
+                for key in rows.itertuples(index=False, name=None):
                     if key in claimed:
                         raise SystemExit(
-                            f"{model} seed {seed} appears in both {claimed[key]} "
+                            f"{model} run {key} appears in both {claimed[key]} "
                             f"and {d}: duplicated runs must not be merged")
                     claimed[key] = d
                 owners.setdefault(model, d)
