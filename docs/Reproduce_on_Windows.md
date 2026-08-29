@@ -222,7 +222,7 @@ used later, in training.
 
 ## 9. Validate before trusting anything
 ```powershell
-python validate.py --data_dir data_a
+python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
 python validate.py --data_dir data_full_v2 --expect_blocked
 ```
 
@@ -391,7 +391,7 @@ $env:POWERGRAPH_NODE_DIR = "C:\gnn\PowerGraph-Node\13_Power_system"
 python transmission_grids.py
 python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
 python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
-python validate.py --data_dir data_a
+python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
 python validate.py --data_dir data_full_v2 --expect_blocked
 $env:OMP_NUM_THREADS = "1"
 python experiments.py --experiment within --epochs 200 --data_dir data_a --out results_norm --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_norm --skip_existing

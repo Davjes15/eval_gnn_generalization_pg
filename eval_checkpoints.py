@@ -136,7 +136,11 @@ def main():
     p.add_argument("--arch_config", default="configs/arch_config.json")
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--arms", nargs="+", default=list(ARMS), choices=list(ARMS))
-    p.add_argument("--grids", nargs="+", default=list(GRIDS))
+    p.add_argument("--grids", nargs="+", default=list(GRIDS),
+                   help="replay only the checkpoints trained on these grids "
+                        "(held-out grid for the ood arm); every grid in the "
+                        "data directory is still loaded, because the ood "
+                        "scaler and the cross-context test set need them")
     p.add_argument("--out", default="results_norm/physics",
                    help="output directory for physics_metrics.csv")
     p.add_argument("--feasibility", action="store_true",
@@ -150,9 +154,11 @@ def main():
     args = p.parse_args()
 
     device = get_device()
-    ckpts = [c for c in find_checkpoints(args.ckpt_root) if c[1] in args.arms]
+    ckpts = [c for c in find_checkpoints(args.ckpt_root)
+             if c[1] in args.arms and c[3] in args.grids]
     if not ckpts:
-        raise SystemExit(f"no checkpoints for arms {args.arms} under {args.ckpt_root}")
+        raise SystemExit(f"no checkpoints for arms {args.arms} and grids "
+                         f"{args.grids} under {args.ckpt_root}")
     models_needed = sorted({c[2] for c in ckpts})
     arch_cfg = load_arch_config(args.arch_config, models_needed)
 
@@ -162,7 +168,8 @@ def main():
     for arm in args.arms:
         d = args.data_a if arm == "within" else args.data_b
         if d not in cache:
-            cache[d] = _load_all(d, args.grids)
+            cache[d] = _load_all(d, [g for g in GRIDS
+                                     if os.path.isdir(os.path.join(d, g))])
 
     # The post-contingency networks are rebuilt once per (data dir, grid) and
     # shared by every checkpoint evaluated on them; each one costs a power flow

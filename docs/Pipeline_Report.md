@@ -297,7 +297,7 @@ python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
 
 ### 6.3 Validate (required before training)
 ```bash
-python3 validate.py --data_dir data_a
+python3 validate.py --data_dir data_a --regime a          # fixed topology: skips gate E
 python3 validate.py --data_dir data_full_v2 --expect_blocked   # gate H: split hygiene
 ```
 

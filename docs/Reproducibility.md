@@ -194,6 +194,21 @@ sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfc
 tar -xzf ckpt_norm.tar.gz
 ```
 
+Behind a firewall that allows `api.github.com` but not `github.com`, the same
+bytes come from the asset endpoint instead (this is the path the clean-room check
+below used):
+
+```bash
+curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" \
+  -o ckpt_norm.tar.gz \
+  https://api.github.com/repos/Davjes15/eval_gnn_generalization_pg/releases/assets/535605900
+```
+
+A clean clone of `main`, the committed datasets and this archive reproduced the
+committed `results_norm/physics/physics_metrics.csv` rows **exactly** (all 46
+numeric columns, both a `within` and an `ood` slice, relative deviation 0), and
+`checkpoint_index.py` re-derived all 336 SHA-256s and parameter counts.
+
 Build and check the index with:
 
 ```bash
@@ -426,8 +441,10 @@ Stated because it cannot be fixed by tooling:
 * **CPU determinism only.** Runs are reproducible on the same platform with the
   pinned versions; torch does not promise bit-identical results across versions or
   hardware, so replay-from-checkpoint is the stronger of the two paths.
-* **Tensors and weights are not in git.** `docs/provenance/` and
-  `docs/tables/checkpoint_index.csv` describe them exactly, but reproducing the
-  published numbers to the digit needs the archive itself, which needs a data
-  release. Regenerating from the commands above reproduces the *protocol*, not the
-  draw.
+* **Tensors are in git, weights are a release asset.** Both generated datasets are
+  committed and the 336 checkpoints ship as `ckpt_norm.tar.gz` on tag `v1.0.0`
+  (§3), so the published numbers are reproducible to the digit by replay -- a
+  clean clone plus that archive reproduced the committed `physics_metrics.csv`
+  rows exactly. What is *not* in git is the upstream PowerGraph-Node demand and
+  case data, needed only to regenerate datasets or to run `--feasibility`.
+  Regenerating from the commands above reproduces the *protocol*, not the draw.
