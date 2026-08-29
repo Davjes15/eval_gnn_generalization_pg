@@ -22,8 +22,10 @@ IEEE24, IEEE39, IEEE118, and the UK 29-bus system (PowerGraph's own `System.m` c
 Node-level AC power-flow (PF) state estimation — predict the per-bus state
 `[P, Q, V, θ]`. Each grid loading (one demand snapshot + one contingency topology)
 is a single PyTorch-Geometric `Data` graph; buses are **nodes**, lines/transformers
-are **edges**. `N` = number of buses, `E` = number of lines/transformers. Values are
-**per-unit** (pandapower AC PF solution). This is the same ENGAGE contract (which
+are **edges**. `N` = number of buses, `E` = number of lines/transformers. Node values
+are in **pandapower's native units** (MW, Mvar, p.u., degrees) — only the edge
+impedances are per-unit; converting the node quantities to a common scale is what
+`--normalize` does at training time. This is the same ENGAGE contract (which
 adapts PowerGraph's `X/Y/edge_*` layout into a single edge-aware `Data` object).
 
 ### Data attributes (each `Data` object in `data/<GRID>/<split>/dataset.pt`)
@@ -126,6 +128,14 @@ eval_gnn_generalization_pg/
 ├── README.md                     # this file — start here
 ├── docs/                         # design & experiment documents (the "why")
 │   ├── Pipeline_Report.md        # ← as-built report: flow diagram + run guide
+│   ├── Reproducibility.md        # exact commands, pins, provenance, replay (A4)
+│   ├── Regime_comparison_results.md   # the results: A vs cross-context vs OOD
+│   ├── Model_configurations.md   # tuning evidence + frozen configs
+│   ├── Audit_response.md         # external audit, answered point by point
+│   ├── Normalization_assessment.md    # why pu_zscore (A2), field survey
+│   ├── Normalization_results.md  # normalized vs raw-unit outcome
+│   ├── Generalization_score_and_MMD.md  # g-score degeneracy + grid distances (A6/A7)
+│   ├── Paper_verification.md     # our claims vs the ENGAGE / PowerGraph papers
 │   ├── PowerGraph_to_ENGAGE_design_decisions.md
 │   ├── Experimental_Design_transmission_GNN_generalization.md
 │   ├── Layer2_implementation_plan.md
@@ -148,26 +158,82 @@ change needed. **Data generation is CPU-only** (pandapower Newton-Raphson AC
 power-flow solves do not use the GPU).
 
 ## How to run the experiments (step by step)
+> **Reproducing the published results** (exact commands, version pins, dataset
+> provenance, checkpoint replay, and what still limits reproducibility):
+> [`docs/Reproducibility.md`](docs/Reproducibility.md). Replaying a released
+> checkpoint takes minutes; retraining the full campaign takes ~24-36 h on 8 cores.
+>
 > **On Windows with a GPU and no environment yet?** Follow the dedicated
 > copy‑paste guide: [`docs/Reproduce_on_Windows.md`](docs/Reproduce_on_Windows.md)
 > (venv, CUDA PyTorch + PyG, data generation, and running one model at a time).
 
-This guide is built up **incrementally, one implementation step per branch**. Each
-step below is marked with its status so you always know what is runnable today.
+This guide is built up **incrementally, one implementation step per stage**. Each
+stage below is marked with the branch on which it was originally developed; all of
+them are on `main`.
 
-> Branches are *stacked*: `step-2` builds on `step-1`, `step-3` on `step-2`, etc.
-> To review/run a given step, check out its branch:
-> `git fetch origin && git checkout step-1-grid-conversion`
+> **`main` is the replication entry point — you do not need any `step-*` branch.**
+> It holds the whole pipeline (grid conversion through the final normalized
+> campaign and the audit remediation), the frozen configurations, the 16 test
+> suites, every result CSV behind the reported tables, and the documentation.
+> The `step-1-…` → `step-8-…` branches are kept only as development history.
+>
+> The two generated datasets (`data_a/`, `data_full_v2/`, ~79 MB) **are** committed,
+> so you can train and replay against the exact data the reported numbers came from
+> without regenerating anything. The 336 training checkpoints (`ckpt_norm/`, 593 MB
+> compressed) are too large for Git and ship as a release asset:
+>
+> ```bash
+> curl -L -o ckpt_norm.tar.gz \
+>   https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_norm.tar.gz
+> sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_norm.tar.gz"
+> tar -xzf ckpt_norm.tar.gz   # -> ckpt_norm/<arm>_<model>/<file>.pt (paths as in
+>                             #    docs/tables/checkpoint_index.csv)
+> ```
+>
+> Per-file sizes and SHA-256s for all of it are in
+> [`docs/tables/artifact_manifest.csv`](docs/tables/artifact_manifest.csv). With the
+> datasets and that archive, `eval_checkpoints.py` reproduces the reported metrics
+> from *our* weights — no training required (`docs/Reproducibility.md` §3).
+>
+> `docs/figures/*.png` and the exploratory `full_run/` tree are from the
+> **superseded raw-unit run** and are retained for provenance only; the reported
+> results live in `results_norm/` and `docs/tables/`.
+
+### From a clean machine, in five commands
+The path a new researcher actually needs; each command was run from a fresh clone
+of this repository (Python 3.10, no prior artifacts) before publication.
+```bash
+# from the parent folder holding this clone:
+git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git # 1. demand profiles
+cd eval_gnn_generalization_pg
+pip install -r requirements.txt                                     # 2. dependencies
+export POWERGRAPH_NODE_DIR="$(pwd)/../PowerGraph-Node/13_Power_system"
+python3 transmission_grids.py                                       # 3. grids load + solve
+python3 transmission_graph_gen.py --grid IEEE24 --max_k 2 --time_split blocked \
+    --n_train 60 --n_val 12 --n_test 12 --out_dir data_smoke        # 4. data (~1 min)
+python3 experiments.py --experiment within --models gcn --grids IEEE24 \
+    --data_dir data_smoke --out results_smoke --epochs 5 --seeds 0 \
+    --normalize pu_zscore --arch_config configs/arch_config.json \
+    --save_models ckpt_smoke --skip_mmd                             # 5. train + score
+```
+Grid conversion (Step 1, Octave) is **not** needed — the `.mat` cases are
+committed. The full protocol that produced the reported numbers is under
+"Reproducing the reported benchmark" below; the smoke run above only proves the
+toolchain works. You can also check the *analysis* half without training at all:
+re-running `rank_analysis.py`, `recompute_tables.py` and `summarize_feasibility.py`
+on the committed CSVs (commands in [`docs/Reproducibility.md`](docs/Reproducibility.md) §5)
+reproduces every reported table byte-for-byte.
 
 ### Prerequisites (all steps)
 - **Python 3.10+**
 - A checkout of **PowerGraph-Node** (for the raw `System.m` grids and hourly demand):
   https://github.com/PowerGraph-Datasets/PowerGraph-Node
-- Python packages (installed per step as they become needed):
-  `pandapower`, `torch`, `torch_geometric`, `scipy`, `numpy`, `pandas`,
-  `networkx`, `omegaconf`. A pinned `requirements.txt` is added in a later step.
+- Python packages: `pip install -r requirements.txt` (`pandapower` pinned to
+  3.5.4, plus `torch`, `torch_geometric`, `scipy`, `numpy`, `pandas`, `networkx`,
+  and the optional `numba` speed-up). The per-step `pip install` lines below are
+  the historical minimum for that step only.
 
-### Step 1 — Convert the grids  ✅ available on `step-1-grid-conversion`
+### Step 1 — Convert the grids  ✅ on `main` (developed on `step-1-grid-conversion`)
 Turns PowerGraph's `System.m` files into committed `.mat` cases. You normally only
 run this once (the `.mat` files are committed, so you can skip straight to Step 2).
 Needs **Octave** only.
@@ -179,7 +245,7 @@ octave --no-gui --eval "cd transmission; convert_cases"
 Full details, expected output, and a verification snippet: see
 [`transmission/README.md`](transmission/README.md).
 
-### Step 2 — Load grids into pandapower  ✅ available on `step-2-grid-loader`
+### Step 2 — Load grids into pandapower  ✅ on `main` (developed on `step-2-grid-loader`)
 Loads the converted `.mat` cases as re-solvable pandapower networks and loads the
 per-bus hourly demand profiles. This is the bridge between Step 1's files and the
 data generator in Step 3.
@@ -197,7 +263,7 @@ UK       buses=  29 loads=  29 gens= 23 ext_grid=1 lines= 86 trafos=  4 converge
 ```
 Key functions (`transmission_grids.py`): `get_transmission_grid_codes()`,
 `load_case(code)`, `load_hourly_demand(code, variant="new")`.
-### Step 3 — Generate the datasets  ✅ available on `step-3-data-generation`
+### Step 3 — Generate the datasets  ✅ on `main` (developed on `step-3-data-generation`)
 The heart of the pipeline: turns each grid into a **distribution of topologies**
 by sampling N-1/N-k line contingencies + real hourly demand, **re-solving AC
 power flow** (`pp.runpp`), filtering (convergence / connectivity / voltage
@@ -216,7 +282,7 @@ PF-with-slack), `--seed`, `--max_tries_factor`. Each emitted sample:
 `2E` varies with the contingency depth (that variation is what makes MMD/g-score
 meaningful). Contract details + the vendored ENGAGE extractors are in
 `engage_contract.py`.
-### Step 4 — The model zoo  ✅ available on `step-4-model-zoo`
+### Step 4 — The model zoo  ✅ on `main` (developed on `step-4-model-zoo`)
 Six architectures behind one interface (`models.py`): `GCN`, `ARMA_GNN` (ENGAGE)
 and `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph). Every model is genuinely
 edge-aware (consumes `edge_attr`) and shares the physics-aware `inference()`
@@ -237,7 +303,7 @@ for n, cls in MODELS.items():
     print(n, tuple(out.shape), torch.isfinite(out).all().item())
 PY
 ```
-### Step 5 — Run the experiments  ✅ available on `step-5-experiments`
+### Step 5 — Run the experiments  ✅ on `main` (developed on `step-5-experiments`)
 Trains every architecture and produces the study's outputs: the cross-context
 **transfer matrix** (train on one grid → test on all), **leave-one-grid-out OOD**,
 the **g-score** (NRMSE vs topological distance via MMD), **per-quantity errors
@@ -253,7 +319,7 @@ python3 experiments.py --experiment both --data_dir data --out results \
 ```
 Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 (incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
-`gscore.csv` (cross-context g-score) + `gscore_smallN.csv`, `gscore_ood.csv`
+`gscore.csv` (cross-context g-score) + `gscore_cc_aggregate.csv`, `gscore_ood.csv`
 (OOD g-score — per model over held-out grids; the better-posed one at N=4),
 `ood.csv`. Supporting code: `training_utils.py` (training loop +
 metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
@@ -283,7 +349,7 @@ python3 experiments.py --experiment cross --models gcn --grids IEEE24 IEEE39 \
 > Cross-grid transfer needs ≥2 grids; `--grids IEEE39` alone yields only the
 > within-grid diagonal.
 
-### Step 6 — Validation gates  ✅ available on `step-6-validation`
+### Step 6 — Validation gates  ✅ on `main` (developed on `step-6-validation`)
 Automatic checks that catch the failures that would make the study *invalid*
 (not merely buggy): conversion fidelity, data-contract shapes, masking
 correctness, topology variation, and **MMD non-degeneracy** (the exact bug from
@@ -296,7 +362,12 @@ python3 validate.py --data_dir data    # + contract / masking / topology / MMD
 Expected: `ALL GATES PASSED`, with the MMD gate confirming within-grid MMD <
 cross-grid MMD and cross-grid MMD non-constant.
 
-### Step 7 — Harvest real contingencies from PowerGraph-Graph  ✅ available on `step-7-harvest-contingencies`
+> On a **single-grid smoke dataset** the run ends in `VALIDATION FAILED` on gate E
+> (`MMD needs >=2 grids`) and on the missing grids' gates — that is the gate doing
+> its job, not a broken checkout. Restrict it to what you generated with
+> `--grids IEEE24`; gate E only becomes meaningful once two or more grids exist.
+
+### Step 7 — Harvest real contingencies from PowerGraph-Graph  ✅ on `main` (developed on `step-7-harvest-contingencies`)
 Optional contingency *source* (design decision D11): instead of random N-k
 outages, drive Step 3 with the **actual outage sets** PowerGraph-Graph simulated.
 We reuse only their *topology* (which lines are out — detected as all-zero rows in
@@ -325,7 +396,7 @@ samples record their outage in `dataset_src.csv` with `source=harvest`.
 git clone https://github.com/Davjes15/eval_gnn_generalization_pg.git
 git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git
 cd eval_gnn_generalization_pg
-git checkout step-5-experiments          # latest step branch
+# main holds everything; no step-* branch is needed
 
 # 1. Install dependencies
 pip install -r requirements.txt
@@ -350,10 +421,73 @@ python3 experiments.py --experiment both --data_dir data --out results
 ls results/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
 ```
 
+## Reproducing the reported benchmark (the final protocol)
+
+The walkthrough above is the generic pipeline. The reported numbers
+([`docs/Normalization_results.md`](docs/Normalization_results.md) §4 — the raw-unit
+tables in [`docs/Regime_comparison_results.md`](docs/Regime_comparison_results.md) are
+the superseded ablation) come from this exact
+sequence — the differences from the generic commands (`--time_split blocked`, `--normalize
+pu_zscore`, `--save_models`) are the two audit remediations and the checkpointing
+requirement, and they are what make the results defensible and replayable. The protocol
+itself is specified in
+[`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md#final-protocol-as-executed);
+the reasoning per decision is in
+[`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md)
+(Decisions 20 and 21) and the audit trail in
+[`docs/Audit_response.md`](docs/Audit_response.md).
+
+```bash
+# A. In-distribution control: one fixed topology per grid, each demand snapshot used once
+python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+python3 validate.py --data_dir data_a --regime a
+
+# B. Varying topology: N-k contingencies, blocked temporal split (no leakage of
+#    neighbouring demand snapshots into the test set)
+python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+python3 validate.py --data_dir data_full_v2 --regime b --expect_blocked
+
+# Training: frozen equal-budget configs, train-statistics scaling, checkpoints for replay.
+# Metrics are always reported in physical units (predictions are de-normalized first).
+python3 experiments.py --experiment within --data_dir data_a       --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/within --save_models ckpt_norm/within
+python3 experiments.py --experiment cross  --data_dir data_full_v2 --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/cross --save_models ckpt_norm/cross
+python3 experiments.py --experiment ood    --data_dir data_full_v2 --normalize pu_zscore \
+    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
+    --out results_norm/ood --save_models ckpt_norm/ood
+```
+
+`--normalize none` (the default) reproduces the raw-unit ablation instead, bit-identically to
+the earlier `results/` tables. `launch_normalized.sh` runs the same campaign sharded across
+cores; every job is resumable with `--skip_existing` because it checkpoints.
+
+Two protocol points those commands encode. **`configs/arch_config.json` is frozen**: the
+hyperparameters were selected once, on the Regime A *validation* split (`tune_budget.py`), and
+the same configuration is carried into all three arms — Regime B is never re-tuned, so a rank
+change between regimes cannot be explained by different configurations. **`--seeds` is
+replication, not a search**: a seed fixes weight initialisation and batch order, every result row
+and checkpoint name carries it for exact re-execution, and repeating a configuration across seeds
+gives the spread needed to compare an architecture gap against run-to-run noise. There is no
+"best seed" to pick. Reasoning and limits: *Final protocol* in
+[`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md)
+and Decision 25 in [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md).
+
 ## Status
 **Steps 1–7 implemented** (grid conversion → loader → data generation → model
 zoo → experiments → validation gates → optional PowerGraph-Graph contingency
 harvesting). The pipeline runs end-to-end.
+
+**The benchmark campaign is complete**: six architectures × {within-grid,
+cross-context, leave-one-grid-out} under the frozen configs and `pu_zscore`, 336
+checkpoints, all replayed for physics-aware metrics. Results and their reading are
+in [`docs/Normalization_results.md`](docs/Normalization_results.md) §4, the tables
+themselves under `results_norm/`, and the audit status in
+[`docs/Audit_response.md`](docs/Audit_response.md).
 See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
 the full plan and the reasoning behind each step.
 

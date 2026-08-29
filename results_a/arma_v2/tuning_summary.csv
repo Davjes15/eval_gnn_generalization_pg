@@ -1,0 +1,12 @@
+num_layers,hidden,learning_rate,stage,seeds,mean_val_loss,stable,model,selected,n_params
+8,128,0.001,1,[0],0.01828780335097685,True,arma_gnn,False,1367909
+8,64,0.001,1,[0],0.019283717260986977,True,arma_gnn,False,344037
+8,32,0.001,1,[0],0.07500965071143581,True,arma_gnn,False,87077
+3,128,0.001,1,[0],0.08016835098504085,True,arma_gnn,False,545509
+3,64,0.001,1,[0],0.09118212033063167,True,arma_gnn,False,137637
+2,128,0.001,1,[0],0.11346931385342028,True,arma_gnn,False,381029
+2,64,0.001,1,[0],0.14117770471610125,True,arma_gnn,False,96357
+3,32,0.001,1,[0],0.17900668572634457,True,arma_gnn,False,35077
+2,32,0.001,1,[0],0.3660231399163604,True,arma_gnn,False,24677
+8,128,0.001,1-confirm,"[0, 100]",0.018300429100636336,True,arma_gnn,True,1367909
+8,128,0.0003,2,"[0, 100]",0.06626370155194304,True,arma_gnn,False,1367909

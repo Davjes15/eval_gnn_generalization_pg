@@ -1,0 +1,368 @@
+"""transmission_graph_gen.py -- Step 3: generate the datasets (the heart).
+
+PURPOSE
+    Turn each base transmission grid into a *distribution of topologies* by
+    sampling credible N-1/N-k line contingencies, applying real hourly demand,
+    RE-SOLVING the AC power flow, and emitting ENGAGE-format `Data` objects. This
+    is what makes ENGAGE's MMD / g-score well-posed (a cloud of graphs per grid,
+    not a single fixed topology).
+
+WHY THIS STEP EXISTS (design decisions D2, D6, D9, D10, D11)
+    - D10 (re-solve engine): an outage changes the physics at *every* bus, so we
+      cannot edit stored tensors -- we must RE-SOLVE. For each sample we take
+      lines out of service, set demand, and call `pp.runpp` (AC power flow,
+      Newton-Raphson). The fresh `res_bus`/`res_line` are the new labels.
+    - D2 (real demand, "Route B"): active demand per bus comes from PowerGraph's
+      `hourlyDemandBusnew` (reactive demand kept at base, mirroring PowerGraph's
+      gendataopf.m).
+    - D6 (masking): node inputs are masked by bus type via the vendored ENGAGE
+      contract (engage_contract.py).
+    - D9 (comparability): node features and targets are written in RAW physical
+      units (MW, Mvar, p.u., degrees), exactly as ENGAGE's graph_gen.py does;
+      only the edge features are per-unit impedances. Any scaling is a training
+      choice, selected with `experiments.py --normalize` (see normalization.py).
+      An earlier version of this docstring claimed per-unit node features, which
+      was never true.
+    - D11 (harvest contingencies): the contingency sampler is pluggable so a
+      future option can inject outage sets harvested from PowerGraph-Graph
+      instead of random N-k.
+
+HOW IT CONNECTS
+    transmission_grids.load_case / load_hourly_demand   (Step 2)
+        -> [sample demand + contingency -> pp.runpp -> filter]
+        -> engage_contract.get_node_features / get_edge_features
+        -> torch_geometric.data.Data
+        -> data/<CODE>/<split>/dataset.pt        (ENGAGE's expected layout)
+    The datasets are consumed by the experiment drivers (Step 5), which reuse
+    ENGAGE's training loop, MMD and g-score unchanged.
+
+MODELING CHOICE (documented, see design doc "PF vs OPF")
+    Default post-contingency solve is PF-with-slack (`pp.runpp`): generator
+    setpoints are held and the slack bus absorbs the imbalance. Pass
+    `--redispatch` to instead run AC OPF (`pp.runopp`), which re-optimizes
+    generation (more realistic, heavier, needs cost data).
+
+HOW TO RUN (quick smoke test)
+    python3 transmission_graph_gen.py --grid IEEE24 --n_train 20 --n_val 5 \
+        --n_test 5 --max_k 2 --out_dir data
+Full grids: run once per code in {IEEE24, IEEE39, IEEE118, UK} (or --grid all).
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import warnings
+from copy import deepcopy
+
+import numpy as np
+import pandas as pd
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+import pandapower as pp
+import pandapower.topology as top
+import networkx as nx
+import torch
+from torch_geometric.data import Data
+
+from engage_contract import get_node_features, get_edge_features
+from contingency_harvest import harvest_contingencies
+from transmission_grids import (
+    get_transmission_grid_codes,
+    load_case,
+    load_hourly_demand,
+)
+
+# Stable per-grid seed offsets (avoids Python's process-randomized hash()).
+_GRID_SEED_OFFSET = {"IEEE24": 1, "IEEE39": 2, "IEEE118": 3, "UK": 4}
+
+
+def _apply_demand(net, demand_col: np.ndarray) -> None:
+    """Set each load's ACTIVE power from a per-bus demand column (MW).
+
+    Reactive demand is left at the base-case value, mirroring PowerGraph's
+    gendataopf.m (which only varies PD). `demand_col` is indexed by bus id
+    (row i -> bus i), which is valid because from_mpc yields 0..N-1 bus ids in
+    original order.
+    """
+    for load_idx, bus in net.load["bus"].items():
+        net.load.at[load_idx, "p_mw"] = float(demand_col[bus])
+
+
+def _sample_contingency(rng: np.random.Generator, n_lines: int, k: int) -> list[int]:
+    """Return k distinct line positions to take out of service (N-k)."""
+    if k <= 0:
+        return []
+    k = min(k, n_lines)
+    return sorted(rng.choice(n_lines, size=k, replace=False).tolist())
+
+
+def _apply_line_contingency(net, out_lines: list[int]) -> None:
+    """Take the given line positions out of service (random N-k source)."""
+    if out_lines:
+        net.line.loc[net.line.index[out_lines], "in_service"] = False
+
+
+def _apply_element_contingency(net, elements: list) -> None:
+    """Take harvested elements out of service. `elements` is a list of
+    (etype, index) where etype is 'line' or 'trafo' (see contingency_harvest)."""
+    for etype, idx in elements:
+        net[etype].at[idx, "in_service"] = False
+
+
+def _is_connected(net) -> bool:
+    """True if the in-service network is a single connected component."""
+    g = top.create_nxgraph(net, respect_switches=False, include_out_of_service=False)
+    if g.number_of_nodes() == 0:
+        return False
+    return nx.is_connected(g)
+
+
+def _build_sample(net):
+    """Extract one ENGAGE `Data` object from a solved net (+ its DC baseline)."""
+    X_i, Y_i = get_node_features(net)
+    A_i, E_i = get_edge_features(net)
+
+    # DC power-flow baseline (stored once so evaluation need not recompute it).
+    # `rundcpp` never writes res_bus.q_mvar: DC power flow has no reactive power.
+    # ENGAGE relied on that column arriving as NaN and zeroing it, but pandapower
+    # >= 3 leaves the *previous* (AC) res_bus in place, so on a copy of an
+    # AC-solved net the AC reactive power survives and the baseline would be
+    # scored against its own labels. Zero the column explicitly instead, which
+    # states the convention (Q_dc == 0) and holds on every pandapower version.
+    dc_net = deepcopy(net)
+    pp.rundcpp(dc_net)
+    np_dc = dc_net.res_bus[["p_mw", "q_mvar", "vm_pu", "va_degree"]].values.copy()
+    np_dc[:, 1] = 0.0
+    dc_pf = torch.nan_to_num(torch.tensor(np_dc, dtype=torch.float32), nan=0.0)
+
+    return Data(
+        x=torch.tensor(X_i, dtype=torch.float32),
+        edge_index=torch.tensor(A_i, dtype=torch.int64),
+        edge_attr=torch.tensor(E_i, dtype=torch.float32),
+        y=torch.tensor(Y_i, dtype=torch.float32),
+        dc_pf=dc_pf,
+    )
+
+
+def generate_dataset(
+    code: str,
+    n_samples: int,
+    rng: np.random.Generator,
+    max_k: int = 2,
+    k_probs: list[float] | None = None,
+    redispatch: bool = False,
+    vm_min: float = 0.8,
+    vm_max: float = 1.2,
+    max_tries_factor: int = 50,
+    contingency_source: str = "random",
+    pg_graph_raw: str | None = None,
+    used_t: set[int] | None = None,
+    t_range: tuple[int, int] | None = None,
+):
+    """Generate `n_samples` valid (demand, contingency) operating points for `code`.
+
+    Returns (list[Data], list[dict]) -- samples and their metadata.
+    Each sample: random demand snapshot + an N-k line outage (k drawn from
+    {0..max_k}), re-solved with AC power flow, filtered for convergence,
+    connectivity and voltage sanity.
+
+    `used_t`: if given, demand snapshots already in the set are rejected and
+    accepted ones are added. Pass the same set across a grid's splits to keep
+    demand snapshots disjoint. This matters for the fixed-topology regime
+    (`max_k=0`), where a repeated snapshot is an exact duplicate sample and a
+    repeat across splits is test-set leakage.
+
+    `t_range`: half-open [lo, hi) window of the demand time axis to draw from.
+    Giving each split its own window makes the split BLOCKED in time, which is
+    stricter than uniqueness: consecutive 15-minute snapshots are near-duplicates
+    even when their indices differ, so a randomly-drawn test snapshot can be the
+    neighbour of a training one (audit item A5).
+    """
+    base = load_case(code)
+    demand = load_hourly_demand(code)
+    n_lines = len(base.line)
+    n_time = demand.shape[1]
+    # k=0 anchors the base topology; higher k spreads the topology distribution.
+    ks = np.arange(0, max_k + 1)
+    if k_probs is None:
+        k_probs = np.ones(len(ks)) / len(ks)
+
+    # Harvest source (D11): load the credible contingency sets once, up front.
+    harvested = None
+    if contingency_source == "harvest":
+        if not pg_graph_raw:
+            raise ValueError("contingency_source='harvest' requires pg_graph_raw.")
+        harvested = harvest_contingencies(base, pg_graph_raw, code, max_k=max_k)
+        if not harvested:
+            raise RuntimeError(
+                f"No harvestable contingencies mapped for {code}; check the "
+                f"PowerGraph-Graph raw data at {pg_graph_raw}."
+            )
+        print(f"  [{code}] harvested {len(harvested)} mapped contingencies")
+
+    samples, metas = [], []
+    tries = 0
+    max_tries = n_samples * max_tries_factor
+    while len(samples) < n_samples and tries < max_tries:
+        tries += 1
+        net = deepcopy(base)
+
+        # 1) demand snapshot
+        lo, hi = t_range if t_range is not None else (0, n_time)
+        t = int(rng.integers(lo, hi))
+        if used_t is not None and t in used_t:
+            continue
+        _apply_demand(net, demand[:, t])
+
+        # 2) contingency -- random N-k, or a harvested PowerGraph-Graph outage set
+        if harvested is not None:
+            elements = harvested[int(rng.integers(0, len(harvested)))]
+            _apply_element_contingency(net, elements)
+            k, out_lines = len(elements), [str(e) for e in elements]
+        else:
+            k = int(rng.choice(ks, p=k_probs))
+            out_lines = _sample_contingency(rng, n_lines, k)
+            _apply_line_contingency(net, out_lines)
+
+        # 3) reject islanding before solving
+        if not _is_connected(net):
+            continue
+
+        # 4) re-solve AC power flow (or OPF redispatch)
+        try:
+            if redispatch:
+                pp.runopp(net)
+            else:
+                pp.runpp(net)
+        except Exception:
+            continue
+        if not net.converged:
+            continue
+
+        # 5) physical sanity filter on voltage magnitude
+        vm = net.res_bus["vm_pu"].values
+        if np.any(vm < vm_min) or np.any(vm > vm_max) or np.any(~np.isfinite(vm)):
+            continue
+
+        samples.append(_build_sample(net))
+        metas.append({"grid": code, "t_idx": t, "k": k, "out_lines": out_lines,
+                      "source": contingency_source})
+        if used_t is not None:
+            used_t.add(t)
+
+    if len(samples) < n_samples:
+        print(
+            f"  [warn] {code}: only {len(samples)}/{n_samples} samples after "
+            f"{tries} tries (try raising --max_tries_factor or relaxing filters)."
+        )
+    return samples, metas
+
+
+def blocked_time_ranges(n_time: int, counts: dict[str, int], gap: int):
+    """Contiguous, mutually-exclusive demand-time windows per split (A5).
+
+    The time axis is divided in proportion to each split's sample count, with
+    `gap` steps discarded between consecutive windows so no test snapshot is
+    adjacent to a training one. Returns {split: (lo, hi)}.
+
+    Raises if a window would be too small to supply its split with distinct
+    snapshots -- silently drawing duplicates is what A5 is about.
+    """
+    splits = [s for s in ("train", "val", "test") if counts.get(s, 0) > 0]
+    total = sum(counts[s] for s in splits)
+    usable = n_time - gap * (len(splits) - 1)
+    if usable <= total:
+        raise ValueError(
+            f"demand axis of {n_time} steps cannot supply {total} distinct "
+            f"snapshots with a gap of {gap}")
+    out, cursor = {}, 0
+    for i, split in enumerate(splits):
+        width = (usable * counts[split]) // total
+        if width < counts[split]:
+            raise ValueError(
+                f"{split} window of {width} steps is smaller than its "
+                f"{counts[split]} samples")
+        out[split] = (cursor, cursor + width)
+        cursor += width + (gap if i < len(splits) - 1 else 0)
+    return out
+
+
+def _save_split(out_dir: str, code: str, split: str, samples, metas):
+    split_dir = os.path.join(out_dir, code, split)
+    os.makedirs(split_dir, exist_ok=True)
+    torch.save(samples, os.path.join(split_dir, "dataset.pt"))
+    pd.DataFrame(metas).to_csv(os.path.join(split_dir, "dataset_src.csv"), index=False)
+    print(f"  saved {len(samples):4d} -> {os.path.join(split_dir, 'dataset.pt')}")
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--grid", default="all",
+                   help="grid code or 'all' (IEEE24/IEEE39/IEEE118/UK)")
+    p.add_argument("--n_train", type=int, default=800)
+    p.add_argument("--n_val", type=int, default=100)
+    p.add_argument("--n_test", type=int, default=100)
+    p.add_argument("--max_k", type=int, default=2,
+                   help="maximum number of simultaneous line outages (N-k)")
+    p.add_argument("--redispatch", action="store_true",
+                   help="use AC OPF (runopp) instead of PF-with-slack (runpp)")
+    p.add_argument("--out_dir", default="data")
+    p.add_argument("--seed", type=int, default=12)
+    p.add_argument("--max_tries_factor", type=int, default=50)
+    p.add_argument("--unique_demand", action="store_true",
+                   help="draw each demand snapshot at most once per grid, across "
+                        "all splits (required for the fixed-topology regime, "
+                        "where a repeated snapshot is an exact duplicate)")
+    p.add_argument("--time_split", choices=["random", "blocked"], default="random",
+                   help="'random' draws every split's demand snapshots from the "
+                        "whole year (the original behaviour); 'blocked' gives "
+                        "each split a disjoint contiguous time window, so a test "
+                        "snapshot is never the neighbour of a training one "
+                        "(audit item A5). Implies --unique_demand.")
+    p.add_argument("--time_gap", type=int, default=96,
+                   help="demand steps discarded between blocked windows "
+                        "(96 = one day at 15-minute resolution)")
+    p.add_argument("--contingency_source", choices=["random", "harvest"],
+                   default="random",
+                   help="'random' N-k outages, or 'harvest' real outage sets "
+                        "from PowerGraph-Graph (needs --pg_graph_raw)")
+    p.add_argument("--pg_graph_raw", default=os.environ.get("PG_GRAPH_RAW_DIR"),
+                   help="root of PowerGraph-Graph raw data (<root>/<name>/raw/*.mat)")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+    codes = get_transmission_grid_codes() if args.grid == "all" else [args.grid]
+    for code in codes:
+        print(f"[{code}] generating "
+              f"(train={args.n_train}, val={args.n_val}, test={args.n_test}, "
+              f"max_k={args.max_k}, redispatch={args.redispatch})")
+        # One RNG per grid, seeded deterministically (stable across processes).
+        rng = np.random.default_rng(args.seed * 100 + _GRID_SEED_OFFSET.get(code, 0))
+        blocked = args.time_split == "blocked"
+        used_t = set() if (args.unique_demand or blocked) else None
+        counts = {"train": args.n_train, "val": args.n_val, "test": args.n_test}
+        windows = None
+        if blocked:
+            n_time = load_hourly_demand(code).shape[1]
+            windows = blocked_time_ranges(n_time, counts, args.time_gap)
+            print(f"  blocked time windows: {windows}")
+        for split, n in [("train", args.n_train), ("val", args.n_val), ("test", args.n_test)]:
+            if n <= 0:
+                continue
+            samples, metas = generate_dataset(
+                code, n, rng, max_k=args.max_k, redispatch=args.redispatch,
+                max_tries_factor=args.max_tries_factor,
+                contingency_source=args.contingency_source,
+                pg_graph_raw=args.pg_graph_raw,
+                used_t=used_t,
+                t_range=windows[split] if windows else None,
+            )
+            _save_split(args.out_dir, code, split, samples, metas)
+
+
+if __name__ == "__main__":
+    main()

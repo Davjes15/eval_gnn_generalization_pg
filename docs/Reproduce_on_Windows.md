@@ -5,12 +5,16 @@ Windows PC with an NVIDIA GPU** and reproduce the study's results. It assumes yo
 have **no environment yet**. Commands are written for **PowerShell** (the default
 Windows terminal, and the integrated terminal in VS Code).
 
-> The repository has **7 stacked branches** (`step-1-…` → `step-7-…`) plus `main`.
-> Each step branch builds on the previous one. **You only need one branch to run
-> everything: `step-7-harvest-contingencies`** — it is the top of the stack and
-> contains *all* the code from steps 1–7 (data generation, the 6 models, the
-> experiment driver, the validation gates, and the committed grid files). `main`
-> holds documentation, figures and the saved results — not the runnable pipeline.
+> **Use `main`** — it contains *all* the code (data generation, the 6 models, the
+> experiment driver, the frozen configurations, normalization, the validation
+> gates, the checkpoint-replay tooling, the committed grid files) *and* the
+> documentation and result CSVs. The `step-1-…` → `step-8-…` branches are kept
+> only as development history; `step-8-regime-comparison` is the branch this
+> content was consolidated from, so it is equivalent for the runnable pipeline.
+>
+> The full protocol, including which numbers are final and which are superseded,
+> is in `docs/Reproducibility.md`; read that first if you intend to publish
+> anything from a reproduction.
 
 ---
 
@@ -58,12 +62,12 @@ git clone https://github.com/Davjes15/eval_gnn_generalization_pg.git
 git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git
 ```
 
-Now switch the project to the branch that contains the full pipeline:
+`main` already contains the full pipeline, so there is nothing to check out:
 
 ```powershell
 cd C:\gnn\eval_gnn_generalization_pg
 git fetch origin
-git checkout step-7-harvest-contingencies
+git checkout main
 ```
 
 > The grid case files (`transmission\cases\IEEE24.mat`, `IEEE39`, `IEEE118`, `UK`)
@@ -180,35 +184,54 @@ flow** for each, and writes `data\<GRID>\<split>\dataset.pt`.
 python transmission_graph_gen.py --grid IEEE24 --n_train 30 --n_val 6 --n_test 6 --max_k 2 --out_dir data
 ```
 
-**Then the full generation.** You can do all four grids at once:
+**Then the full generation — optional now.** Both published datasets are committed
+(`data_a/`, `data_full_v2/`, ~79 MB), so you can skip straight to training or to
+the checkpoint replay and still be on the exact tensors behind the reported
+numbers. Regenerate only if you are changing the protocol or checking that the
+generator still produces an equivalent draw. The benchmark needs **two** datasets
+— a fixed-topology control arm and a varying-topology transfer arm — and their
+protocols differ:
 
 ```powershell
-python transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
+# Regime A: fixed topology, one demand snapshot per sample
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+
+# Regime B: random N-1/N-2 line outages, disjoint blocked demand windows (audit item A5)
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
 ```
 
-…**or one grid at a time** (identical result, easier to run in chunks). The seeding
-is fixed per grid, so this reproduces the published data exactly:
+`--time_split blocked` is not optional for Regime B: without it, train/val/test
+draw demand snapshots from the whole year, and neighbouring 15-minute snapshots
+leak across splits.
 
-```powershell
-python transmission_graph_gen.py --grid IEEE24  --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
-python transmission_graph_gen.py --grid IEEE39  --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
-python transmission_graph_gen.py --grid IEEE118 --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
-python transmission_graph_gen.py --grid UK      --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
-```
+…**or one grid at a time** (easier to run in chunks) — substitute `--grid IEEE24`,
+`IEEE39`, `IEEE118`, `UK` for `--grid all` in either command above.
 
-That produces **4,000 graphs total** (1,000 per grid). Generation is CPU‑bound
-(the solver), so `numba` matters here; the GPU is used later, in training.
+A regenerated dataset is a **fresh draw from the same protocol**, not a byte copy
+of the committed one: rejected samples (non-convergent AC solve, voltages outside
+[0.8, 1.2] p.u.) shift the sampling. Reproduce the *protocol* with the validation
+gate below — or use the committed datasets if you want the published draw. The
+exact published numbers come from the saved checkpoints, released as
+`ckpt_norm.tar.gz` on tag `v1.0.0` (`docs/Reproducibility.md` §3).
+
+Each dataset is **4,000 graphs** (1,000 per grid), so the pair is 8,000 and about
+80 MB. Generation is CPU‑bound (the solver), so `numba` matters here; the GPU is
+used later, in training.
 
 ---
 
 ## 9. Validate before trusting anything
 ```powershell
-python validate.py --data_dir data
+python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_full_v2 --expect_blocked
 ```
 
 Expected final line: **`ALL GATES PASSED`** (it checks tensor shapes, bus‑type
 masking, that topology actually varies across samples, and that within‑grid MMD is
-smaller than cross‑grid MMD).
+smaller than cross‑grid MMD). `--expect_blocked` adds gate **H**, split hygiene:
+no demand snapshot shared between splits, no repeated `(t_idx, out_lines)`
+scenario within a split, and disjoint chronological windows. Do not train on a
+Regime B dataset that fails gate H — the transfer numbers would be leaked.
 
 ---
 
@@ -224,11 +247,17 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 | `--epochs` | training epochs (200 for the full run; 20 for quick tests) |
 | `--data_dir` / `--out` | input data folder / output results folder |
 | `--save_models <dir>` | also save every trained model's weights |
+| `--experiment within` | the fixed-topology control arm (use with `data_a`) |
+| `--normalize` | `none` (raw-unit ablation) or `pu_zscore` (**the protocol**) |
+| `--arch_config` | frozen widths/depths/learning rates; always pass `configs\arch_config.json` |
+| `--seeds` | `0 100 300 700 1000` (`0 100 300` for `nnconv`) |
+| `--regime_tag` | `A` or `B`, stamped into the results rows |
+| `--skip_existing` | resume a campaign; requires `--save_models` |
 
 **Quick smoke test** (2 models, 2 grids, few epochs — a couple of minutes):
 
 ```powershell
-python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data --out results_smoke
+python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data_full_v2 --out results_smoke --normalize pu_zscore
 ```
 
 ### Running ONE model at a time (recommended for you)
@@ -237,13 +266,38 @@ run, give **each model its own output folder** so runs don't clobber each other.
 these one by one — each is independent and uses the GPU:
 
 ```powershell
-python experiments.py --experiment both --models gcn         --epochs 200 --data_dir data --out results\gcn         --save_models models\gcn
-python experiments.py --experiment both --models arma_gnn    --epochs 200 --data_dir data --out results\arma_gnn    --save_models models\arma_gnn
-python experiments.py --experiment both --models gat         --epochs 200 --data_dir data --out results\gat         --save_models models\gat
-python experiments.py --experiment both --models gin         --epochs 200 --data_dir data --out results\gin         --save_models models\gin
-python experiments.py --experiment both --models transformer --epochs 200 --data_dir data --out results\transformer --save_models models\transformer
-python experiments.py --experiment both --models nnconv      --epochs 200 --data_dir data --out results\nnconv      --save_models models\nnconv
+$cfg = "configs\arch_config.json"
+$seeds = "0","100","300","700","1000"
+
+# control arm (Regime A, fixed topology)
+foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
+  python experiments.py --experiment within --models $m --epochs 200 `
+    --data_dir data_a --out results_norm\within_$m --regime_tag A `
+    --normalize pu_zscore --arch_config $cfg --seeds $seeds `
+    --save_models ckpt_norm\within_$m --skip_existing
+}
+
+# transfer arms (Regime B, varying topology)
+foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
+  python experiments.py --experiment cross --models $m --epochs 200 `
+    --data_dir data_full_v2 --out results_norm\cross_$m --regime_tag B `
+    --normalize pu_zscore --arch_config $cfg --seeds $seeds `
+    --save_models ckpt_norm\cross_$m --skip_existing
+  python experiments.py --experiment ood --models $m --epochs 200 `
+    --data_dir data_full_v2 --out results_norm\ood_$m --regime_tag B `
+    --batch_size_ood 96 --normalize pu_zscore --arch_config $cfg --seeds $seeds `
+    --save_models ckpt_norm\ood_$m --skip_existing
+}
 ```
+
+`nnconv` is run separately with `--seeds 0 100 300` (documented asymmetry; it is
+the most expensive and the highest-variance model). On Linux/macOS the same
+campaign is one command: `bash launch_normalized.sh 7 within cross ood`, which
+runs the 18 jobs through a bounded process pool.
+
+On a multi-core CPU set `$env:OMP_NUM_THREADS = "1"` before launching several jobs
+in parallel; multi-threaded jobs run concurrently oversubscribe the cores and
+measurably slow the campaign down.
 
 Each `results\<model>\` folder is self‑contained: `transfer_matrix_<model>.csv`,
 `cross_context.csv`, `ood.csv`, `gscore.csv`, `gscore_ood.csv`, the (model‑independent)
@@ -328,15 +382,21 @@ winget install -e --id Python.Python.3.11; winget install -e --id Git.Git
 mkdir C:\gnn; cd C:\gnn
 git clone https://github.com/Davjes15/eval_gnn_generalization_pg.git
 git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git
-cd C:\gnn\eval_gnn_generalization_pg; git fetch origin; git checkout step-7-harvest-contingencies
+cd C:\gnn\eval_gnn_generalization_pg; git fetch origin; git checkout main; git pull
 py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install torch_geometric; pip install -r requirements.txt
 $env:POWERGRAPH_NODE_DIR = "C:\gnn\PowerGraph-Node\13_Power_system"
 python transmission_grids.py
-python transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --max_k 2 --out_dir data
-python validate.py --data_dir data
-python experiments.py --experiment both --epochs 200 --data_dir data --out results --save_models models
-python full_run\results\make_figures.py (Resolve-Path results)
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_full_v2 --expect_blocked
+$env:OMP_NUM_THREADS = "1"
+python experiments.py --experiment within --epochs 200 --data_dir data_a --out results_norm --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_norm --skip_existing
+python experiments.py --experiment both   --epochs 200 --data_dir data_full_v2 --out results_norm --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_norm --skip_existing
+python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a --data_b data_full_v2 --normalize pu_zscore --out results_norm\physics
+python rank_analysis.py --results_dir results_norm
+python recompute_tables.py --results_dir results_norm
 ```

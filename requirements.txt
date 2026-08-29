@@ -1,0 +1,25 @@
+# Python dependencies for the eval_gnn_generalization_pg pipeline.
+# Versions are the ones the pipeline was developed/tested against; other recent
+# versions likely work. torch/torch_geometric wheels are platform-specific --
+# if the plain install fails, follow https://pytorch.org and
+# https://pytorch-geometric.readthedocs.io for the right index URL.
+#
+# NOTE: Step 1 (grid conversion) additionally needs GNU Octave (a system
+# package, not pip):  sudo apt-get install -y octave   # or: brew install octave
+# It is a ONE-TIME step and the converted .mat files are committed, so most
+# users can skip it and start at Step 2.
+
+torch>=2.2
+torch_geometric>=2.5
+# pandapower 3.5.4 is what every dataset here was generated with. Pinned rather
+# than floored because the DC baseline is version-sensitive: `rundcpp` does not
+# write res_bus.q_mvar, and 2.x left the column as NaN while 3.x leaves the
+# previous AC result there. The generator now zeroes the column explicitly (the
+# Q == 0 convention), so the pin is for reproducibility, not correctness.
+pandapower==3.5.4
+scipy>=1.10
+numpy>=1.24
+pandas>=2.0
+networkx>=3.0
+numba>=0.58          # optional but strongly recommended (pandapower speedup)
+mat73>=0.60          # optional; only needed for --contingency_source harvest (Step 7)

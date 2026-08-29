@@ -1,0 +1,801 @@
+grid,t_idx,k,out_lines,source
+IEEE39,19071,1,[1],random
+IEEE39,23596,0,[],random
+IEEE39,1401,0,[],random
+IEEE39,9018,0,[],random
+IEEE39,3713,0,[],random
+IEEE39,5112,0,[],random
+IEEE39,1631,2,"[23, 24]",random
+IEEE39,22814,1,[0],random
+IEEE39,23037,0,[],random
+IEEE39,1775,0,[],random
+IEEE39,17908,2,"[6, 31]",random
+IEEE39,4806,0,[],random
+IEEE39,16645,2,"[9, 20]",random
+IEEE39,20005,1,[27],random
+IEEE39,19039,1,[9],random
+IEEE39,19513,0,[],random
+IEEE39,26049,1,[33],random
+IEEE39,3055,0,[],random
+IEEE39,21079,1,[4],random
+IEEE39,22408,1,[30],random
+IEEE39,446,2,"[1, 20]",random
+IEEE39,22963,2,"[28, 30]",random
+IEEE39,24531,2,"[0, 17]",random
+IEEE39,22080,2,"[5, 10]",random
+IEEE39,1684,0,[],random
+IEEE39,24632,2,"[28, 33]",random
+IEEE39,19579,0,[],random
+IEEE39,9205,2,"[22, 34]",random
+IEEE39,7470,1,[17],random
+IEEE39,19948,0,[],random
+IEEE39,1421,0,[],random
+IEEE39,3243,0,[],random
+IEEE39,18840,2,"[9, 22]",random
+IEEE39,7482,1,[25],random
+IEEE39,7455,0,[],random
+IEEE39,3728,0,[],random
+IEEE39,20911,2,"[0, 22]",random
+IEEE39,19635,1,[6],random
+IEEE39,10495,2,"[0, 30]",random
+IEEE39,18766,1,[10],random
+IEEE39,20901,0,[],random
+IEEE39,507,2,"[4, 9]",random
+IEEE39,849,1,[28],random
+IEEE39,24904,1,[31],random
+IEEE39,5447,0,[],random
+IEEE39,1779,2,"[6, 25]",random
+IEEE39,573,0,[],random
+IEEE39,2602,0,[],random
+IEEE39,22110,1,[20],random
+IEEE39,13187,2,"[7, 27]",random
+IEEE39,2318,1,[31],random
+IEEE39,1682,0,[],random
+IEEE39,27045,1,[28],random
+IEEE39,21312,1,[10],random
+IEEE39,19060,0,[],random
+IEEE39,1324,0,[],random
+IEEE39,18257,0,[],random
+IEEE39,23170,0,[],random
+IEEE39,138,1,[15],random
+IEEE39,25045,1,[22],random
+IEEE39,22986,2,"[8, 19]",random
+IEEE39,276,0,[],random
+IEEE39,3089,1,[32],random
+IEEE39,18976,2,"[3, 34]",random
+IEEE39,7206,0,[],random
+IEEE39,7192,1,[5],random
+IEEE39,25071,0,[],random
+IEEE39,19650,2,"[9, 31]",random
+IEEE39,16436,1,[5],random
+IEEE39,16472,2,"[17, 26]",random
+IEEE39,10,1,[30],random
+IEEE39,20514,2,"[5, 7]",random
+IEEE39,4501,2,"[10, 33]",random
+IEEE39,17147,0,[],random
+IEEE39,46,1,[16],random
+IEEE39,24924,0,[],random
+IEEE39,17282,2,"[22, 24]",random
+IEEE39,23711,2,"[22, 24]",random
+IEEE39,15597,0,[],random
+IEEE39,437,1,[13],random
+IEEE39,11807,0,[],random
+IEEE39,20429,2,"[23, 25]",random
+IEEE39,22962,0,[],random
+IEEE39,4535,1,[22],random
+IEEE39,24538,1,[31],random
+IEEE39,3663,0,[],random
+IEEE39,20779,2,"[10, 28]",random
+IEEE39,22018,2,"[4, 20]",random
+IEEE39,1537,1,[4],random
+IEEE39,21032,0,[],random
+IEEE39,6448,0,[],random
+IEEE39,14022,0,[],random
+IEEE39,5066,1,[32],random
+IEEE39,9053,2,"[17, 32]",random
+IEEE39,120,0,[],random
+IEEE39,19750,1,[16],random
+IEEE39,534,2,"[12, 23]",random
+IEEE39,2902,0,[],random
+IEEE39,8935,2,"[20, 24]",random
+IEEE39,14023,0,[],random
+IEEE39,6438,1,[5],random
+IEEE39,9019,1,[24],random
+IEEE39,5391,1,[12],random
+IEEE39,22786,1,[28],random
+IEEE39,24943,1,[3],random
+IEEE39,23373,2,"[7, 19]",random
+IEEE39,24557,1,[25],random
+IEEE39,17915,0,[],random
+IEEE39,23240,2,"[20, 33]",random
+IEEE39,8919,1,[30],random
+IEEE39,17240,2,"[5, 25]",random
+IEEE39,23050,1,[22],random
+IEEE39,23290,0,[],random
+IEEE39,3918,0,[],random
+IEEE39,23107,1,[18],random
+IEEE39,2481,1,[10],random
+IEEE39,19230,0,[],random
+IEEE39,2466,2,"[14, 20]",random
+IEEE39,15305,1,[12],random
+IEEE39,24819,0,[],random
+IEEE39,21790,1,[7],random
+IEEE39,21229,0,[],random
+IEEE39,21474,2,"[4, 33]",random
+IEEE39,19761,2,"[20, 22]",random
+IEEE39,948,2,"[0, 33]",random
+IEEE39,11832,1,[28],random
+IEEE39,14531,1,[27],random
+IEEE39,4045,0,[],random
+IEEE39,17983,2,"[10, 20]",random
+IEEE39,4125,1,[27],random
+IEEE39,3838,1,[7],random
+IEEE39,1467,0,[],random
+IEEE39,7405,1,[25],random
+IEEE39,17664,0,[],random
+IEEE39,233,1,[33],random
+IEEE39,24635,2,"[9, 23]",random
+IEEE39,4399,0,[],random
+IEEE39,21860,1,[2],random
+IEEE39,4250,0,[],random
+IEEE39,16552,1,[20],random
+IEEE39,7004,0,[],random
+IEEE39,21452,1,[10],random
+IEEE39,15880,0,[],random
+IEEE39,20986,1,[27],random
+IEEE39,11914,0,[],random
+IEEE39,18492,1,[30],random
+IEEE39,17404,2,"[11, 26]",random
+IEEE39,24498,1,[20],random
+IEEE39,7026,0,[],random
+IEEE39,4633,1,[23],random
+IEEE39,19871,1,[9],random
+IEEE39,23900,1,[18],random
+IEEE39,4914,0,[],random
+IEEE39,3286,0,[],random
+IEEE39,1049,0,[],random
+IEEE39,18095,0,[],random
+IEEE39,21737,1,[10],random
+IEEE39,18407,1,[24],random
+IEEE39,1625,0,[],random
+IEEE39,9483,0,[],random
+IEEE39,19967,2,"[12, 30]",random
+IEEE39,21061,2,"[24, 28]",random
+IEEE39,22440,2,"[9, 16]",random
+IEEE39,2515,1,[26],random
+IEEE39,10176,0,[],random
+IEEE39,20818,1,[0],random
+IEEE39,6547,2,"[23, 33]",random
+IEEE39,23212,0,[],random
+IEEE39,18097,2,"[2, 33]",random
+IEEE39,7457,1,[6],random
+IEEE39,2398,1,[4],random
+IEEE39,3345,1,[1],random
+IEEE39,22487,1,[3],random
+IEEE39,9436,0,[],random
+IEEE39,3747,2,"[16, 17]",random
+IEEE39,17220,1,[8],random
+IEEE39,21646,0,[],random
+IEEE39,7774,0,[],random
+IEEE39,3938,0,[],random
+IEEE39,752,0,[],random
+IEEE39,1624,1,[27],random
+IEEE39,19734,0,[],random
+IEEE39,1450,1,[0],random
+IEEE39,14322,2,"[5, 25]",random
+IEEE39,21160,0,[],random
+IEEE39,8182,1,[0],random
+IEEE39,18490,0,[],random
+IEEE39,3757,1,[5],random
+IEEE39,22118,1,[1],random
+IEEE39,1035,1,[15],random
+IEEE39,22415,1,[24],random
+IEEE39,5080,0,[],random
+IEEE39,5166,2,"[16, 25]",random
+IEEE39,15675,0,[],random
+IEEE39,17971,1,[14],random
+IEEE39,20599,0,[],random
+IEEE39,20683,1,[6],random
+IEEE39,27124,2,"[26, 31]",random
+IEEE39,17693,1,[33],random
+IEEE39,27331,0,[],random
+IEEE39,20938,2,"[8, 22]",random
+IEEE39,3863,2,"[17, 30]",random
+IEEE39,25116,2,"[11, 20]",random
+IEEE39,17441,1,[30],random
+IEEE39,24722,0,[],random
+IEEE39,21150,0,[],random
+IEEE39,5375,1,[10],random
+IEEE39,23584,0,[],random
+IEEE39,2367,2,"[20, 27]",random
+IEEE39,19090,1,[30],random
+IEEE39,23398,0,[],random
+IEEE39,2904,1,[6],random
+IEEE39,5086,0,[],random
+IEEE39,26354,2,"[28, 33]",random
+IEEE39,716,1,[24],random
+IEEE39,1533,0,[],random
+IEEE39,18646,2,"[3, 33]",random
+IEEE39,23083,1,[34],random
+IEEE39,17195,0,[],random
+IEEE39,3225,0,[],random
+IEEE39,24069,1,[28],random
+IEEE39,22977,0,[],random
+IEEE39,8903,2,"[1, 22]",random
+IEEE39,14326,1,[12],random
+IEEE39,24362,0,[],random
+IEEE39,21115,1,[18],random
+IEEE39,21668,0,[],random
+IEEE39,7520,0,[],random
+IEEE39,20776,1,[27],random
+IEEE39,1252,2,"[11, 20]",random
+IEEE39,23096,1,[24],random
+IEEE39,17778,2,"[18, 23]",random
+IEEE39,664,0,[],random
+IEEE39,22705,2,"[6, 10]",random
+IEEE39,14916,1,[22],random
+IEEE39,3624,2,"[30, 32]",random
+IEEE39,25882,2,"[11, 32]",random
+IEEE39,20527,0,[],random
+IEEE39,2077,1,[6],random
+IEEE39,21551,1,[15],random
+IEEE39,15846,0,[],random
+IEEE39,19028,0,[],random
+IEEE39,13752,0,[],random
+IEEE39,21462,1,[4],random
+IEEE39,24805,0,[],random
+IEEE39,8228,0,[],random
+IEEE39,2491,2,"[18, 32]",random
+IEEE39,3567,0,[],random
+IEEE39,180,0,[],random
+IEEE39,22824,2,"[20, 22]",random
+IEEE39,23939,2,"[14, 27]",random
+IEEE39,1351,1,[33],random
+IEEE39,17578,2,"[14, 27]",random
+IEEE39,111,2,"[7, 10]",random
+IEEE39,21076,1,[24],random
+IEEE39,19437,2,"[24, 34]",random
+IEEE39,18685,0,[],random
+IEEE39,21260,2,"[7, 24]",random
+IEEE39,3653,1,[17],random
+IEEE39,20014,1,[8],random
+IEEE39,22017,1,[17],random
+IEEE39,17532,0,[],random
+IEEE39,11917,0,[],random
+IEEE39,23207,2,"[8, 34]",random
+IEEE39,20733,2,"[20, 30]",random
+IEEE39,8921,1,[24],random
+IEEE39,24355,2,"[22, 33]",random
+IEEE39,3622,0,[],random
+IEEE39,25317,2,"[3, 32]",random
+IEEE39,20180,2,"[20, 30]",random
+IEEE39,5365,0,[],random
+IEEE39,18278,2,"[25, 33]",random
+IEEE39,21664,0,[],random
+IEEE39,2968,0,[],random
+IEEE39,18387,2,"[12, 28]",random
+IEEE39,17993,2,"[1, 28]",random
+IEEE39,23690,2,"[1, 15]",random
+IEEE39,17613,0,[],random
+IEEE39,3453,1,[27],random
+IEEE39,20643,0,[],random
+IEEE39,19710,0,[],random
+IEEE39,1139,0,[],random
+IEEE39,1712,0,[],random
+IEEE39,25802,0,[],random
+IEEE39,225,0,[],random
+IEEE39,16566,1,[17],random
+IEEE39,22976,0,[],random
+IEEE39,27211,1,[16],random
+IEEE39,2595,1,[22],random
+IEEE39,3752,0,[],random
+IEEE39,4012,0,[],random
+IEEE39,21904,1,[6],random
+IEEE39,95,1,[9],random
+IEEE39,22521,1,[22],random
+IEEE39,21089,1,[31],random
+IEEE39,19788,2,"[17, 20]",random
+IEEE39,22539,1,[0],random
+IEEE39,19148,2,"[8, 17]",random
+IEEE39,17503,0,[],random
+IEEE39,1823,0,[],random
+IEEE39,27221,2,"[3, 9]",random
+IEEE39,20302,0,[],random
+IEEE39,18594,0,[],random
+IEEE39,13934,2,"[3, 32]",random
+IEEE39,5097,0,[],random
+IEEE39,24424,0,[],random
+IEEE39,5210,0,[],random
+IEEE39,3911,0,[],random
+IEEE39,22618,2,"[12, 33]",random
+IEEE39,4804,0,[],random
+IEEE39,15589,0,[],random
+IEEE39,20688,1,[15],random
+IEEE39,16228,0,[],random
+IEEE39,6410,1,[17],random
+IEEE39,17628,2,"[22, 32]",random
+IEEE39,14690,0,[],random
+IEEE39,25985,1,[24],random
+IEEE39,3862,0,[],random
+IEEE39,1071,2,"[7, 22]",random
+IEEE39,9225,1,[24],random
+IEEE39,23199,2,"[6, 28]",random
+IEEE39,17287,1,[30],random
+IEEE39,20535,1,[26],random
+IEEE39,366,2,"[1, 6]",random
+IEEE39,19040,2,"[12, 18]",random
+IEEE39,20219,0,[],random
+IEEE39,20271,1,[31],random
+IEEE39,5443,0,[],random
+IEEE39,19669,2,"[5, 34]",random
+IEEE39,4485,0,[],random
+IEEE39,21634,0,[],random
+IEEE39,25886,2,"[12, 14]",random
+IEEE39,23082,1,[18],random
+IEEE39,1027,0,[],random
+IEEE39,17484,2,"[2, 12]",random
+IEEE39,25703,1,[30],random
+IEEE39,3910,2,"[1, 33]",random
+IEEE39,21892,1,[17],random
+IEEE39,6362,0,[],random
+IEEE39,2310,0,[],random
+IEEE39,17028,0,[],random
+IEEE39,21932,2,"[1, 34]",random
+IEEE39,10111,0,[],random
+IEEE39,1131,0,[],random
+IEEE39,18864,0,[],random
+IEEE39,19622,1,[7],random
+IEEE39,23284,1,[6],random
+IEEE39,9015,1,[7],random
+IEEE39,23357,1,[24],random
+IEEE39,20692,0,[],random
+IEEE39,7088,0,[],random
+IEEE39,2381,0,[],random
+IEEE39,19785,2,"[20, 25]",random
+IEEE39,17911,1,[23],random
+IEEE39,10305,2,"[5, 25]",random
+IEEE39,1443,1,[10],random
+IEEE39,15862,1,[27],random
+IEEE39,2797,1,[15],random
+IEEE39,7898,0,[],random
+IEEE39,21084,2,"[4, 26]",random
+IEEE39,21607,0,[],random
+IEEE39,3282,0,[],random
+IEEE39,19346,0,[],random
+IEEE39,19834,1,[30],random
+IEEE39,27696,0,[],random
+IEEE39,482,1,[23],random
+IEEE39,27126,0,[],random
+IEEE39,3726,1,[8],random
+IEEE39,21446,1,[22],random
+IEEE39,1438,1,[17],random
+IEEE39,4905,0,[],random
+IEEE39,953,0,[],random
+IEEE39,25032,0,[],random
+IEEE39,8818,2,"[9, 16]",random
+IEEE39,16568,1,[26],random
+IEEE39,2876,0,[],random
+IEEE39,25225,2,"[6, 9]",random
+IEEE39,171,2,"[6, 34]",random
+IEEE39,20965,1,[15],random
+IEEE39,20897,0,[],random
+IEEE39,17858,1,[7],random
+IEEE39,20205,0,[],random
+IEEE39,7119,2,"[25, 26]",random
+IEEE39,17601,1,[25],random
+IEEE39,16279,1,[16],random
+IEEE39,18973,1,[30],random
+IEEE39,21350,2,"[12, 23]",random
+IEEE39,3464,0,[],random
+IEEE39,19036,1,[13],random
+IEEE39,18554,1,[25],random
+IEEE39,3773,0,[],random
+IEEE39,640,1,[23],random
+IEEE39,19262,1,[24],random
+IEEE39,3432,1,[8],random
+IEEE39,21709,1,[31],random
+IEEE39,1830,0,[],random
+IEEE39,17109,1,[0],random
+IEEE39,21190,0,[],random
+IEEE39,19013,0,[],random
+IEEE39,24910,0,[],random
+IEEE39,377,2,"[16, 33]",random
+IEEE39,1679,1,[30],random
+IEEE39,7901,0,[],random
+IEEE39,5579,0,[],random
+IEEE39,18305,2,"[0, 9]",random
+IEEE39,7456,2,"[1, 17]",random
+IEEE39,13951,0,[],random
+IEEE39,388,2,"[20, 27]",random
+IEEE39,822,1,[16],random
+IEEE39,14609,0,[],random
+IEEE39,1400,0,[],random
+IEEE39,21225,0,[],random
+IEEE39,3820,2,"[10, 31]",random
+IEEE39,26642,1,[30],random
+IEEE39,19215,0,[],random
+IEEE39,776,0,[],random
+IEEE39,18638,0,[],random
+IEEE39,26953,1,[10],random
+IEEE39,544,0,[],random
+IEEE39,16277,1,[26],random
+IEEE39,20118,1,[0],random
+IEEE39,2465,1,[14],random
+IEEE39,18988,0,[],random
+IEEE39,19868,0,[],random
+IEEE39,4229,2,"[14, 30]",random
+IEEE39,2790,1,[9],random
+IEEE39,10294,0,[],random
+IEEE39,6135,0,[],random
+IEEE39,17132,1,[23],random
+IEEE39,22822,2,"[12, 32]",random
+IEEE39,20877,1,[11],random
+IEEE39,21558,1,[10],random
+IEEE39,1586,0,[],random
+IEEE39,25785,1,[8],random
+IEEE39,1606,0,[],random
+IEEE39,5174,0,[],random
+IEEE39,27022,1,[33],random
+IEEE39,19364,0,[],random
+IEEE39,24929,1,[12],random
+IEEE39,25867,1,[25],random
+IEEE39,21827,2,"[6, 34]",random
+IEEE39,18447,0,[],random
+IEEE39,3664,1,[4],random
+IEEE39,554,2,"[11, 15]",random
+IEEE39,4524,0,[],random
+IEEE39,3646,0,[],random
+IEEE39,16162,2,"[8, 14]",random
+IEEE39,16641,1,[33],random
+IEEE39,20313,1,[12],random
+IEEE39,17511,1,[8],random
+IEEE39,5782,2,"[7, 34]",random
+IEEE39,4287,0,[],random
+IEEE39,21440,1,[34],random
+IEEE39,14522,0,[],random
+IEEE39,7568,0,[],random
+IEEE39,4407,0,[],random
+IEEE39,5877,1,[12],random
+IEEE39,17868,2,"[15, 26]",random
+IEEE39,267,0,[],random
+IEEE39,22328,2,"[7, 34]",random
+IEEE39,1938,0,[],random
+IEEE39,14528,2,"[1, 31]",random
+IEEE39,27290,0,[],random
+IEEE39,22590,1,[32],random
+IEEE39,20968,0,[],random
+IEEE39,2119,0,[],random
+IEEE39,23049,1,[24],random
+IEEE39,18592,2,"[7, 33]",random
+IEEE39,5489,2,"[7, 28]",random
+IEEE39,2889,2,"[22, 25]",random
+IEEE39,3039,1,[5],random
+IEEE39,23860,0,[],random
+IEEE39,22528,0,[],random
+IEEE39,23647,2,"[9, 12]",random
+IEEE39,2126,0,[],random
+IEEE39,17549,1,[3],random
+IEEE39,3277,1,[32],random
+IEEE39,17828,1,[30],random
+IEEE39,17763,2,"[0, 30]",random
+IEEE39,114,2,"[0, 23]",random
+IEEE39,18178,1,[27],random
+IEEE39,27329,0,[],random
+IEEE39,2359,2,"[14, 31]",random
+IEEE39,2209,0,[],random
+IEEE39,20495,1,[13],random
+IEEE39,27871,0,[],random
+IEEE39,9031,0,[],random
+IEEE39,24017,2,"[7, 8]",random
+IEEE39,15395,0,[],random
+IEEE39,9434,1,[20],random
+IEEE39,5483,0,[],random
+IEEE39,5073,1,[32],random
+IEEE39,19429,0,[],random
+IEEE39,18258,2,"[9, 32]",random
+IEEE39,16526,2,"[26, 33]",random
+IEEE39,20579,0,[],random
+IEEE39,24541,0,[],random
+IEEE39,23009,0,[],random
+IEEE39,19604,1,[22],random
+IEEE39,24607,0,[],random
+IEEE39,27198,1,[25],random
+IEEE39,22723,2,"[1, 15]",random
+IEEE39,14553,2,"[8, 25]",random
+IEEE39,531,1,[22],random
+IEEE39,4309,0,[],random
+IEEE39,1913,0,[],random
+IEEE39,6986,1,[10],random
+IEEE39,6069,1,[5],random
+IEEE39,17020,1,[28],random
+IEEE39,16917,0,[],random
+IEEE39,22686,1,[9],random
+IEEE39,21096,0,[],random
+IEEE39,21899,2,"[1, 30]",random
+IEEE39,25228,0,[],random
+IEEE39,21809,1,[26],random
+IEEE39,18589,1,[24],random
+IEEE39,6463,0,[],random
+IEEE39,2364,2,"[7, 31]",random
+IEEE39,7604,1,[10],random
+IEEE39,23848,1,[30],random
+IEEE39,24919,2,"[30, 34]",random
+IEEE39,2976,2,"[9, 34]",random
+IEEE39,25408,1,[25],random
+IEEE39,20674,0,[],random
+IEEE39,3934,1,[32],random
+IEEE39,6511,0,[],random
+IEEE39,27133,1,[7],random
+IEEE39,2562,1,[12],random
+IEEE39,23018,0,[],random
+IEEE39,24933,2,"[17, 20]",random
+IEEE39,2324,0,[],random
+IEEE39,21275,1,[8],random
+IEEE39,23022,2,"[6, 27]",random
+IEEE39,2297,0,[],random
+IEEE39,21078,1,[0],random
+IEEE39,17589,1,[24],random
+IEEE39,25995,0,[],random
+IEEE39,17310,1,[26],random
+IEEE39,1639,1,[15],random
+IEEE39,3523,0,[],random
+IEEE39,21004,1,[31],random
+IEEE39,5107,2,"[7, 20]",random
+IEEE39,353,0,[],random
+IEEE39,15843,0,[],random
+IEEE39,1632,2,"[25, 33]",random
+IEEE39,2994,1,[27],random
+IEEE39,18308,0,[],random
+IEEE39,20552,1,[6],random
+IEEE39,6537,1,[9],random
+IEEE39,6987,1,[17],random
+IEEE39,15019,0,[],random
+IEEE39,14890,1,[9],random
+IEEE39,6408,0,[],random
+IEEE39,23287,2,"[3, 16]",random
+IEEE39,17116,1,[33],random
+IEEE39,21449,1,[1],random
+IEEE39,385,2,"[23, 25]",random
+IEEE39,21806,1,[31],random
+IEEE39,24717,0,[],random
+IEEE39,18204,1,[2],random
+IEEE39,25014,2,"[8, 33]",random
+IEEE39,2862,0,[],random
+IEEE39,7134,1,[20],random
+IEEE39,23151,2,"[20, 27]",random
+IEEE39,645,0,[],random
+IEEE39,1491,0,[],random
+IEEE39,218,2,"[26, 31]",random
+IEEE39,7417,0,[],random
+IEEE39,26670,2,"[8, 16]",random
+IEEE39,23064,2,"[7, 13]",random
+IEEE39,22983,1,[11],random
+IEEE39,15779,0,[],random
+IEEE39,22925,2,"[24, 34]",random
+IEEE39,836,1,[6],random
+IEEE39,1788,0,[],random
+IEEE39,21851,1,[7],random
+IEEE39,6433,0,[],random
+IEEE39,21352,1,[26],random
+IEEE39,21802,1,[7],random
+IEEE39,20542,1,[31],random
+IEEE39,7465,0,[],random
+IEEE39,23708,0,[],random
+IEEE39,23998,1,[12],random
+IEEE39,8823,2,"[2, 17]",random
+IEEE39,3232,0,[],random
+IEEE39,674,2,"[2, 6]",random
+IEEE39,23217,1,[27],random
+IEEE39,3799,0,[],random
+IEEE39,17830,2,"[5, 26]",random
+IEEE39,14065,2,"[8, 28]",random
+IEEE39,4228,2,"[14, 34]",random
+IEEE39,2597,1,[24],random
+IEEE39,19561,0,[],random
+IEEE39,21267,1,[2],random
+IEEE39,7078,0,[],random
+IEEE39,20893,1,[32],random
+IEEE39,5090,2,"[7, 16]",random
+IEEE39,21543,2,"[10, 34]",random
+IEEE39,5297,0,[],random
+IEEE39,2867,0,[],random
+IEEE39,18934,2,"[12, 28]",random
+IEEE39,18659,1,[28],random
+IEEE39,19252,0,[],random
+IEEE39,3272,2,"[15, 31]",random
+IEEE39,23589,2,"[22, 31]",random
+IEEE39,18674,1,[1],random
+IEEE39,1165,1,[23],random
+IEEE39,3375,2,"[0, 20]",random
+IEEE39,21176,1,[22],random
+IEEE39,2941,0,[],random
+IEEE39,23920,2,"[13, 17]",random
+IEEE39,7755,1,[12],random
+IEEE39,27158,0,[],random
+IEEE39,15984,1,[33],random
+IEEE39,4416,1,[23],random
+IEEE39,20581,2,"[19, 34]",random
+IEEE39,17618,1,[20],random
+IEEE39,19046,2,"[2, 5]",random
+IEEE39,419,1,[10],random
+IEEE39,19353,1,[4],random
+IEEE39,3328,0,[],random
+IEEE39,23796,0,[],random
+IEEE39,18756,1,[18],random
+IEEE39,2473,1,[12],random
+IEEE39,53,1,[9],random
+IEEE39,22301,2,"[16, 30]",random
+IEEE39,26957,0,[],random
+IEEE39,23757,1,[11],random
+IEEE39,20190,1,[2],random
+IEEE39,24461,0,[],random
+IEEE39,25848,0,[],random
+IEEE39,23813,1,[22],random
+IEEE39,27399,2,"[22, 32]",random
+IEEE39,14329,2,"[7, 25]",random
+IEEE39,882,2,"[10, 33]",random
+IEEE39,6116,2,"[25, 26]",random
+IEEE39,23303,0,[],random
+IEEE39,11852,0,[],random
+IEEE39,7848,0,[],random
+IEEE39,4119,1,[12],random
+IEEE39,380,2,"[11, 14]",random
+IEEE39,22226,1,[22],random
+IEEE39,18352,0,[],random
+IEEE39,1039,0,[],random
+IEEE39,642,1,[22],random
+IEEE39,21276,0,[],random
+IEEE39,15119,1,[33],random
+IEEE39,18402,2,"[23, 30]",random
+IEEE39,17826,1,[14],random
+IEEE39,17963,1,[7],random
+IEEE39,23850,0,[],random
+IEEE39,2881,2,"[0, 20]",random
+IEEE39,6789,1,[16],random
+IEEE39,23387,2,"[5, 32]",random
+IEEE39,17798,2,"[19, 34]",random
+IEEE39,23078,2,"[28, 31]",random
+IEEE39,3074,0,[],random
+IEEE39,2871,0,[],random
+IEEE39,18661,1,[22],random
+IEEE39,21444,0,[],random
+IEEE39,14923,0,[],random
+IEEE39,15882,1,[33],random
+IEEE39,1389,0,[],random
+IEEE39,7186,1,[33],random
+IEEE39,20749,1,[26],random
+IEEE39,2088,1,[18],random
+IEEE39,21281,2,"[14, 26]",random
+IEEE39,2215,0,[],random
+IEEE39,2178,0,[],random
+IEEE39,25022,2,"[10, 17]",random
+IEEE39,22985,1,[11],random
+IEEE39,22687,1,[12],random
+IEEE39,346,0,[],random
+IEEE39,18338,1,[28],random
+IEEE39,17296,1,[34],random
+IEEE39,17700,1,[4],random
+IEEE39,23313,0,[],random
+IEEE39,13770,2,"[25, 33]",random
+IEEE39,194,1,[18],random
+IEEE39,4049,0,[],random
+IEEE39,27297,2,"[9, 23]",random
+IEEE39,17315,1,[27],random
+IEEE39,4288,0,[],random
+IEEE39,20087,1,[9],random
+IEEE39,5845,0,[],random
+IEEE39,17940,2,"[15, 24]",random
+IEEE39,20204,0,[],random
+IEEE39,18735,0,[],random
+IEEE39,781,2,"[9, 26]",random
+IEEE39,6641,0,[],random
+IEEE39,24033,0,[],random
+IEEE39,24816,0,[],random
+IEEE39,18255,0,[],random
+IEEE39,17581,0,[],random
+IEEE39,24725,0,[],random
+IEEE39,26564,1,[32],random
+IEEE39,25900,1,[15],random
+IEEE39,18899,0,[],random
+IEEE39,24030,0,[],random
+IEEE39,25130,0,[],random
+IEEE39,17837,0,[],random
+IEEE39,15847,0,[],random
+IEEE39,15888,0,[],random
+IEEE39,21308,0,[],random
+IEEE39,9191,0,[],random
+IEEE39,3623,2,"[26, 34]",random
+IEEE39,19930,2,"[9, 30]",random
+IEEE39,2788,0,[],random
+IEEE39,19341,2,"[10, 14]",random
+IEEE39,1391,2,"[20, 24]",random
+IEEE39,23971,0,[],random
+IEEE39,6541,0,[],random
+IEEE39,2268,1,[9],random
+IEEE39,20895,2,"[3, 17]",random
+IEEE39,22971,1,[15],random
+IEEE39,2880,1,[15],random
+IEEE39,21930,2,"[13, 22]",random
+IEEE39,27237,0,[],random
+IEEE39,26377,0,[],random
+IEEE39,2133,1,[25],random
+IEEE39,6638,0,[],random
+IEEE39,687,0,[],random
+IEEE39,19256,0,[],random
+IEEE39,8941,0,[],random
+IEEE39,7578,1,[34],random
+IEEE39,5586,1,[1],random
+IEEE39,19754,0,[],random
+IEEE39,96,0,[],random
+IEEE39,6439,0,[],random
+IEEE39,6833,0,[],random
+IEEE39,21738,1,[26],random
+IEEE39,21946,1,[12],random
+IEEE39,17099,1,[32],random
+IEEE39,17584,1,[26],random
+IEEE39,7693,0,[],random
+IEEE39,16073,0,[],random
+IEEE39,19074,2,"[18, 33]",random
+IEEE39,1922,1,[28],random
+IEEE39,9145,0,[],random
+IEEE39,16243,0,[],random
+IEEE39,24449,1,[9],random
+IEEE39,10306,0,[],random
+IEEE39,4716,2,"[10, 32]",random
+IEEE39,16344,1,[33],random
+IEEE39,1449,1,[0],random
+IEEE39,3817,1,[33],random
+IEEE39,509,1,[28],random
+IEEE39,19774,1,[23],random
+IEEE39,25708,1,[10],random
+IEEE39,21726,2,"[22, 34]",random
+IEEE39,779,0,[],random
+IEEE39,3246,1,[20],random
+IEEE39,19101,1,[1],random
+IEEE39,4527,2,"[10, 24]",random
+IEEE39,16853,2,"[0, 23]",random
+IEEE39,5155,0,[],random
+IEEE39,166,2,"[18, 32]",random
+IEEE39,23767,0,[],random
+IEEE39,27347,0,[],random
+IEEE39,10161,0,[],random
+IEEE39,6220,2,"[3, 23]",random
+IEEE39,22129,2,"[17, 25]",random
+IEEE39,25037,0,[],random
+IEEE39,3473,0,[],random
+IEEE39,20070,1,[5],random
+IEEE39,23316,0,[],random
+IEEE39,5010,0,[],random
+IEEE39,3804,0,[],random
+IEEE39,20321,0,[],random
+IEEE39,15756,2,"[1, 25]",random
+IEEE39,23090,1,[16],random
+IEEE39,20023,2,"[2, 16]",random
+IEEE39,27212,2,"[18, 31]",random
+IEEE39,17093,1,[30],random
+IEEE39,18936,0,[],random
+IEEE39,20931,2,"[1, 32]",random
+IEEE39,3513,2,"[1, 23]",random
+IEEE39,20478,0,[],random
+IEEE39,20129,2,"[19, 25]",random
+IEEE39,97,1,[12],random
+IEEE39,19022,1,[24],random
+IEEE39,17833,0,[],random
+IEEE39,14310,0,[],random
+IEEE39,23773,0,[],random
+IEEE39,17635,0,[],random
+IEEE39,607,0,[],random
+IEEE39,15591,0,[],random
+IEEE39,8331,1,[33],random
+IEEE39,21913,0,[],random
+IEEE39,20289,0,[],random
+IEEE39,713,0,[],random
+IEEE39,2970,0,[],random
+IEEE39,5008,2,"[20, 31]",random
+IEEE39,10099,2,"[10, 34]",random
+IEEE39,23106,1,[14],random
+IEEE39,21792,0,[],random
+IEEE39,16850,0,[],random
+IEEE39,6424,0,[],random
+IEEE39,1463,1,[26],random
+IEEE39,6525,2,"[9, 20]",random

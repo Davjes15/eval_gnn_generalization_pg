@@ -1,0 +1,21 @@
+{
+  "regime_tag": "B",
+  "seeds": [
+    12
+  ],
+  "experiment": "ood",
+  "data_dir": "data_full_v2",
+  "epochs": 200,
+  "arch_config_path": "configs/arch_config.json",
+  "arch_config": {
+    "gcn": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    }
+  },
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "normalize": "pu_zscore",
+  "only_topology": true
+}

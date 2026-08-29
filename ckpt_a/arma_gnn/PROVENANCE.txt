@@ -1,0 +1,13 @@
+NO CHECKPOINTS FOR ARMA (BY DESIGN)
+
+The weights that used to sit here were from the pre-fix ARMA definition (edge
+encoder ending in leaky ReLU, so ARMAConv's self-loop-free normalization could
+receive negative edge weights); many tensors were NaN because those runs
+diverged on seeds 100/700/1000. They were deleted to remove any chance of a
+superseded checkpoint entering a result.
+
+ARMA (corrected, softplus edge weights) and NNConv are REPRODUCIBLE FROM SEED,
+NOT FROM CHECKPOINT: their arms were run without --save_models, so re-running
+the command recorded in docs/Model_configurations.md with the same seed
+regenerates the model and its metrics. The divergence evidence itself is kept
+as data in results_a/within_arma_gnn/ and results_tuned/arma_gnn/.

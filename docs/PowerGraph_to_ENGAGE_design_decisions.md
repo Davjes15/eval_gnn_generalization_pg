@@ -41,6 +41,13 @@ for t in hours:
 - **Route B (real demand):** reproduces the *same operating points PowerGraph used* (same grids + same measured demand curves + AC PF) — this is exactly what PowerGraph's `gendataopf.m` does — but re-expressed in ENGAGE format. It carries realistic load patterns and is faithful to PowerGraph's data.
 - Route B also **reduces the dependency on the `powerdata-gen` submodule** (still empty/unfetchable here): it needs mainly pandapower + ENGAGE's feature code.
 
+**As implemented (narrower than the sketch above):** only **active** demand is written per sample.
+`transmission_graph_gen._apply_demand` sets `net.load.p_mw` from the demand column and leaves
+`q_mvar` at the case's base value, which is what `gendataopf.m` does too (it varies PD only). So
+every "operating-point" or "demand variation" statement in this document and in the results means
+active-demand variation at fixed base-case reactive demand (limitation L6 in
+[`Audit_response.md`](Audit_response.md)).
+
 **Note on ENGAGE synthetic data:** it is **not** "one value per bus per hour for a year." That description applies to PowerGraph's demand time series. ENGAGE synthetic data is a fixed count of independent random snapshots (`n_train/n_val/n_test`), with no chronology.
 
 ---
@@ -51,6 +58,13 @@ for t in hours:
 **Why:**
 - ENGAGE's Cross-Context and OOD experiments are inherently multi-grid (train on some, test on held-out). A single grid can't exercise the g-score / MMD machinery.
 - The four grids span a useful size range (24 / 39 / 29 / 118 buses).
+
+**What this coverage does not isolate:** the four cases differ in scale as much as in structure —
+nominal load 2,850 MW / 24 buses (IEEE24), 6,254 MW / 39 buses (IEEE39), 3,733 MW / 118 buses
+(IEEE118), 56,326 MW / 29 buses (UK), read from the committed `transmission/cases/*.mat` through
+`transmission_grids.load_case`. Size, density and load scale are therefore confounded at n = 4,
+and the leave-one-grid-out arm measures generalization to an unseen **system** (scale + topology +
+Regime B protocol), not isolated topology generalization (limitation L4).
 
 ---
 
@@ -129,6 +143,15 @@ Unified target set: **`GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NNConv`.*
 ---
 
 ## Decision 9 — Cross-grid comparability: per-unit normalization + fix the MMD defects
+> **Superseded in part by Decision 20 (read that first).** The intent below — that a
+> model must not see grid B in a different unit system than grid A — is correct and
+> retained. Two claims in it were wrong in fact: (i) ENGAGE's feature extractors do
+> **not** deliver per-unit *node* features (only edge impedances are per-unit; node
+> quantities are raw MW/Mvar/p.u./degrees, in ENGAGE's code and in ours), and (ii)
+> per-unit conversion could not have fixed the cross-grid scale problem here anyway,
+> because all four transmission cases share `sn_mva = 100`, so it is a division by
+> one common constant. No node-level scaling was implemented until Decision 20.
+
 **Decision:** For any cross-grid comparison, **normalize on a physically consistent per-unit basis** (`baseMVA`/`baseKV`), not PowerGraph's per-grid max-abs. Also fix the two MMD defects before trusting topological distance: (a) retune kernel sigmas so the Gaussian is not saturated, and (b) compute topology on the **physical one-line graph, not the Ybus sparsity pattern with self-loops**.
 
 **Why:**
@@ -159,6 +182,12 @@ Then filter (drop non-converged / islanded / voltage-violating / overloaded) and
 - AC power flow is a standard Newton-Raphson solve provided by pandapower (`runpp`/`runopp`/`rundcpp`); ENGAGE already runs it in `graph_gen.py` + `powerdata-gen`. PowerGraph does the same physics in MATLAB (`gendataopf.m`) but emits its own format, so we reuse ENGAGE's engine.
 - N-1/N-k contingency analysis is standard transmission practice, so the perturbed states are physically credible, and removing lines genuinely changes degree/Laplacian descriptors → a real spread of topological distances for the MMD/g-score.
 - **Connectivity/tuning:** reject islanding (or handle islands) and retune disconnection probabilities for meshed transmission (islands less easily than radial distribution); use a range of contingency depths so descriptors spread and `mmd_range` is non-degenerate.
+
+**What was actually executed (narrower than this spec):** the final `data_full_v2` campaign drew
+random N-1/N-2 outages of in-service **lines** only — the optional generator outages sketched
+above were never run, and there are no transformer outages, no busbar splits and no switching
+actions. A draw that islands the network is discarded and resampled rather than modelled. Every
+"N-1/N-k contingency" claim about the results is scoped to that distribution (limitation L9).
 
 ---
 
@@ -196,7 +225,11 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 
 **Why:** reproducibility and reuse — the exact trained GNNs behind the reported numbers can be inspected, fine-tuned, or served without retraining.
 
-**Decision (g-score at small N):** the ENGAGE g-score uses a 2/98 percentile trim (`bounds=2`) that assumes many samples. With only 3 unseen grids per training grid it keeps a single point, forcing `std_nrmse=0` and `mmd_range=0` (degenerate). We therefore additionally report a **small-N g-score** (no percentile trim, all unseen grids) as `gscore_smallN.csv`, and treat the **transfer matrix + MMD** as the headline. This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
+**Decision (g-score at small N):** the ENGAGE g-score uses a 2/98 percentile trim (`bounds=2`) that assumes many samples. With only 3 unseen grids per training grid it keeps a single point, forcing `std_nrmse=0` and `mmd_range=0` (degenerate). We therefore additionally report a **small-N g-score** (no percentile trim, all unseen grids) as `gscore_smallN.csv`, and treat the **transfer matrix + MMD** as the headline.
+This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
+*Superseded in form, not in reasoning:* the current pipeline emits the no-trim
+reading as the pooled `gscore_cc_aggregate.csv` (ENGAGE Table-3 format, one row
+per model); `gscore_smallN.csv` survives only in the legacy `full_run/results/`.
 
 **Decision (OOD g-score — `compute_ood_gscores`, `gscore_ood.csv`):** the cross-context g-score is *per training grid* and therefore has only the 3 unseen TEST grids as points (the degeneracy above). We additionally compute an **OOD g-score** *per model* over the **held-out grids** of the leave-one-grid-out experiment: one point per held-out grid (up to 4 points). No percentile trim (`bounds=0`); NaN cells (e.g. a diverged ARMA split) are dropped. This is the **better-posed** g-score at N=4 (more points, no trim collapse) and is the flavour most aligned with the study's operational question — *generalize to a genuinely new grid after training on several*. ENGAGE itself reports a g-score for both its cross-context and OOD experiments; we had initially reported OOD only as per-grid NRMSE, and this decision closes that gap. The choice of the distance x-axis is fixed by Decision 14.
 
@@ -211,6 +244,260 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 - Pooled Laplacian OOD distances: IEEE118 0.62, IEEE24 0.65, IEEE39 0.67, **UK 0.97** (vs. old mean-of-pairwise 0.94 / 0.82 / 0.94 / 1.13). UK remains the farthest; IEEE118 becomes the closest to its training mixture.
 - OOD g-scores shift only marginally (`mmd_range` 0.305→0.353): transformer 0.154→**0.153** (still best), gat 0.163, gin 0.164→0.163, gcn 0.183→0.182, nnconv 1.982→**1.961** (still disqualified), arma_gnn 0.146→0.147 (still optimistic; UK point dropped).
 - The OOD generalizability curve's **rank** correlation improves (Spearman −0.11→**+0.62**) because the pooled distance correctly orders UK as farthest-and-hardest; linear Pearson stays ≈0 (−0.05). The architecture verdict is unchanged.
+
+---
+
+## Decision 15 — A candidate that diverges is a failed candidate, not a candidate with a bad score
+**Decision:** `tune_budget.py` **disqualifies** any hyperparameter candidate whose validation loss is non-finite on **any** grid, and requires the surviving winner to **reproduce at a second seed (100)** before it is frozen. If no candidate survives at one learning rate the full grid is rescored at the other; if none survives either, the sweep **fails explicitly** rather than freezing an unstable configuration.
+
+**Why (this fixes a defect the results exposed):** the original rule took the argmin of the mean validation loss with `inf` merely ranked last. ARMA's sweep had recorded `inf` for all three hidden-64 candidates, yet 8×128/lr 1e-3 won because it happened to be finite at the single seed Stage 1 scores (seed 0). That configuration then diverged to NaN in **10 of 20** Regime-A within-grid runs and **49 of 80** cross-context runs — seeds 700 and 1000 everywhere, seed 100 on most grids. A selection procedure that can crown a configuration which only trains at one seed is not a selection procedure.
+
+**Scope of the amendment:** this rule was adopted **after** ARMA's instability surfaced, and is disclosed as such. It is applied identically to all six architectures. For `gcn`, `gat`, `gin`, `transformer` and `nnconv` it is a **no-op** — none of them produced a single non-finite value in any sweep trial or any of the final runs — so their frozen configurations and completed results are unchanged by it. The alternative considered and rejected was to keep the config and report ARMA's divergence rate, which would have rested ARMA's ranking on 31 of 80 runs with means biased toward exactly the seeds that survived.
+
+---
+
+## Decision 16 — ARMA's edge weight is softplus, not leaky ReLU (the actual cause of the divergence)
+**Decision:** in `models.py`, `ARMA_GNN`'s scalar edge encoder ends in **softplus** instead of the shared leaky ReLU, so its learned edge weight is **non-negative by construction**. The change is ARMA-scoped: the other five architectures' training is bit-for-bit unchanged and their completed results remain valid.
+
+**Why (mechanism, not a guess):** PyG's `ARMAConv` normalizes the adjacency with `gcn_norm(..., add_self_loops=False)`, whereas `GCNConv` uses `add_self_loops=True`. With a leaky-ReLU edge encoder the learned weight can be **negative**; a bus whose incident weights sum to ≤ 0 makes `deg ** -0.5` infinite inside the normalization, and the **forward pass** produces `inf`/NaN before a gradient exists. GCN is immune on the identical tensors because unit self-loops keep its degrees positive.
+
+**Evidence the diagnosis is right:**
+- **Gradient clipping does nothing.** Probed 8×128/lr 1e-3 on IEEE39 and UK at seeds 100 and 700, with and without `clip_grad_norm_(…, 1.0)`: still `inf` with clipping. So ordinary gradient explosion was **not** the cause, and the "clip everywhere and re-run everything" option was never going to work.
+- **The data is not the cause.** Five architectures consume the identical tensors with zero non-finite values; ARMA at seed 0 is finite on the same grids; the Regime-A generation gate passed.
+- **After the fix**, the seeds that always died are finite and *better* than the old surviving numbers (IEEE24 0.0063 / 0.0083, IEEE39 0.00037 / 0.00035, UK 0.0282 / 0.0164 at seeds 100 / 700), and the previously-`inf` hidden-64 candidates train normally.
+
+**Consequence:** because this changes ARMA's definition, its **entire tuning sweep was redone** under the fixed layer (9 configs × 2 learning rates × 2 seeds × 4 grids → `results_a/arma_v2/`), with **zero divergences**, re-selecting 8 × 128 / lr 1e-3 reproducibly (0.01829 at seed 0, 0.01830 mean over seeds 0 and 100). Hansen et al.'s stack count (5, `shared_weights=False`) is retained; depth/width/lr are selected by the same equal-budget protocol as every other architecture. The **pre-fix ARMA result rows are deliberately kept** in `results_a/within_arma_gnn/`, `results_a/arma_stability/`, `results_a/arma_lowlr/` and `results_tuned/arma_gnn/` as the evidence for the divergence finding, and are **excluded from all analysis inputs**; the corrected arms live in `results_a/within_arma_v2/` and `results_tuned/arma_v2/`.
+
+---
+
+## Decision 17 — NNConv is our own addition, and is replicated at 3 seeds rather than 5
+**Decision:** keep `NNConv` in the comparison, run it at seeds `[0, 100, 300]` instead of `[0, 100, 300, 700, 1000]`, and disclose the reduced replication wherever its numbers appear.
+
+**Consequence to state with every NNConv number:** it contributes 12 rows per arm where the other
+five contribute 20 (48 vs 80 in the cross-context arm; `results_norm/all_within/within_grid.csv`,
+`all_cross/cross_context.csv`, `all_ood/ood.csv`). That affects every pooled mean and every
+ranking NNConv appears in, and it is why only 12 of 20 (grid, seed) cells are complete for the
+rank correlation — the three shared seeds are the only ones carrying all six architectures. This
+is a deliberate, approved compute trade-off (limitation L2), not a missing run.
+
+**Provenance, stated plainly:** PowerGraph's baselines are exactly four — `GCNConv`, `GATConv`, `GINEConv`, `TransformerConv`. `ARMAConv` comes from ENGAGE (via Hansen et al.). **`NNConv` is neither paper's baseline; it is our addition**, included as the most edge-expressive layer available, which is the interesting case for power flow where edge admittances carry the physics. Dropping it would therefore cost no coverage of either source paper — it would cost the edge-expressive end of the architecture axis.
+
+**Why the reduction:** NNConv's edge network emits a full `hidden × hidden` transform **per edge**. At the frozen 2 × 128 that is a 128×128 matrix per edge, making one IEEE118 training ≈ 3 h and the full 60-run programme (within + cross-context + OOD × 5 seeds) ≈ 1.5–2 days wall clock on 8 cores — the pooled-grid OOD arm being most of it. Three seeds keeps a variance estimate at ~60% of the cost. This is a **compute** decision, explicitly approved, not a methodological one, and it is the only architecture with fewer than 5 seeds.
+
+---
+
+## Decision 18 — Checkpoints for four architectures; ARMA and NNConv reproduce from the recorded seed
+**Decision:** `ckpt_a/` and `ckpt_b/` hold trained weights for `gcn`, `gat`, `gin` and `transformer` (one file per grid × seed). **`arma_gnn` and `nnconv` have no checkpoints** and are reproduced by re-running the documented command at the recorded seed; every result row carries `model`, `num_layers`, `hidden`, `learning_rate` and `seed`, and the seeds are fixed.
+
+**Why:** their arms were launched without `--save_models`, so only metric rows were written. The stale ARMA checkpoints that *did* exist were from the pre-fix definition of Decision 16 and **many of their tensors were NaN**, so they were **deleted** (220 MB) rather than kept — NaN weights sitting next to valid ones invite a superseded checkpoint into a result, and they held no information the result CSVs do not. A `PROVENANCE.txt` is left in each emptied directory. **Known consequence:** `--skip_existing` requires `--save_models`, so an interrupted ARMA or NNConv arm restarts from its first grid.
+
+---
+
+## Decision 19 — The inherited-config `full_run/results/` tables are superseded, not deleted
+**Decision:** every headline number — rankings, g-score, per-quantity P/Q/V/θ, DC-baseline comparison — is recomputed from the **tuned-configuration** runs (`results_a/`, `results_tuned/`). The earlier `full_run/results/` tables were produced under the **inherited** ENGAGE configuration (before the equal-budget sweep of Decision 15) and are retained only as the historical run, marked in `RUN_METADATA.txt`, and never mixed into a tuned table.
+
+**Why:** the two sets differ in depth, width and learning rate per architecture, so a table that mixed them would compare architectures at unequal budgets — precisely the confound the sweep exists to remove.
+
+---
+
+## Decision 20 — Feature/target scaling is an explicit training option, and the benchmark protocol uses `pu_zscore` (audit item A2)
+**Decision:** scaling lives in one module, `normalization.py`, and is selected per run with
+`experiments.py --normalize {none,pu,pu_zscore}`.
+
+| mode | meaning | role |
+|---|---|---|
+| `none` | raw physical units | the protocol every pre-existing artifact was produced with; kept as the **default** so those rows stay bit-identically reproducible, and reported as an ablation |
+| `pu` | powers ÷ `sn_mva`, angles → radians | engineering per-unit only; documented, not used for headline results |
+| `pu_zscore` | per-unit, then per-quantity z-score with **training-split statistics** | **the benchmark protocol** for all final results |
+
+Statistics are fitted on training data only — per grid for the within-grid arm, on the
+source grid for cross-context, on the pooled training grids for leave-one-grid-out — and
+applied unchanged to validation and test. Node features (columns 3:7) and targets are
+scaled with the *same* statistics, which is what keeps the known-value re-injection in
+`models.py::inference` legal. Predictions are de-normalized before any metric is
+computed, so every reported number stays in physical units, and the DC baseline is never
+scaled at all.
+
+**Why:** the defect is not primarily the cross-grid magnitude gap the audit pointed at — it
+is *inside each sample*. In raw units the four target quantities differ by up to ten orders
+of magnitude in the loss, so the fraction of the training loss attributable to voltage
+magnitude is ≈ 5·10⁻⁸ on IEEE24 and ≈ 1·10⁻¹¹ on UK: voltage is effectively not optimized.
+That is exactly what the raw-unit results show — every architecture is worse than the
+constant predictor `V ≡ 1.0` p.u. even in-distribution. A 15-epoch control on IEEE24/`gcn`
+moves voltage NRMSE from 2.97 to 0.021 with no loss on P, Q or θ.
+
+**Field grounding:** ENGAGE does not scale node features, and gets away with it because its
+SimBench LV/MV feeders have MW injections of the same order as `vm_pu ≈ 1`; our
+transmission systems carry 10³–10⁴ MW. **PowerGraph-Node's released code does scale** —
+per-dimension max-abs on both X and Y, de-normalized for reporting. PowerFlowNet z-scores
+X, Y and edge features on train-split statistics; Hansen et al. (the source of our ARMA
+setup) divides powers by `baseMVA`. Scaling with de-normalized reporting is the field norm;
+ENGAGE is the exception. Details and measurements: `Normalization_assessment.md`.
+
+**What it does *not* fix:** the UK system genuinely moves an order of magnitude more power
+than IEEE24, and no unit system removes that. A train-grid-fitted scaler is the honest
+choice, but the transfer claim must then read "generalization to an unseen *system*"
+(topology **and** scale), not "to an unseen topology".
+
+---
+
+## Decision 21 — Regime B is regenerated with a blocked temporal split (audit item A5)
+**Decision:** the final varying-topology datasets (`data_full_v2`) are generated with
+`transmission_graph_gen.py --time_split blocked`, which gives train, validation and test
+**disjoint contiguous windows of the demand year**, separated by a one-day gap
+(`--time_gap 96` steps at 15-minute resolution), and draws each demand snapshot at most
+once. Validation gate H (`validate.py --regime b --expect_blocked`) asserts the resulting
+properties, and `tests/test_split_hygiene.py` asserts that the gate actually catches a
+leaky dataset. `data_full` is retained as provenance for the superseded results, never
+mixed into a final table.
+
+**Why:** the original Regime B data drew every split's snapshots uniformly from the whole
+year, so splits shared demand snapshots outright (4/3/1/0 shared snapshots across the four
+grids). Uniqueness alone is still too weak, because consecutive 15-minute snapshots are
+near-duplicates: a test point drawn one step after a training point is not an independent
+operating condition. Blocking in time is the standard remedy for temporally correlated
+data and is what makes "unseen operating conditions" defensible. Regime A (`data_a`) was
+already generated with `--unique_demand` and is unaffected, which is why only Regime B is
+regenerated.
+
+**What the Regime A → Regime B step therefore bundles:** `data_full_v2` differs from `data_a` in
+*two* ways at once — the blocked temporal split above and the line-contingency topologies of
+Decision 10. The `same_grid_factor` of the protocol decomposition
+(1.5-10.5x, `results_norm/analysis/protocol_decomposition.csv`) bounds their combined cost and
+attributes the degradation to neither of them individually (limitation L8); separating them would
+need a split-only and a contingency-only dataset with a retrained campaign on each, which was
+declined.
+
+**Sequencing consequence (why this came before training):** A5 changes the Regime B data, so
+the cross-context and OOD arms had to be trained *after* regeneration, not before —
+otherwise the same six architectures would have been trained twice on those two arms.
+
+---
+
+## Decision 22 — The aggregate NRMSE is kept for comparability, but the reported physics is per quantity and over predicted entries only (audit item A3)
+**Decision:** `physics_metrics.py` is the reporting layer for every final result, run over saved
+checkpoints by `eval_checkpoints.py`. It reports, in **physical units** after de-normalization:
+per-quantity NRMSE and MAE; the same restricted to the entries the model genuinely predicts;
+predicted-entry counts; p95/p99/max absolute error; and voltage-limit violation rate, missed-violation
+("false-secure") rate and false-alarm rate. ENGAGE's pooled `nrmse_range` stays in the tables as the
+comparability column, not as the headline.
+
+**Why:** two of the four target columns per bus are ground truth re-injected at inference (slack: V, θ
+known; PV: P, V known; PQ: P, Q known — Decision 6), so an aggregate over all four columns is partly
+a score of the inputs. And pooling MW with p.u. lets the large-magnitude quantities carry the number:
+the measured share of the loss is P 0.83, Q 0.15, θ 0.02, V 5e-8 on IEEE24, which is how every
+architecture came to be worse than the constant `V ≡ 1.0` in-distribution while the aggregate looked
+excellent. For a screening application the quantity of interest is exactly the one the aggregate
+hides, which is why the violation and false-secure rates are reported rather than only the error.
+
+## Decision 23 — Reproducibility is an artifact, not a claim (audit item A4)
+**Decision:** `docs/Reproducibility.md` is the single entry point: pinned versions,
+generation and training commands, `docs/provenance/*.csv` (all 24 `dataset_src.csv` files),
+the realised blocked windows per grid, and `checkpoint_index.py` → `docs/tables/checkpoint_index.csv`
+mapping every results row to a weight file by path, size, SHA-256 and parameter count. The tuning
+CSVs the configuration tables cite are committed. Two things are stated rather than fixed: the
+tensors and weights are too large for git and need a data release, and regeneration is a *fresh draw
+from the same protocol*, so it reproduces the protocol, not the numbers.
+
+**Why:** the repository is pushed as an explicit file list, so citations to uncommitted artifacts had
+accumulated silently — the selection tables referenced tuning CSVs that were not in the repo, and
+`requirements.txt` was unpinned even though the A1 bug was a pandapower version regression. A
+dead reference is indistinguishable from a fabricated one to a reader, which is the real cost.
+
+## Decision 24 — The g-score is reported as a risk-averse summary, not as a distance-aware ranking; MMD gains an electrical descriptor (audit items A6, A7)
+**Decision:** `μ` and `σ` are the primary transfer numbers and the g-score accompanies them for
+ENGAGE comparability, with the degeneracy stated: `Δ_MMD` is a property of the data, so within an arm
+it is one constant and `g = μ + 0.806σ` (cross-context) or `μ + 0.857σ` (OOD) in the raw-unit
+campaign, `μ + 0.805σ` and `μ + 0.858σ` in the normalized one — verified against all
+committed rows to 1e-4, with rank-by-g ≡ rank-by-mean (τ = 1.0). For the distance itself, `mmd()` is
+named as the biased V-statistic (with `unbiased=True` available), the per-pair median bandwidth is
+stated, and `mmd_utils.reactance_histogram` adds a `log10(x_pu)` electrical descriptor alongside the
+degree and Laplacian ones. Full write-up: `docs/Generalization_score_and_MMD.md`.
+
+**Why:** with a single dataset the MMD term cannot reorder architectures, so presenting the g-score as
+"the generalization metric" would imply information it does not carry; it is still worth reporting
+because it prefers uniform mediocrity over a catastrophic fold, which is the right preference for
+security screening. And a purely topological distance is blind to the ~20× load-scale spread between
+our cases — UK → IEEE24 is the closest off-diagonal pair by degree MMD (0.276) and far apart
+electrically (0.833), so an electrical complement is needed before any distance is used as a covariate.
+
+---
+
+## Decision 25 — Hyperparameters are selected once on Regime A validation data and frozen; seeds are replication, never a tuned parameter
+**Decision:** two separate passes over the data, with the three splits kept to non-overlapping
+jobs — train (800) fits weights, validation (100) *chooses* hyperparameters, test (100) is read
+only to report. Pass 1 (`tune_budget.py` on `data_a`) scores ~10 candidate configurations per
+architecture by mean best **validation** loss across the four grids at one seed plus a tie-break
+seed, and freezes the winner in `configs/arch_config.json`. Pass 2 (`experiments.py`) re-trains
+that one configuration at seeds 0/100/300/700/1000 (NNConv 0/100/300) and scores on **test**;
+those are the reported numbers. The same frozen configuration goes into all three arms —
+within-grid, cross-context and OOD — and Regime B is never re-tuned.
+
+**Why:** the selection pass's own scores are optimistically biased, having been selected on the
+validation set, and exist at one seed with no spread, so reporting the search's winner as the
+result is textbook selection bias. Freezing across arms is what makes the headline claim
+falsifiable: if each arm chose its own hyperparameters, a rank change between regimes could be
+explained by "different configurations" rather than by generalization, and re-tuning on the
+transfer data would select on the very quantity being measured. The cost is disclosed — a
+configuration tuned under fixed topology may be suboptimal under varying topology, so absolute
+Regime B errors are an upper bound on a per-arm-tuned model.
+
+**The objective the selection used is not the objective the campaign reports.** Pass 1 ran under
+the **raw-unit** loss — `tune_budget.py` accepts no `normalize` argument — while the final campaign
+trained with `--normalize pu_zscore` (Decision 20), and re-tuning under the new objective was
+deliberately declined because it would have required retraining everything (limitation L1). The
+comparison the results support is therefore *six architectures under one recipe tuned elsewhere*,
+not *six architectures each at its own optimum*, and a reported number may be slightly worse than
+that architecture's best achievable under `pu_zscore`. Why the effect is expected to be small is
+an **argument, not evidence**: the procedure was identical for all six so it favours none, and all
+six selected the boundary of the search grid (hidden = 128, lr = 1e-3) with only depth differing,
+which is what a weakly discriminating criterion looks like.
+
+On seeds: a seed fixes weight initialisation and batch ordering, and serves exactly two purposes
+— exact reproducibility of a single row (the seed is carried in every result row and every
+checkpoint filename) and a spread over training randomness, so an architecture gap can be judged
+against run-to-run noise. There is **no best seed**: selecting one per architecture would let any
+desired ranking be manufactured and would not reproduce elsewhere. Five seeds matches PowerGraph
+(p. 5; ENGAGE does not report its seed count — see `Paper_verification.md` §5), and is small enough
+that fine-grained gaps are not claimed — hence τ per seed and per grid with permutation
+p-values instead of one aggregate ranking. It also captures training randomness only, not the
+uncertainty of the dataset draw: there is one generated dataset per regime, a single data
+realization with no resampling, so the seed spread supports no claim about variability across
+demand or contingency draws (limitation L5). Full statement: the *Final protocol* section of
+`docs/Experimental_Design_transmission_GNN_generalization.md`.
+
+---
+
+## Decision 26 — AC feasibility is scored by replay, and the second audit is answered without retraining
+**Decision:** the physical validity of a *prediction* is measured directly, not inferred from the
+regression error. `ac_feasibility.py` rebuilds every test network from `dataset_src.csv`, takes the
+post-contingency admittance matrix, the branch data and `max_i_ka` from pandapower's own internal
+representation, and reports (a) the AC power-balance residual of the predicted state,
+`dS = S_spec - (V conj(Y V) - S_shunt)`, in MW/Mvar and as a share of the snapshot's served load,
+and (b) the branch loading of the predicted state against the ratings, as an
+overload confusion (missed / false alarms). It runs as `eval_checkpoints.py --feasibility` over the
+saved checkpoints — **no retraining, no change to any weight**.
+
+Two details are load-bearing and were both found by calibrating against the labels. The shunt term
+must be subtracted, because pandapower books shunt consumption in `res_bus` while `Ybus` already
+contains the shunt admittance; without it the IEEE24 shunt bus shows a fictitious ~100 Mvar
+residual. And the true state is scored through the identical path in every run
+(`ac_dp_true_max_mw`, ≤ 2.8e-2 MW), so the reconstruction floor is reported next to the model's
+number rather than assumed to be zero. The predicted loading is likewise reported next to
+`branch_loading_max_pct_true`, because several source OPF snapshots are not thermally secure
+themselves (true loadings up to ~680 % on IEEE118). The screen covers every in-service branch,
+lines and two-winding transformers alike (5/38 of IEEE24's branches are transformers, 11/46
+IEEE39, 9/184 IEEE118, 4/90 UK), each end against its own current rating; audit 3 (C4) found the
+first implementation screened lines only.
+
+**Why the rest of audit 2 was answered without training:** re-selecting hyperparameters under
+`pu_zscore` (finding B4) and lifting NNConv from 3 to 5 seeds are the only two items that need
+GPU-hours, and both change *how well* the models were trained rather than *what is claimed* about
+transfer. They are therefore declined and recorded as accepted limitations L1 and L2 in
+`docs/Audit_response.md`, with the concrete consequence of each spelled out, rather than left for a
+later reviewer to rediscover. Everything else — the non-finite policy, the g-score trim, the
+protocol/grid decomposition, the pooled-vs-cell rank reporting and the run metadata — is a
+recomputation over artifacts that already exist.
 
 ---
 
@@ -232,4 +519,4 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 ---
 
 ## Summary of the chosen path
-**Two layers.** **Layer 1** corrects `engage_pg` v2's Level-2 probe: harmonize to per-unit normalization, fix the MMD defects, and report a **cross-grid NRMSE transfer matrix** (g-score provisional) using the already-trained models. **Layer 2** is the well-posed study: **Level 1 / Route B, all four grids, Octave-based conversion** (done once in-session and committed as `.mat`, validated against a PowerGraph PF solution), a **distribution of topologies via N-1/N-k contingency re-solves** (`pp.runpp`, optionally informed by PowerGraph-Graph), the full ENGAGE+PowerGraph model zoo (`GCN, ARMA_GNN, GAT, GIN, TRANSFORMER, NNConv`) under ENGAGE's interface, and ENGAGE masking + per-unit + weighted-MSE throughout. This is the most faithful *and* cleanest way to turn PowerGraph's source transmission data into ENGAGE-format datasets and unlock a well-posed cross-grid generalization study across architectures on transmission grids.
+**Two layers.** **Layer 1** corrects `engage_pg` v2's Level-2 probe: harmonize to per-unit normalization, fix the MMD defects, and report a **cross-grid NRMSE transfer matrix** (g-score provisional) using the already-trained models. **Layer 2** is the well-posed study: **Level 1 / Route B, all four grids, Octave-based conversion** (done once in-session and committed as `.mat`, validated against a PowerGraph PF solution), a **distribution of topologies via N-1/N-2 in-service-line outage re-solves** (`pp.runpp`, optionally informed by PowerGraph-Graph; no transformer, generator, busbar or switching actions, islanding discarded — L9), the full ENGAGE+PowerGraph model zoo (`GCN, ARMA_GNN, GAT, GIN, TRANSFORMER, NNConv`) under ENGAGE's interface, and ENGAGE masking + per-unit + weighted-MSE throughout. This is the most faithful *and* cleanest way to turn PowerGraph's source transmission data into ENGAGE-format datasets and unlock a well-posed cross-grid generalization study across architectures on transmission grids.

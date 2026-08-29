@@ -1,0 +1,63 @@
+{
+  "epochs": 200,
+  "data_dir": "data_full_v2",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "merged_from": [
+    "results_norm/ood_arma_gnn_merged",
+    "results_norm/ood_nnconv_merged",
+    "results_norm/ood_gat",
+    "results_norm/ood_gcn",
+    "results_norm/ood_gin",
+    "results_norm/ood_transformer"
+  ],
+  "merged_file": "ood.csv",
+  "normalize": "pu_zscore",
+  "models": [
+    "arma_gnn",
+    "gat",
+    "gcn",
+    "gin",
+    "nnconv",
+    "transformer"
+  ],
+  "arch_config": {
+    "arma_gnn": {
+      "num_layers": 8,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "nnconv": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gat": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gcn": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gin": {
+      "num_layers": 3,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "transformer": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    }
+  }
+}
