@@ -1,0 +1,801 @@
+grid,t_idx,k,out_lines,source
+UK,19131,0,[],random
+UK,19093,2,"[24, 37]",random
+UK,25650,0,[],random
+UK,13969,2,"[8, 68]",random
+UK,3052,2,"[53, 68]",random
+UK,27079,0,[],random
+UK,27409,2,"[21, 52]",random
+UK,23240,0,[],random
+UK,4390,0,[],random
+UK,27518,0,[],random
+UK,6963,1,[58],random
+UK,5500,1,[71],random
+UK,11952,2,"[50, 67]",random
+UK,22807,1,[44],random
+UK,25524,1,[39],random
+UK,27795,1,[18],random
+UK,23707,1,[28],random
+UK,18633,1,[62],random
+UK,14053,1,[36],random
+UK,25380,1,[71],random
+UK,4972,1,[22],random
+UK,23440,0,[],random
+UK,9236,2,"[51, 67]",random
+UK,4396,2,"[3, 72]",random
+UK,1388,1,[76],random
+UK,26382,1,[22],random
+UK,17679,2,"[25, 67]",random
+UK,20782,2,"[7, 65]",random
+UK,23869,1,[24],random
+UK,8498,1,[38],random
+UK,6807,2,"[15, 71]",random
+UK,26364,1,[22],random
+UK,7223,1,[76],random
+UK,23966,1,[17],random
+UK,1350,0,[],random
+UK,24049,2,"[8, 25]",random
+UK,16791,1,[39],random
+UK,26340,2,"[81, 83]",random
+UK,14011,1,[5],random
+UK,27827,2,"[23, 78]",random
+UK,27843,2,"[81, 84]",random
+UK,13559,0,[],random
+UK,20563,1,[61],random
+UK,26051,0,[],random
+UK,23247,0,[],random
+UK,57,0,[],random
+UK,16039,1,[61],random
+UK,24434,1,[84],random
+UK,80,1,[40],random
+UK,3518,0,[],random
+UK,8313,0,[],random
+UK,11181,2,"[8, 85]",random
+UK,4636,0,[],random
+UK,25613,2,"[5, 64]",random
+UK,13986,1,[80],random
+UK,5174,0,[],random
+UK,22226,1,[13],random
+UK,22230,2,"[6, 10]",random
+UK,11874,2,"[28, 74]",random
+UK,24403,0,[],random
+UK,15806,0,[],random
+UK,10494,1,[79],random
+UK,5285,0,[],random
+UK,26751,0,[],random
+UK,2862,2,"[30, 70]",random
+UK,1744,2,"[39, 52]",random
+UK,25239,1,[1],random
+UK,19831,1,[40],random
+UK,16413,2,"[41, 77]",random
+UK,27350,1,[61],random
+UK,9260,1,[18],random
+UK,11591,1,[64],random
+UK,16654,2,"[48, 58]",random
+UK,18299,0,[],random
+UK,25418,2,"[33, 81]",random
+UK,4590,2,"[41, 51]",random
+UK,8335,1,[9],random
+UK,8921,0,[],random
+UK,23992,1,[13],random
+UK,10113,2,"[27, 31]",random
+UK,24659,2,"[37, 73]",random
+UK,25432,2,"[9, 15]",random
+UK,22211,0,[],random
+UK,9693,0,[],random
+UK,12887,1,[31],random
+UK,2556,2,"[43, 68]",random
+UK,7868,1,[76],random
+UK,11277,0,[],random
+UK,25590,0,[],random
+UK,26550,0,[],random
+UK,25111,1,[31],random
+UK,2042,2,"[30, 45]",random
+UK,13313,0,[],random
+UK,20442,1,[62],random
+UK,18472,0,[],random
+UK,26341,2,"[20, 55]",random
+UK,4875,2,"[4, 74]",random
+UK,26373,0,[],random
+UK,24009,2,"[13, 33]",random
+UK,20880,2,"[26, 48]",random
+UK,4018,1,[4],random
+UK,22510,2,"[1, 52]",random
+UK,19341,0,[],random
+UK,10460,2,"[19, 44]",random
+UK,19861,2,"[47, 58]",random
+UK,16742,0,[],random
+UK,19992,2,"[71, 82]",random
+UK,22466,2,"[9, 43]",random
+UK,18063,0,[],random
+UK,10579,2,"[42, 74]",random
+UK,22624,1,[77],random
+UK,13815,1,[56],random
+UK,12490,0,[],random
+UK,8600,1,[61],random
+UK,589,2,"[17, 48]",random
+UK,17065,1,[3],random
+UK,24450,0,[],random
+UK,23404,1,[65],random
+UK,11448,0,[],random
+UK,27407,1,[45],random
+UK,10968,2,"[37, 78]",random
+UK,16171,2,"[12, 31]",random
+UK,7568,0,[],random
+UK,16521,0,[],random
+UK,18752,2,"[6, 83]",random
+UK,15725,0,[],random
+UK,3390,1,[35],random
+UK,2585,0,[],random
+UK,18262,2,"[1, 74]",random
+UK,14810,2,"[18, 58]",random
+UK,11639,2,"[5, 28]",random
+UK,2516,2,"[42, 73]",random
+UK,20116,2,"[25, 43]",random
+UK,5682,2,"[29, 53]",random
+UK,9921,2,"[60, 74]",random
+UK,6952,0,[],random
+UK,8985,2,"[5, 47]",random
+UK,22652,0,[],random
+UK,16036,0,[],random
+UK,10653,1,[13],random
+UK,22377,2,"[36, 44]",random
+UK,20455,2,"[21, 56]",random
+UK,19273,2,"[47, 71]",random
+UK,18948,2,"[30, 36]",random
+UK,23976,1,[11],random
+UK,13886,0,[],random
+UK,19788,2,"[40, 45]",random
+UK,27667,1,[44],random
+UK,1114,0,[],random
+UK,6467,2,"[4, 8]",random
+UK,8302,1,[9],random
+UK,26478,1,[14],random
+UK,10936,0,[],random
+UK,10647,1,[40],random
+UK,7453,1,[6],random
+UK,11948,2,"[41, 71]",random
+UK,23865,0,[],random
+UK,11075,2,"[66, 75]",random
+UK,26728,0,[],random
+UK,8737,0,[],random
+UK,20942,1,[77],random
+UK,25968,0,[],random
+UK,14917,2,"[5, 55]",random
+UK,25514,2,"[10, 83]",random
+UK,2606,2,"[54, 68]",random
+UK,19250,2,"[37, 40]",random
+UK,20819,0,[],random
+UK,12892,2,"[45, 53]",random
+UK,10717,1,[52],random
+UK,3730,2,"[33, 50]",random
+UK,27491,0,[],random
+UK,20669,0,[],random
+UK,13455,2,"[8, 72]",random
+UK,23518,0,[],random
+UK,13882,2,"[21, 36]",random
+UK,22568,0,[],random
+UK,11239,1,[46],random
+UK,3623,1,[55],random
+UK,24466,0,[],random
+UK,13891,1,[85],random
+UK,22090,1,[84],random
+UK,9738,0,[],random
+UK,27099,0,[],random
+UK,26469,0,[],random
+UK,19588,2,"[6, 13]",random
+UK,14109,1,[65],random
+UK,13963,2,"[3, 77]",random
+UK,5466,0,[],random
+UK,12103,1,[5],random
+UK,21417,2,"[58, 80]",random
+UK,11036,1,[32],random
+UK,836,0,[],random
+UK,6644,2,"[0, 5]",random
+UK,19950,1,[67],random
+UK,12848,0,[],random
+UK,20565,0,[],random
+UK,1888,2,"[9, 48]",random
+UK,12700,0,[],random
+UK,858,1,[74],random
+UK,7328,2,"[29, 44]",random
+UK,13900,2,"[17, 74]",random
+UK,11864,1,[39],random
+UK,17023,1,[26],random
+UK,16769,0,[],random
+UK,9180,1,[29],random
+UK,14028,1,[42],random
+UK,10295,0,[],random
+UK,17327,0,[],random
+UK,20701,1,[74],random
+UK,1792,0,[],random
+UK,18347,2,"[53, 64]",random
+UK,14202,0,[],random
+UK,24324,0,[],random
+UK,6217,2,"[16, 81]",random
+UK,8676,2,"[18, 81]",random
+UK,2731,2,"[15, 30]",random
+UK,20357,1,[17],random
+UK,23834,2,"[41, 56]",random
+UK,21972,1,[42],random
+UK,12777,2,"[45, 67]",random
+UK,21975,2,"[47, 85]",random
+UK,2493,0,[],random
+UK,18279,1,[48],random
+UK,14467,1,[83],random
+UK,21597,2,"[41, 55]",random
+UK,11024,1,[37],random
+UK,6500,2,"[47, 61]",random
+UK,19118,2,"[32, 77]",random
+UK,19242,2,"[25, 45]",random
+UK,1153,1,[16],random
+UK,8465,0,[],random
+UK,11076,1,[14],random
+UK,27694,0,[],random
+UK,27774,1,[73],random
+UK,27245,1,[1],random
+UK,17495,0,[],random
+UK,17430,2,"[17, 71]",random
+UK,657,2,"[4, 37]",random
+UK,8847,2,"[17, 51]",random
+UK,5196,0,[],random
+UK,234,0,[],random
+UK,8233,1,[72],random
+UK,18925,2,"[3, 68]",random
+UK,4410,2,"[2, 23]",random
+UK,16328,1,[10],random
+UK,16164,1,[47],random
+UK,851,2,"[2, 57]",random
+UK,17360,0,[],random
+UK,14431,1,[69],random
+UK,25382,1,[16],random
+UK,20527,0,[],random
+UK,17756,1,[7],random
+UK,10063,2,"[32, 39]",random
+UK,25692,2,"[10, 22]",random
+UK,2156,1,[33],random
+UK,17698,0,[],random
+UK,10901,1,[27],random
+UK,1765,2,"[26, 64]",random
+UK,9218,2,"[49, 72]",random
+UK,9301,2,"[7, 41]",random
+UK,22870,1,[43],random
+UK,13250,0,[],random
+UK,17268,0,[],random
+UK,9592,1,[77],random
+UK,12644,2,"[69, 82]",random
+UK,6654,1,[52],random
+UK,8990,2,"[0, 23]",random
+UK,27177,2,"[32, 83]",random
+UK,23328,2,"[53, 76]",random
+UK,8114,1,[77],random
+UK,22877,1,[72],random
+UK,9753,1,[15],random
+UK,964,1,[58],random
+UK,19327,0,[],random
+UK,12696,1,[51],random
+UK,22309,0,[],random
+UK,27241,0,[],random
+UK,22395,2,"[6, 9]",random
+UK,20618,1,[8],random
+UK,24650,1,[4],random
+UK,19703,0,[],random
+UK,23034,0,[],random
+UK,5221,0,[],random
+UK,26872,2,"[5, 65]",random
+UK,24389,1,[25],random
+UK,3519,0,[],random
+UK,9670,1,[16],random
+UK,14234,2,"[7, 50]",random
+UK,17242,1,[33],random
+UK,21851,2,"[14, 79]",random
+UK,19486,0,[],random
+UK,19138,0,[],random
+UK,26613,1,[8],random
+UK,22235,1,[29],random
+UK,16871,2,"[5, 15]",random
+UK,25641,1,[80],random
+UK,21844,1,[3],random
+UK,22300,2,"[7, 27]",random
+UK,19125,0,[],random
+UK,5908,2,"[22, 53]",random
+UK,6929,1,[10],random
+UK,10705,2,"[17, 65]",random
+UK,5235,0,[],random
+UK,18490,2,"[41, 46]",random
+UK,18157,0,[],random
+UK,18209,1,[53],random
+UK,20374,1,[23],random
+UK,934,2,"[24, 33]",random
+UK,23623,2,"[43, 77]",random
+UK,21104,2,"[8, 11]",random
+UK,15786,0,[],random
+UK,19659,2,"[71, 72]",random
+UK,6634,0,[],random
+UK,26617,1,[25],random
+UK,24960,2,"[16, 65]",random
+UK,12174,0,[],random
+UK,27393,2,"[37, 58]",random
+UK,23903,2,"[4, 58]",random
+UK,20287,0,[],random
+UK,19666,0,[],random
+UK,11192,2,"[18, 80]",random
+UK,14043,1,[7],random
+UK,1300,0,[],random
+UK,12203,0,[],random
+UK,9209,2,"[38, 64]",random
+UK,17776,0,[],random
+UK,21893,1,[43],random
+UK,13547,0,[],random
+UK,9876,1,[10],random
+UK,23064,2,"[24, 59]",random
+UK,21080,1,[1],random
+UK,23916,2,"[55, 78]",random
+UK,22753,0,[],random
+UK,6942,2,"[77, 79]",random
+UK,5177,2,"[40, 54]",random
+UK,26528,1,[54],random
+UK,3173,2,"[13, 60]",random
+UK,14817,2,"[26, 59]",random
+UK,6132,1,[6],random
+UK,16268,1,[18],random
+UK,21243,2,"[41, 74]",random
+UK,5354,0,[],random
+UK,27625,2,"[29, 40]",random
+UK,7602,2,"[28, 66]",random
+UK,21115,1,[34],random
+UK,12676,0,[],random
+UK,17013,2,"[29, 85]",random
+UK,12611,2,"[24, 63]",random
+UK,24546,1,[9],random
+UK,23409,1,[77],random
+UK,10884,1,[13],random
+UK,21411,1,[52],random
+UK,18448,0,[],random
+UK,18932,2,"[36, 65]",random
+UK,5404,1,[70],random
+UK,903,1,[8],random
+UK,19403,0,[],random
+UK,15041,0,[],random
+UK,25263,1,[53],random
+UK,6930,1,[61],random
+UK,14492,2,"[21, 40]",random
+UK,25747,1,[11],random
+UK,3324,2,"[60, 72]",random
+UK,5183,2,"[44, 67]",random
+UK,27113,1,[51],random
+UK,24803,0,[],random
+UK,20089,1,[57],random
+UK,18558,0,[],random
+UK,21965,1,[38],random
+UK,15338,0,[],random
+UK,815,1,[56],random
+UK,16179,1,[27],random
+UK,3647,1,[58],random
+UK,13585,0,[],random
+UK,689,1,[3],random
+UK,2467,1,[27],random
+UK,10170,1,[2],random
+UK,25045,1,[85],random
+UK,7466,2,"[67, 70]",random
+UK,12370,2,"[46, 65]",random
+UK,853,0,[],random
+UK,119,1,[43],random
+UK,16056,1,[11],random
+UK,23895,0,[],random
+UK,13308,1,[3],random
+UK,25103,2,"[30, 54]",random
+UK,26308,2,"[53, 72]",random
+UK,7738,1,[2],random
+UK,18982,1,[35],random
+UK,9624,0,[],random
+UK,11299,0,[],random
+UK,8287,0,[],random
+UK,3189,0,[],random
+UK,17905,2,"[1, 62]",random
+UK,5347,2,"[33, 67]",random
+UK,15282,1,[54],random
+UK,18541,0,[],random
+UK,7709,1,[52],random
+UK,4784,1,[20],random
+UK,18805,2,"[38, 77]",random
+UK,23183,0,[],random
+UK,9132,1,[60],random
+UK,27275,1,[80],random
+UK,14555,0,[],random
+UK,1784,1,[16],random
+UK,4647,1,[44],random
+UK,1994,2,"[17, 81]",random
+UK,13816,0,[],random
+UK,10709,2,"[4, 58]",random
+UK,615,1,[66],random
+UK,6579,0,[],random
+UK,20676,2,"[16, 57]",random
+UK,13448,1,[74],random
+UK,441,2,"[50, 65]",random
+UK,16237,0,[],random
+UK,9149,1,[71],random
+UK,4947,1,[56],random
+UK,22582,2,"[4, 53]",random
+UK,23529,1,[58],random
+UK,11980,1,[82],random
+UK,18051,1,[52],random
+UK,461,0,[],random
+UK,6143,1,[39],random
+UK,3038,2,"[58, 66]",random
+UK,15898,1,[16],random
+UK,17855,2,"[44, 77]",random
+UK,3804,2,"[64, 70]",random
+UK,5800,0,[],random
+UK,8481,0,[],random
+UK,17875,0,[],random
+UK,23975,2,"[9, 42]",random
+UK,16619,2,"[46, 70]",random
+UK,14719,1,[33],random
+UK,2785,2,"[35, 62]",random
+UK,10088,0,[],random
+UK,5648,2,"[34, 35]",random
+UK,861,0,[],random
+UK,23559,1,[57],random
+UK,11574,2,"[2, 71]",random
+UK,24830,1,[16],random
+UK,25804,1,[0],random
+UK,11309,2,"[78, 82]",random
+UK,9227,1,[26],random
+UK,27025,1,[62],random
+UK,11981,0,[],random
+UK,13009,2,"[44, 45]",random
+UK,21221,2,"[42, 45]",random
+UK,24106,2,"[13, 45]",random
+UK,25041,0,[],random
+UK,2848,2,"[1, 15]",random
+UK,20328,2,"[5, 33]",random
+UK,14155,1,[13],random
+UK,14293,2,"[67, 75]",random
+UK,8289,1,[56],random
+UK,2735,1,[14],random
+UK,15813,2,"[29, 76]",random
+UK,24660,2,"[29, 35]",random
+UK,11108,1,[26],random
+UK,23425,0,[],random
+UK,16448,2,"[10, 65]",random
+UK,27777,1,[59],random
+UK,20970,2,"[50, 65]",random
+UK,10236,0,[],random
+UK,25080,2,"[22, 36]",random
+UK,1386,0,[],random
+UK,25442,2,"[0, 4]",random
+UK,25911,2,"[42, 68]",random
+UK,22777,0,[],random
+UK,5537,1,[4],random
+UK,33,2,"[67, 78]",random
+UK,17395,1,[14],random
+UK,14179,0,[],random
+UK,13168,1,[63],random
+UK,21137,0,[],random
+UK,11148,0,[],random
+UK,6710,2,"[17, 48]",random
+UK,4229,1,[78],random
+UK,20989,2,"[17, 61]",random
+UK,2603,2,"[36, 59]",random
+UK,10527,2,"[45, 66]",random
+UK,27162,2,"[48, 70]",random
+UK,11760,1,[12],random
+UK,18566,2,"[9, 19]",random
+UK,3399,2,"[71, 73]",random
+UK,14507,0,[],random
+UK,23348,0,[],random
+UK,19215,2,"[12, 16]",random
+UK,19525,2,"[44, 49]",random
+UK,16154,0,[],random
+UK,22399,2,"[1, 10]",random
+UK,4672,1,[68],random
+UK,6231,1,[55],random
+UK,1175,0,[],random
+UK,14531,2,"[8, 69]",random
+UK,15113,1,[61],random
+UK,25350,1,[84],random
+UK,10526,0,[],random
+UK,10537,2,"[25, 33]",random
+UK,10948,0,[],random
+UK,3322,2,"[7, 35]",random
+UK,23995,2,"[27, 54]",random
+UK,15967,0,[],random
+UK,457,2,"[29, 72]",random
+UK,13987,0,[],random
+UK,9103,2,"[41, 63]",random
+UK,19068,2,"[59, 75]",random
+UK,21157,1,[12],random
+UK,11091,2,"[4, 59]",random
+UK,3001,2,"[1, 79]",random
+UK,24194,1,[33],random
+UK,15270,1,[18],random
+UK,27677,1,[83],random
+UK,10993,1,[53],random
+UK,5722,1,[74],random
+UK,8936,2,"[55, 76]",random
+UK,24292,1,[82],random
+UK,818,2,"[6, 36]",random
+UK,19901,0,[],random
+UK,4203,0,[],random
+UK,15633,1,[61],random
+UK,11320,1,[41],random
+UK,22548,0,[],random
+UK,19681,2,"[57, 80]",random
+UK,67,2,"[25, 40]",random
+UK,2830,1,[32],random
+UK,27143,0,[],random
+UK,23974,0,[],random
+UK,21135,0,[],random
+UK,19673,1,[66],random
+UK,15525,2,"[15, 27]",random
+UK,20994,0,[],random
+UK,23747,0,[],random
+UK,22865,1,[66],random
+UK,962,1,[70],random
+UK,20780,1,[84],random
+UK,18849,1,[82],random
+UK,19853,0,[],random
+UK,15540,1,[40],random
+UK,20130,2,"[7, 54]",random
+UK,9971,0,[],random
+UK,2053,1,[85],random
+UK,7491,0,[],random
+UK,14256,1,[27],random
+UK,21626,2,"[3, 44]",random
+UK,12714,2,"[14, 26]",random
+UK,22174,1,[51],random
+UK,3334,1,[31],random
+UK,11385,1,[36],random
+UK,20607,0,[],random
+UK,22723,0,[],random
+UK,22801,1,[60],random
+UK,5167,1,[82],random
+UK,21731,1,[58],random
+UK,18430,1,[53],random
+UK,12773,2,"[2, 74]",random
+UK,9999,1,[27],random
+UK,9428,0,[],random
+UK,13028,0,[],random
+UK,20619,1,[47],random
+UK,25801,2,"[49, 57]",random
+UK,14762,2,"[43, 71]",random
+UK,23065,2,"[5, 56]",random
+UK,21838,0,[],random
+UK,17787,0,[],random
+UK,12564,0,[],random
+UK,5407,0,[],random
+UK,18165,0,[],random
+UK,17892,2,"[13, 83]",random
+UK,19583,1,[31],random
+UK,26467,1,[56],random
+UK,18570,2,"[46, 53]",random
+UK,8361,2,"[30, 84]",random
+UK,9979,0,[],random
+UK,26887,2,"[74, 84]",random
+UK,18291,0,[],random
+UK,21692,2,"[33, 42]",random
+UK,24232,1,[24],random
+UK,10636,1,[33],random
+UK,2016,1,[19],random
+UK,26996,2,"[22, 25]",random
+UK,26139,2,"[45, 62]",random
+UK,15333,1,[81],random
+UK,16472,2,"[23, 28]",random
+UK,38,2,"[29, 39]",random
+UK,24310,2,"[10, 56]",random
+UK,22037,1,[20],random
+UK,20281,2,"[40, 81]",random
+UK,5349,1,[38],random
+UK,17603,1,[70],random
+UK,15592,1,[41],random
+UK,1523,1,[77],random
+UK,1535,0,[],random
+UK,6614,2,"[32, 52]",random
+UK,20105,1,[20],random
+UK,13603,1,[64],random
+UK,19541,0,[],random
+UK,16461,1,[44],random
+UK,18220,2,"[45, 81]",random
+UK,17803,2,"[27, 78]",random
+UK,2836,1,[39],random
+UK,8452,1,[21],random
+UK,18013,1,[32],random
+UK,21073,0,[],random
+UK,26310,2,"[42, 57]",random
+UK,16102,2,"[25, 44]",random
+UK,16030,0,[],random
+UK,12735,2,"[1, 72]",random
+UK,6131,1,[67],random
+UK,24679,0,[],random
+UK,10991,1,[24],random
+UK,15760,1,[72],random
+UK,11068,1,[6],random
+UK,8588,0,[],random
+UK,27549,1,[21],random
+UK,11669,1,[43],random
+UK,10161,1,[50],random
+UK,27225,2,"[4, 57]",random
+UK,15939,1,[53],random
+UK,25923,0,[],random
+UK,20023,1,[8],random
+UK,9079,2,"[50, 80]",random
+UK,12876,2,"[36, 42]",random
+UK,26442,2,"[21, 28]",random
+UK,26997,1,[83],random
+UK,13595,1,[83],random
+UK,25714,1,[20],random
+UK,8547,2,"[59, 80]",random
+UK,4641,1,[61],random
+UK,18700,0,[],random
+UK,14722,2,"[52, 65]",random
+UK,12819,1,[11],random
+UK,10623,0,[],random
+UK,6184,0,[],random
+UK,20692,2,"[9, 72]",random
+UK,15094,2,"[41, 80]",random
+UK,4220,2,"[9, 53]",random
+UK,24948,1,[81],random
+UK,5355,0,[],random
+UK,7251,2,"[0, 55]",random
+UK,15062,0,[],random
+UK,27348,0,[],random
+UK,3372,2,"[18, 32]",random
+UK,8627,2,"[4, 55]",random
+UK,6874,1,[2],random
+UK,2619,1,[56],random
+UK,17724,2,"[16, 48]",random
+UK,5892,2,"[67, 69]",random
+UK,14994,1,[75],random
+UK,10922,1,[30],random
+UK,21404,0,[],random
+UK,17161,1,[82],random
+UK,27000,1,[74],random
+UK,16628,0,[],random
+UK,5169,1,[27],random
+UK,26778,0,[],random
+UK,4893,0,[],random
+UK,9498,0,[],random
+UK,3728,0,[],random
+UK,22999,2,"[66, 80]",random
+UK,14776,0,[],random
+UK,10350,0,[],random
+UK,26889,2,"[27, 38]",random
+UK,20249,2,"[37, 51]",random
+UK,3506,0,[],random
+UK,17392,1,[85],random
+UK,5465,0,[],random
+UK,24273,0,[],random
+UK,6451,0,[],random
+UK,17948,2,"[28, 60]",random
+UK,13536,0,[],random
+UK,7097,0,[],random
+UK,6520,2,"[39, 69]",random
+UK,22110,0,[],random
+UK,25275,1,[60],random
+UK,6153,2,"[43, 56]",random
+UK,10048,1,[48],random
+UK,23242,2,"[31, 78]",random
+UK,23092,2,"[3, 32]",random
+UK,13320,2,"[23, 24]",random
+UK,7524,1,[70],random
+UK,3657,0,[],random
+UK,13539,2,"[41, 57]",random
+UK,8111,0,[],random
+UK,7190,1,[52],random
+UK,10491,2,"[53, 54]",random
+UK,7212,1,[61],random
+UK,6256,0,[],random
+UK,6044,1,[69],random
+UK,8364,2,"[9, 73]",random
+UK,18897,0,[],random
+UK,13813,1,[5],random
+UK,19999,2,"[0, 66]",random
+UK,3365,2,"[34, 80]",random
+UK,7845,1,[1],random
+UK,18606,1,[52],random
+UK,5521,2,"[38, 69]",random
+UK,20672,1,[16],random
+UK,3627,1,[65],random
+UK,24617,0,[],random
+UK,1031,2,"[3, 25]",random
+UK,11856,0,[],random
+UK,10280,2,"[33, 80]",random
+UK,10613,0,[],random
+UK,1712,1,[69],random
+UK,25859,1,[24],random
+UK,12379,1,[51],random
+UK,23378,2,"[16, 44]",random
+UK,1680,1,[24],random
+UK,18379,0,[],random
+UK,8910,0,[],random
+UK,1562,1,[53],random
+UK,27657,2,"[23, 46]",random
+UK,9544,1,[44],random
+UK,1591,1,[46],random
+UK,23608,0,[],random
+UK,17647,2,"[16, 18]",random
+UK,7202,2,"[26, 33]",random
+UK,17535,2,"[4, 25]",random
+UK,6402,0,[],random
+UK,3626,0,[],random
+UK,19544,1,[49],random
+UK,742,0,[],random
+UK,25657,2,"[24, 28]",random
+UK,17672,0,[],random
+UK,6699,0,[],random
+UK,18303,2,"[26, 53]",random
+UK,1332,1,[82],random
+UK,14077,1,[59],random
+UK,6032,0,[],random
+UK,12790,2,"[3, 25]",random
+UK,324,1,[33],random
+UK,24988,1,[7],random
+UK,10885,0,[],random
+UK,17110,2,"[26, 42]",random
+UK,12662,1,[13],random
+UK,26948,1,[81],random
+UK,2741,1,[27],random
+UK,20507,1,[28],random
+UK,7487,2,"[14, 85]",random
+UK,20079,1,[20],random
+UK,3649,1,[14],random
+UK,22086,0,[],random
+UK,139,0,[],random
+UK,19591,0,[],random
+UK,13,2,"[16, 51]",random
+UK,9148,2,"[71, 82]",random
+UK,13011,1,[71],random
+UK,21955,0,[],random
+UK,12690,0,[],random
+UK,17870,0,[],random
+UK,27554,2,"[82, 84]",random
+UK,18045,0,[],random
+UK,20019,2,"[13, 25]",random
+UK,27845,0,[],random
+UK,5322,2,"[46, 65]",random
+UK,4285,0,[],random
+UK,24536,1,[50],random
+UK,2995,0,[],random
+UK,10472,1,[10],random
+UK,10830,2,"[60, 66]",random
+UK,25194,0,[],random
+UK,20189,0,[],random
+UK,18667,2,"[41, 59]",random
+UK,8447,0,[],random
+UK,18226,0,[],random
+UK,8329,1,[17],random
+UK,8852,1,[24],random
+UK,17383,2,"[67, 81]",random
+UK,10159,2,"[25, 74]",random
+UK,10285,1,[45],random
+UK,15942,2,"[77, 79]",random
+UK,19574,0,[],random
+UK,978,0,[],random
+UK,26219,0,[],random
+UK,9466,1,[3],random
+UK,12574,2,"[21, 40]",random
+UK,9785,2,"[26, 84]",random
+UK,22019,0,[],random
+UK,2120,2,"[34, 80]",random
+UK,3747,1,[21],random
+UK,11622,1,[0],random
+UK,26292,0,[],random
+UK,18254,2,"[1, 78]",random
+UK,5845,2,"[17, 20]",random
+UK,8238,1,[51],random
+UK,17294,0,[],random
+UK,1434,0,[],random
+UK,26160,1,[59],random
+UK,1116,1,[15],random
+UK,17869,2,"[44, 64]",random
+UK,9110,2,"[4, 73]",random
+UK,12572,1,[59],random
+UK,9009,1,[3],random
+UK,1104,0,[],random
+UK,16266,1,[36],random
+UK,12167,1,[85],random
+UK,15571,1,[12],random
+UK,24927,0,[],random
+UK,1865,1,[26],random
+UK,12423,1,[82],random

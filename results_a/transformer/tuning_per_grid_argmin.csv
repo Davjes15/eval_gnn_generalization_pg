@@ -1,0 +1,5 @@
+model,grid,num_layers,hidden,learning_rate,val_loss
+transformer,IEEE118,2,128,0.001,0.0710789454728365
+transformer,IEEE24,2,128,0.001,0.0103301914129406
+transformer,IEEE39,8,64,0.001,0.0299064723029732
+transformer,UK,2,128,0.001,0.1521474781632423

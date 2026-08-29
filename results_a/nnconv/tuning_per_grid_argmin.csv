@@ -1,0 +1,5 @@
+model,grid,num_layers,hidden,learning_rate,val_loss
+nnconv,IEEE118,3,128,0.001,0.0484727470204234
+nnconv,IEEE24,2,128,0.001,0.0121083283703774
+nnconv,IEEE39,3,64,0.001,0.1728580045700073
+nnconv,UK,2,128,0.001,0.0266145782172679
