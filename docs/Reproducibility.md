@@ -194,10 +194,24 @@ python tests/test_ac_feasibility.py     # same env var; calibrates the checker
                                         # against pandapower's own solution
 ```
 
-Every row carries `ac_dp_true_max_mw` and `line_loading_max_pct_true`, the same
+Every row carries `ac_dp_true_max_mw` and `branch_loading_max_pct_true`, the same
 quantities evaluated on the labels, so a reader can see the reconstruction floor
 and the true thermal state next to the model's numbers. Neither this pass nor any
 other replay writes to `ckpt_norm/`.
+
+The two reference rows of that table need no checkpoint at all -- the labels give
+the reconstruction floor and the stored `dc_pf` state gives the DC baseline, both
+through the same checker -- and the summary joins them onto the model rows:
+
+```bash
+POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
+python dc_feasibility.py --data data_a data_full_v2 \
+    --out results_norm/physics/dc_feasibility.csv
+python summarize_feasibility.py \
+    --physics results_norm/physics/physics_metrics.csv \
+    --baselines results_norm/physics/dc_feasibility.csv \
+    --out docs/tables/ac_feasibility_norm.csv
+```
 
 The replay re-fits the scaler exactly as training did -- train split of that grid
 for the within-grid and cross-context arms, pooled train splits of the three
@@ -216,7 +230,8 @@ every number without the weights or the tensors: the merged per-run rows
 (`results_norm/all_within/within_grid.csv`, `all_cross/cross_context.csv`,
 `all_ood/ood.csv`, each with the `summary.json` that records the protocol the
 shards were merged under), the 672-row physics replay
-(`results_norm/physics/physics_metrics.csv`), the topology and DC tables
+(`results_norm/physics/physics_metrics.csv`, with its floor/DC reference rows in
+`results_norm/physics/dc_feasibility.csv`), the topology and DC tables
 (`results_norm/topology/`, `results_norm/dc_baseline_regime_a.csv`) and everything
 derived from them (`results_norm/analysis/`, including `nonfinite_runs.csv` and
 the exact permutation test `rank_permutation_test.csv`). Re-running the two

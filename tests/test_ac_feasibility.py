@@ -1,9 +1,9 @@
 """Checks for ac_feasibility.py (audit B1).
 
 The whole module is only worth anything if the residual of the TRUE state is
-numerically zero and the loading agrees with pandapower's own `res_line`, so
-that is what is asserted here -- against a network pandapower solved itself,
-not against a fixture of our own numbers.
+numerically zero and the loading agrees with pandapower's own `res_line` and
+`res_trafo`, so that is what is asserted here -- against a network pandapower
+solved itself, not against a fixture of our own numbers.
 
     POWERGRAPH_NODE_DIR=... python3 tests/test_ac_feasibility.py
 """
@@ -76,13 +76,35 @@ def test_shunt_is_not_double_counted():
 
 
 def test_loading_matches_pandapower():
+    """Both branch types, since their ratings are defined differently (audit C4)."""
     base, demand, net, state = solved_reference(OUT_LINES)
     case = build_case(base, demand, OUT_LINES)
     got = case.loading_percent(state[:, 2], state[:, 3])
-    want = net.res_line.loading_percent[net.line.in_service].values
-    check(len(got) == len(want), "one loading per in-service line")
+    want = np.concatenate([
+        net.res_line.loading_percent[net.line.in_service].values,
+        net.res_trafo.loading_percent[net.trafo.in_service].values])
+    check(len(net.trafo) > 0 and (~case.is_line).sum() == len(net.trafo),
+          f"transformers are in the screen ({(~case.is_line).sum()} of "
+          f"{len(case.is_line)} branches)")
+    check(len(got) == len(want), "one loading per in-service branch")
     check(np.abs(got - want).max() < 1e-3,
-          f"loading matches res_line, max diff = {np.abs(got - want).max():.2e} %")
+          "loading matches res_line and res_trafo, max diff = "
+          f"{np.abs(got - want).max():.2e} %")
+
+
+def test_loading_matches_pandapower_with_trafo_outage():
+    """A transformer outage must not shift the branch-to-rating alignment."""
+    out = [("line", 7), ("trafo", 2)]
+    base, demand, net, state = solved_reference(out)
+    case = build_case(base, demand, out)
+    got = case.loading_percent(state[:, 2], state[:, 3])
+    want = np.concatenate([
+        net.res_line.loading_percent[net.line.in_service].values,
+        net.res_trafo.loading_percent[net.trafo.in_service].values])
+    check(len(got) == len(want) == len(net.line) - 1 + len(net.trafo) - 1,
+          "the out-of-service line and transformer are both dropped")
+    check(np.abs(got - want).max() < 1e-3,
+          f"loading still matches, max diff = {np.abs(got - want).max():.2e} %")
 
 
 def test_perturbed_state_is_penalised():
@@ -109,7 +131,7 @@ def test_metrics_shape_and_true_floor():
     check(out["ac_dq_max_mvar"] > out["ac_dp_true_max_mw"],
           "the perturbed prediction is worse than the floor")
     check(0.0 <= out["overload_rate_pred"] <= 1.0, "overload rate is a rate")
-    check(set(out) >= {"line_loading_max_pct", "missed_overload_rate",
+    check(set(out) >= {"branch_loading_max_pct", "missed_overload_rate",
                        "false_overload_rate"},
           "the thermal screening columns are present")
 
@@ -122,7 +144,8 @@ def test_overload_confusion_directions():
     # Put every line just below its rating in the true state, so the direction
     # of a voltage error decides the direction of the screening mistake.
     true_load = case.loading_percent(state[:, 2], state[:, 3])
-    case.i_limit_ka = case.i_limit_ka * true_load / 99.0
+    case.i_limit_from_ka = case.i_limit_from_ka * true_load / 99.0
+    case.i_limit_to_ka = case.i_limit_to_ka * true_load / 99.0
 
     # Branch current follows the voltage DIFFERENCE, so scaling every magnitude
     # up scales every current up with it.
@@ -135,7 +158,8 @@ def test_overload_confusion_directions():
 
     # And the operationally dangerous direction: the true state is overloaded
     # and the prediction says it is not.
-    case.i_limit_ka = case.i_limit_ka * 99.0 / 101.0
+    case.i_limit_from_ka = case.i_limit_from_ka * 99.0 / 101.0
+    case.i_limit_to_ka = case.i_limit_to_ka * 99.0 / 101.0
     low = state.copy()
     low[:, 2] *= 0.95
     out = feasibility_metrics(state, low, [case], n_bus)
@@ -148,6 +172,7 @@ if __name__ == "__main__":
     for fn in (test_true_state_has_no_residual,
                test_shunt_is_not_double_counted,
                test_loading_matches_pandapower,
+               test_loading_matches_pandapower_with_trafo_outage,
                test_perturbed_state_is_penalised,
                test_metrics_shape_and_true_floor,
                test_overload_confusion_directions):

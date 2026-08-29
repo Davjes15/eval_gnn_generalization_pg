@@ -363,8 +363,8 @@ listed as such below, so a later reviewer sees a choice rather than an oversight
 
 | # | Finding | Status | What closes it |
 |---|---|---|---|
-| B1 | No AC feasibility check; the promised residual/thermal metrics were never delivered | **closed** | `ac_feasibility.py` (Ybus P/Q residual with the shunt double-count removed, branch loading against `max_i_ka`), `eval_checkpoints.py --feasibility`, `tests/test_ac_feasibility.py` (calibrated against pandapower's own solution: true-state residual ≤ 2.8e-2 MW, loading matches `res_line` to 1e-12). All 336 checkpoints replayed; results in `docs/Normalization_results.md` §4.6 and `docs/tables/ac_feasibility_norm.csv` |
-| B2 | Regime A → Regime B confounds protocol and grid | **closed** | `rank_analysis.py` now carries four arms (`regime_a`, `regime_b_diagonal`, `cross_context`, `ood`) and a `protocol_decomposition.csv` splitting the gap into a same-grid protocol factor (1.5–10.5×) and an unseen-grid factor (68–222×) |
+| B1 | No AC feasibility check; the promised residual/thermal metrics were never delivered | **closed** | `ac_feasibility.py` (Ybus P/Q residual with the shunt double-count removed, loading of every in-service branch against its rating), `eval_checkpoints.py --feasibility`, `tests/test_ac_feasibility.py` (calibrated against pandapower's own solution: true-state residual ≤ 2.8e-2 MW, loading matches `res_line` and `res_trafo` to 1e-12). All 336 checkpoints replayed; results in `docs/Normalization_results.md` §4.6 and `docs/tables/ac_feasibility_norm.csv` |
+| B2 | Regime A → Regime B confounds protocol and grid | **closed** | `rank_analysis.py` now carries four arms (`regime_a`, `regime_b_diagonal`, `cross_context`, `ood`) and a `protocol_decomposition.csv` splitting the gap into a same-grid factor (1.5–10.5×, which bundles two design changes — see L8) and an unseen-grid factor (34–382×) |
 | B3 | The rank inference is stated backwards | **closed** | pooled leaderboard τ (0.60 / 0.20) reported alongside the per-cell mean τ in `rank_correlation_pooled.csv`; wording changed to rank *instability* and "no reliable guarantee", and the claim that p = 1.00 proves a zero correlation is removed |
 | B4 | Hyperparameters selected under the raw-unit loss | **accepted limitation** | see L1 below — not retuned |
 | B5 | Non-finite policy inconsistent; a diverging model was rewarded | **closed** | `training_utils.gscore_row` voids an incomplete cell and records `n_expected` / `n_finite` / `finite_rate`, the same void-the-cell policy the ranking uses (`tests/test_gscore_policy.py`) |
@@ -458,3 +458,46 @@ is the open half of A4.
 
 Items 1–3 are pure bookkeeping and change no experiment. Item 6 is the one that decides
 whether the paper's central claim stands as written.
+
+---
+
+# Third audit (C1–C6): response and fixes
+
+All six findings are correct. Three of them (C1–C3) are not disagreements about method: they
+report that files the previous section cites were **never pushed to the branch**, which was
+true. `.push_branch.py` commits an explicitly listed set of paths and the audit-2 push listed
+only the documents; the code, the tests and the regenerated replay CSV existed in the working
+tree and passed, which is exactly the state that produces a document citing an artifact a
+reviewer cannot open. `.diff_branch.py` now reports what the working tree has that a branch
+does not, and it is run after every push.
+
+| # | Finding | Verdict | What closes it |
+|---|---|---|---|
+| C1 | `tests/test_ac_feasibility.py` is cited but absent from the branch | correct | pushed; the file was working-tree only |
+| C2 | The committed `results_norm/physics/physics_metrics.csv` predates the feasibility pass, so the AC table cannot be regenerated | correct | pushed after the replay, with the `ac_*` columns present; `summarize_feasibility.py` fails loudly if they are missing |
+| C3 | B8 is marked closed but neither change is in the tree | correct | `gather_results.py`, `experiments.py`, `normalization.py` and `tests/test_gather_results.py` pushed |
+| C4 | The thermal check covers lines only | correct (his branch counts are slightly off) | `ac_feasibility.build_case` now carries every in-service branch, with a rating **per end**, and the test validates against `res_trafo.loading_percent` as well as `res_line`, including under a transformer outage |
+| C5 | The table has no DC row and no reconstruction-floor row | correct, and the most useful item in the report | `dc_feasibility.py` scores the stored DC state and the labels through the same checker; both appear in `docs/tables/ac_feasibility_norm.csv` |
+| C6 | `protocol_factor` bundles the blocked split and the contingencies | correct | the column is renamed `same_grid_factor` and both `rank_analysis.py` and §4.6 state that it bounds the two changes jointly |
+
+Two corrections to the report itself, neither affecting its conclusions:
+
+* **C4's transformer counts.** They are 5/38 (IEEE24), 11/46 (IEEE39), **9/184** (IEEE118) and
+  **4/90** (UK), not 11/186 and 13/99. The UK case therefore lost ~4 % of its branches from the
+  screen, not 13 %.
+* **C5's framing of the DC row.** DC power flow is scored, but its *reactive* residual is not a
+  measure of the linearisation: DC fixes |V| = 1 and Q ≡ 0, so its Q residual is essentially the
+  snapshot's reactive demand by construction. The comparable columns are the active-power
+  residual and the thermal screening, and the previous section's claim that DC could not be
+  scored at all was wrong.
+
+Nothing in this round required retraining, and none was done: C4 and C5 are replay passes over
+the same 336 checkpoints and the stored DC states, and C6 is a rename plus a stated limitation.
+The limitation added by C6 is recorded as **L8** below.
+
+**L8 — the same-grid step is not a clean protocol effect (C6).** Regime B differs from Regime A
+in two ways at once: blocked temporal splits with a one-day gap, and N-1/N-2 contingencies
+instead of the intact topology. `same_grid_factor` therefore bounds their combined cost and
+attributes it to neither. Isolating them needs two further datasets (blocked-split-only and
+contingencies-only) and a retrained campaign on each, which was declined along with the other
+training items.

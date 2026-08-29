@@ -18,7 +18,18 @@ WHY THIS MODULE EXISTS
 
     is exactly zero for the true state and is the honest error measure for a
     predicted one. Branch currents follow from the same state, so the thermal
-    check against `max_i_ka` costs nothing extra.
+    check against the ratings costs nothing extra.
+
+WHICH BRANCHES THE THERMAL CHECK COVERS
+    Lines and two-winding transformers, i.e. every branch of these four grids.
+    The two have different ratings: a line carries one `max_i_ka` at both ends,
+    a transformer is rated in MVA and pandapower's `loading_percent` is the
+    larger of the two end currents relative to that end's rated current
+    (`sn_mva / (sqrt(3) vn_side)`), so the check keeps a rating per branch END.
+    Transformers are 5/38, 11/46, 9/184 and 4/90 branches of IEEE24, IEEE39,
+    IEEE118 and UK, and they are the branches an outage most often removes in
+    the harvested contingencies, so excluding them would silently drop part of
+    every overload rate (audit C4).
 
 CONVENTIONS AND WHY THE SHUNT TERM IS THERE
     * Targets are pandapower `res_bus` rows, i.e. NET CONSUMPTION at the bus
@@ -73,14 +84,16 @@ class TopologyCase:
     ysh: np.ndarray           # (n,) complex shunt admittance, ppc ordering
     order: np.ndarray         # (n_bus,) dataset row -> ppc bus index
     sn_mva: float
-    f_bus: np.ndarray         # per in-service line, ppc bus index
+    f_bus: np.ndarray         # per in-service branch, ppc bus index
     t_bus: np.ndarray
-    y_series: np.ndarray      # 1 / (r + jx) per line, pu
-    b_half: np.ndarray        # charging susceptance / 2 per line, pu
-    ratio: np.ndarray         # complex tap ratio per line
+    y_series: np.ndarray      # 1 / (r + jx) per branch, pu
+    b_half: np.ndarray        # charging susceptance / 2 per branch, pu
+    ratio: np.ndarray         # complex tap ratio per branch
     i_base_from: np.ndarray   # pu current -> kA at the from end
     i_base_to: np.ndarray
-    i_limit_ka: np.ndarray    # max_i_ka * df * parallel
+    i_limit_from_ka: np.ndarray   # rated current at the from/hv end
+    i_limit_to_ka: np.ndarray     # rated current at the to/lv end
+    is_line: np.ndarray       # branch is a line rather than a transformer
 
     def voltage(self, vm: np.ndarray, va_degree: np.ndarray) -> np.ndarray:
         v = np.zeros(self.ybus.shape[0], dtype=complex)
@@ -100,10 +113,11 @@ class TopologyCase:
         return residual.real, residual.imag
 
     def loading_percent(self, vm, va_degree):
-        """Per in-service line, max(from, to) current as a percent of the rating.
+        """Per in-service branch (lines then transformers), loading in percent.
 
-        Same definition pandapower uses for `res_line.loading_percent`, so it can
-        be validated against it on a solved network.
+        Same definition pandapower uses for `res_line.loading_percent` and
+        `res_trafo.loading_percent` under its default current-based convention,
+        so it can be validated against both on a solved network.
         """
         v = self.voltage(vm, va_degree)
         vf, vt = v[self.f_bus], v[self.t_bus]
@@ -111,9 +125,9 @@ class TopologyCase:
                   - self.y_series / np.conj(self.ratio) * vt)
         i_to = (-self.y_series / self.ratio * vf
                 + (self.y_series + 1j * self.b_half) * vt)
-        ka = np.maximum(np.abs(i_from) * self.i_base_from,
-                        np.abs(i_to) * self.i_base_to)
-        return ka / self.i_limit_ka * 100.0
+        return np.maximum(
+            np.abs(i_from) * self.i_base_from / self.i_limit_from_ka,
+            np.abs(i_to) * self.i_base_to / self.i_limit_to_ka) * 100.0
 
 
 def _apply_outage(net, out_lines) -> None:
@@ -156,21 +170,34 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
     branch = ppc["branch"]
     order = net._pd2ppc_lookups["bus"][net.bus.index.values]
 
+    # The internal ppc drops out-of-service branches and keeps pandapower's
+    # element order, so the first rows are the in-service lines and the next the
+    # in-service two-winding transformers.
     lines = net.line[net.line.in_service]
-    n_line = len(lines)
-    f_bus = np.real(branch[:n_line, F_BUS]).astype(int)
-    t_bus = np.real(branch[:n_line, T_BUS]).astype(int)
-    r = np.real(branch[:n_line, BR_R])
-    x = np.real(branch[:n_line, BR_X])
-    b = np.real(branch[:n_line, BR_B])
-    tap = np.real(branch[:n_line, TAP]).copy()
+    trafos = net.trafo[net.trafo.in_service]
+    n_branch = len(lines) + len(trafos)
+    rows = branch[:n_branch]
+    f_bus = np.real(rows[:, F_BUS]).astype(int)
+    t_bus = np.real(rows[:, T_BUS]).astype(int)
+    r = np.real(rows[:, BR_R])
+    x = np.real(rows[:, BR_X])
+    b = np.real(rows[:, BR_B])
+    tap = np.real(rows[:, TAP]).copy()
     tap[tap == 0] = 1.0
-    ratio = tap * np.exp(1j * np.deg2rad(np.real(branch[:n_line, SHIFT])))
+    ratio = tap * np.exp(1j * np.deg2rad(np.real(rows[:, SHIFT])))
 
     # ppc bus index -> nominal voltage, for the pu-current to kA conversion.
     vn_kv = np.empty(ybus.shape[0])
     vn_kv[order] = net.bus.vn_kv.values
     i_base = net.sn_mva / (np.sqrt(3) * vn_kv)
+
+    line_ka = lines.max_i_ka.values * lines.df.values * lines.parallel.values
+    s_rated = (trafos.sn_mva.values * trafos.df.values
+               * trafos.parallel.values)
+    i_limit_from = np.concatenate(
+        [line_ka, s_rated / (np.sqrt(3) * trafos.vn_hv_kv.values)])
+    i_limit_to = np.concatenate(
+        [line_ka, s_rated / (np.sqrt(3) * trafos.vn_lv_kv.values)])
 
     return TopologyCase(
         ybus=ybus,
@@ -183,8 +210,9 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
         ratio=ratio,
         i_base_from=i_base[f_bus],
         i_base_to=i_base[t_bus],
-        i_limit_ka=(lines.max_i_ka.values * lines.df.values
-                    * lines.parallel.values),
+        i_limit_from_ka=i_limit_from,
+        i_limit_to_ka=i_limit_to,
+        is_line=np.arange(n_branch) < len(lines),
     )
 
 
@@ -267,11 +295,11 @@ def feasibility_metrics(y_true, y_pred, cases, n_bus: int) -> dict[str, float]:
         # cannot represent shows up here, so the model number is only meaningful
         # against it.
         "ac_dp_true_max_mw": float(np.nanmax(np.concatenate(dp_true))),
-        "line_loading_max_pct": float(np.nanmax(load_max)),
+        "branch_loading_max_pct": float(np.nanmax(load_max)),
         # The source OPF snapshots are not themselves thermally secure -- several
-        # cases run lines past their rating -- so the predicted loading is only
-        # interpretable next to the true one.
-        "line_loading_max_pct_true": float(np.nanmax(load_max_true)),
+        # cases run branches past their rating -- so the predicted loading is
+        # only interpretable next to the true one.
+        "branch_loading_max_pct_true": float(np.nanmax(load_max_true)),
         "overload_rate_true": _rates(n_over_true, over_true.size),
         "overload_rate_pred": _rates(int(over_pred.sum()), over_pred.size),
         # Screening errors, the operational reading of the thermal check.

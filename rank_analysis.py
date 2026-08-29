@@ -269,11 +269,19 @@ def pooled_correlations(arms, metrics):
 
 
 def protocol_decomposition(arms, metric="nrmse"):
-    """Split the transfer gap into a protocol step and an unseen-grid step.
+    """Split the transfer gap into a same-grid step and an unseen-grid step.
 
-    Regime A -> regime_b_diagonal changes the evaluation protocol on the SAME
-    grid; regime_b_diagonal -> cross_context/ood then changes the grid. Quoting
-    a single A -> unseen ratio attributes both to generalization.
+    Regime A -> regime_b_diagonal keeps the GRID and changes everything else;
+    regime_b_diagonal -> cross_context/ood then changes the grid. Quoting a
+    single A -> unseen ratio attributes both to generalization.
+
+    The same-grid step is NOT a clean protocol effect and the column is named
+    `same_grid_factor` rather than `protocol_factor` for that reason (audit C6):
+    Regime B differs from Regime A in two ways at once -- blocked temporal splits
+    with a one-day gap, and N-1/N-2 contingencies instead of the intact
+    topology -- so it bounds their combined cost, not either one's. Separating
+    them needs two more datasets and a retrained campaign per dataset, which this
+    study does not run.
     """
     if "regime_a" not in arms:
         return pd.DataFrame()
@@ -288,7 +296,7 @@ def protocol_decomposition(arms, metric="nrmse"):
             sub = frame[frame.model == model][metric]
             row[name] = float(sub.mean()) if len(sub) else float("nan")
         diag = row.get("regime_b_diagonal", float("nan"))
-        row["protocol_factor"] = diag / row["regime_a"]
+        row["same_grid_factor"] = diag / row["regime_a"]
         for name in ("cross_context", "ood"):
             if name in row:
                 row[f"unseen_grid_factor_{name}"] = row[name] / diag

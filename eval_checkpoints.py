@@ -9,8 +9,9 @@ WHAT IT IS FOR
     violations. With `--feasibility` it also asks whether the predicted state is
     a valid operating point at all (ac_feasibility.py): the AC P/Q residual on
     the post-contingency admittance matrix and the thermal loading against the
-    line ratings. Nothing is trained, so the numbers are by construction the same
-    models the published tables describe.
+    ratings of every branch, lines and transformers alike. Nothing is trained,
+    so the numbers are by construction the same models the published tables
+    describe.
 
 CHECKPOINT NAMING (written by experiments.py)
     within_<model>_<grid>_s<seed>.pt          tested on that grid
@@ -139,8 +140,9 @@ def main():
     p.add_argument("--out", default="results_norm/physics",
                    help="output directory for physics_metrics.csv")
     p.add_argument("--feasibility", action="store_true",
-                   help="also score the AC power-balance residual and the line "
-                        "loading of the predicted state (audit B1); needs the "
+                   help="also score the AC power-balance residual and "
+                        "the branch loading of the predicted state (audit B1); "
+                        "needs the "
                         "source cases and POWERGRAPH_NODE_DIR to rebuild the "
                         "post-contingency networks")
     p.add_argument("--cases_dir", default=None,
@@ -202,7 +204,7 @@ def main():
                   f"nrmse={row['nrmse']:.4g} "
                   f"predV={row['pred_nrmse_V']:.4g} maxV={row['max_V']:.4g}"
                   + (f" dP={row['ac_dp_mean_mw']:.4g}MW "
-                     f"load={row['line_loading_max_pct']:.4g}%"
+                     f"load={row['branch_loading_max_pct']:.4g}%"
                      if args.feasibility else ""),
                   flush=True)
 

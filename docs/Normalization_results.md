@@ -92,11 +92,18 @@ All numbers from `results_norm/analysis/` (`rank_analysis.py` +
 
 Regime A and Regime B differ in **two** ways at once: Regime B uses a harder
 protocol (blocked temporal split, N-k contingency topologies) *and* a different
-grid. The same-grid **diagonal** of the cross-context table separates them — it
-is Regime B evaluated on the grid the model was trained on, so A → diagonal is
-the protocol step and diagonal → unseen is the grid step. Both are free from the
-runs already done, and reporting only A → unseen charges the whole gap to
-generalization.
+grid. The same-grid **diagonal** of the cross-context table separates the grid
+change from the rest — it is Regime B evaluated on the grid the model was trained
+on, so A → diagonal is the same-grid step and diagonal → unseen is the grid step.
+Both are free from the runs already done, and reporting only A → unseen charges
+the whole gap to generalization.
+
+The same-grid step is **not** a clean protocol effect, and audit C6 was right to
+say so: Regime B changed the temporal split *and* the topology at the same time,
+so `same_grid_factor` bounds the two jointly and attributes it to neither.
+Separating them would need a blocked-split-only dataset and a
+contingencies-only dataset with a retrained campaign on each — declined with the
+other training items (limitation L8).
 
 | rank | Regime A (within, fixed topology) | Regime B diagonal (same grid, N-k) | cross-context (unseen grid) | OOD (leave-one-grid-out) |
 |---|---|---|---|---|
@@ -110,7 +117,7 @@ generalization.
 Decomposed as multiplicative factors (`protocol_decomposition.csv`, aggregate
 NRMSE):
 
-| model | protocol step (A → diagonal) | grid step (diagonal → cross-context) | total |
+| model | same-grid step (A → diagonal) | grid step (diagonal → cross-context) | total |
 |---|---:|---:|---:|
 | arma_gnn | 10.5× | 177× | 1861× |
 | gat | 2.1× | 134× | 279× |
@@ -119,8 +126,8 @@ NRMSE):
 | nnconv | 2.3× | 222× | 501× |
 | transformer | 2.0× | 119× | 240× |
 
-The harder protocol costs a factor of ~2 (ARMA ~10). **The unseen grid costs
-two orders of magnitude on top of that**, so the headline gap is a
+Blocked splits plus contingencies together cost a factor of ~2 (ARMA ~10). **The
+unseen grid costs two orders of magnitude on top of that**, so the headline gap is a
 generalization result, not a split artefact — but it is 68–222×, not the ~1000×
 that the raw A → unseen ratio suggests.
 
@@ -283,10 +290,17 @@ dS_i = S_i^spec - ( V_i conj((Y V)_i) - S_i^shunt )
 ```
 
 `ac_feasibility.py` rebuilds each test network from `dataset_src.csv` (same case,
-same demand snapshot, same outage), takes `Y`, the branch data and the line
+same demand snapshot, same outage), takes `Y`, the branch data and the branch
 ratings from pandapower's own internal representation, and evaluates the residual
-and the branch loading of the predicted state. Nothing is retrained: this is a
-second pass over the same 336 checkpoints
+and the branch loading of the predicted state. The thermal screen covers **every
+in-service branch** — lines against `max_i_ka`, two-winding transformers against
+their `sn_mva` rating converted to a current limit at each end, which is a
+different rating per end whenever the two voltage levels differ (audit C4; the
+first implementation screened lines only and dropped 5/38 of IEEE24's branches,
+11/46 IEEE39, 9/184 IEEE118, 4/90 UK). `tests/test_ac_feasibility.py` validates
+the result against pandapower's own `res_line.loading_percent` and
+`res_trafo.loading_percent` to 1e-12 %, including under a transformer outage.
+Nothing is retrained: this is a second pass over the same 336 checkpoints
 (`eval_checkpoints.py --feasibility`, 672 rows in
 `results_norm/physics/physics_metrics.csv`, summarised in
 `docs/tables/ac_feasibility_norm.csv`).
@@ -300,24 +314,43 @@ snapshot's served load, which is the only cross-grid comparable form:
 
 | setting | model | dP [% load] | dQ [% load] | max loading pred / true | overloads true / predicted | missed | false alarms |
 |---|---|---:|---:|---|---|---:|---:|
-| within (Regime A) | arma_gnn | 42 | 6 | 362 % / 364 % | 0.141 / 0.144 | 0.018 | 0.006 |
-| within | gin | 63 | 13 | 370 % / 364 % | 0.141 / 0.147 | 0.023 | 0.011 |
-| within | transformer | 166 | 44 | 939 % / 364 % | 0.141 / 0.153 | 0.028 | 0.019 |
-| within | gcn | 330 | 83 | 913 % / 364 % | 0.141 / 0.183 | 0.081 | 0.064 |
-| Regime B, same grid | arma_gnn | 120 | 37 | 560 % / 409 % | 0.133 / 0.147 | 0.109 | 0.033 |
-| Regime B, same grid | gcn | 380 | 137 | 1,822 % / 409 % | 0.133 / 0.194 | 0.203 | 0.096 |
-| unseen grid | arma_gnn | 3,984 | 7,086 | 6,680 % / 409 % | 0.133 / 0.714 | 0.224 | 0.703 |
-| unseen grid | gin | 24,412 | 132,972 | 20,156 % / 409 % | 0.133 / 0.801 | 0.165 | 0.797 |
-| OOD | transformer | 3,951 | 8,673 | 7,231 % / 409 % | 0.133 / 0.772 | 0.221 | 0.768 |
+| **reconstruction floor** (Regime A labels) | floor | 0.000 | 0.000 | 364 % / 364 % | 0.136 / 0.136 | 0.000 | 0.000 |
+| **DC power flow** (Regime A) | dc_pf | 35 | 162 | 292 % / 364 % | 0.136 / 0.126 | 0.112 | 0.006 |
+| within (Regime A) | arma_gnn | 42 | 6 | 362 % / 364 % | 0.136 / 0.139 | 0.019 | 0.005 |
+| within | gin | 63 | 13 | 391 % / 364 % | 0.136 / 0.141 | 0.032 | 0.012 |
+| within | transformer | 166 | 44 | 939 % / 364 % | 0.136 / 0.147 | 0.041 | 0.021 |
+| within | gcn | 330 | 83 | 913 % / 364 % | 0.136 / 0.180 | 0.091 | 0.068 |
+| **DC power flow** (Regime B) | dc_pf | 34 | 159 | 333 % / 409 % | 0.126 / 0.113 | 0.126 | 0.005 |
+| Regime B, same grid | arma_gnn | 120 | 37 | 560 % / 409 % | 0.126 / 0.139 | 0.107 | 0.029 |
+| Regime B, same grid | gcn | 380 | 137 | 1,822 % / 409 % | 0.126 / 0.188 | 0.215 | 0.097 |
+| unseen grid | arma_gnn | 3,984 | 7,086 | 6,680 % / 409 % | 0.126 / 0.702 | 0.232 | 0.695 |
+| unseen grid | gin | 24,412 | 132,972 | 20,156 % / 409 % | 0.126 / 0.791 | 0.164 | 0.787 |
+| OOD | transformer | 3,951 | 8,673 | 7,231 % / 409 % | 0.126 / 0.768 | 0.216 | 0.764 |
 
 The true column is not a formality: **the source OPF snapshots are not themselves
-thermally secure** — 13–14 % of line-samples exceed their rating in the labels,
-with true maxima up to ~680 % on IEEE118 — so a large predicted loading is only
-an error when it exceeds the true one, which is why the confusion columns rather
-than the maxima carry the operational reading.
+thermally secure** — 13–14 % of branch-samples exceed their rating in the labels,
+with true maxima of 677 % (IEEE118), 442 % (IEEE39), 399 % (UK) and 151 %
+(IEEE24) — so a large predicted loading is only an error when it exceeds the true
+one, which is why the confusion columns rather than the maxima carry the
+operational reading.
 
-A line counts as overloaded above 100 % of `max_i_ka × df × parallel`; the table
-is regenerated by `python summarize_feasibility.py` from the replay CSV.
+A branch counts as overloaded above 100 % of its rating (`max_i_ka × df ×
+parallel` for a line, the per-end current equivalent of `sn_mva × df × parallel`
+for a transformer); the table is regenerated by `python summarize_feasibility.py`
+from the replay CSV plus the reference rows of `dc_feasibility.py`.
+
+The two reference rows are what make the model rows readable (audit C5). The
+**floor** row is the labels put through the identical checker: 3e-4 % of load, so
+none of the model numbers is an artefact of the reconstruction. The **DC** row is
+the same linear baseline the NRMSE tables compare against, scored physically for
+the first time — and its active residual (35 % of load) is *better than every
+model's except ARMA's* even in distribution, and 100× better than any model on an
+unseen grid. Its reactive residual (160 %) is not a measure of the linearisation:
+DC fixes |V| = 1 and Q ≡ 0 by construction, so that column is essentially the
+snapshot's reactive demand and should not be read as an error. On thermal
+screening DC is the mirror image of the models: it under-flags (0.113 predicted
+against 0.126 true, 12.6 % of genuine overloads missed, 0.5 % false alarms) where
+the surrogates over-flag.
 
 Three readings, in order of how much they should change what the paper claims:
 
@@ -325,27 +358,34 @@ Three readings, in order of how much they should change what the paper claims:
    within-grid NRMSE is 4.4e-4 — three orders of magnitude better than DC — and
    its predicted states still violate active power balance by ~40 % of served
    load in aggregate, against a reconstruction floor of 2.8e-2 MW. Its thermal
-   screening *is* good (362 % predicted worst loading against 364 % true, 1.8 %
-   missed and 0.6 % false), so in distribution the models are usable as
+   screening *is* good (362 % predicted worst loading against 364 % true, 1.9 %
+   missed and 0.5 % false), so in distribution the models are usable as
    screening tools while still not being solutions of the power flow: they are
    accurate as regressors of the label, and "the surrogate reproduces AC power
    flow" is not a statement these numbers support. No conclusion of §4 changes.
+   The DC reference sharpens this: DC power flow is 6–50× *worse* than the
+   surrogates in NRMSE and simultaneously *better* than five of the six in AC
+   active-power residual, so the two rankings disagree — label accuracy and
+   physical admissibility are not the same axis, and only the second one is what
+   a screening tool needs.
 2. **The transfer failure is much larger in feasibility terms than in NRMSE
    terms.** Unseen-grid NRMSE is ~200× the in-distribution value; the AC residual
    is ~10²–10³× and the reactive residual worse still, because the residual is
    quadratic in the state error and because a wrong voltage angle profile
    misplaces every branch flow at once.
 3. **The screening error flips direction.** In distribution the models
-   over-flag mildly (0.6–6 % false alarms) and miss few real overloads. On an
-   unseen grid they flag ~70–80 % of all lines as overloaded while missing ~20 %
+   over-flag mildly (0.5–7 % false alarms) and miss few real overloads. On an
+   unseen grid they flag ~70–80 % of all branches as overloaded while missing ~20 %
    of the genuine ones — simultaneously unusable and unsafe.
 
 Caveats on these numbers: the residual is evaluated on the topology the sample
-was generated on, so it measures the state, not the model's view of the
-topology; only lines carry thermal ratings in these cases, so transformer
-loading is not screened; and the DC baseline is not scored here, because it
-solves a linearised network by construction and its AC residual would report the
-linearisation error rather than a comparable quantity.
+was generated on, so it measures the state, not the model's view of the topology;
+the screen covers lines and two-winding transformers, which is every rated branch
+here (no case has a three-winding transformer, and the 2 explicit impedance
+elements of IEEE118 and 9 of UK enter `Ybus` and therefore the residual, but
+pandapower gives them no current rating and no `loading_percent`, so they cannot
+be screened); and the DC row's reactive residual is a convention, not an error,
+for the reason given above.
 
 ## 4bis. One reproducible failure: GCN produces NaN on an unseen grid
 

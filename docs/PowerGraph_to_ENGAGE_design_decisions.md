@@ -435,8 +435,11 @@ contains the shunt admittance; without it the IEEE24 shunt bus shows a fictitiou
 residual. And the true state is scored through the identical path in every run
 (`ac_dp_true_max_mw`, ≤ 2.8e-2 MW), so the reconstruction floor is reported next to the model's
 number rather than assumed to be zero. The predicted loading is likewise reported next to
-`line_loading_max_pct_true`, because several source OPF snapshots are not thermally secure
-themselves (true loadings up to ~680 % on IEEE118).
+`branch_loading_max_pct_true`, because several source OPF snapshots are not thermally secure
+themselves (true loadings up to ~680 % on IEEE118). The screen covers every in-service branch,
+lines and two-winding transformers alike (5/38 of IEEE24's branches are transformers, 11/46
+IEEE39, 9/184 IEEE118, 4/90 UK), each end against its own current rating; audit 3 (C4) found the
+first implementation screened lines only.
 
 **Why the rest of audit 2 was answered without training:** re-selecting hyperparameters under
 `pu_zscore` (finding B4) and lifting NNConv from 3 to 5 seeds are the only two items that need
