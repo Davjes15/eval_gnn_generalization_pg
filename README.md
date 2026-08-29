@@ -177,11 +177,23 @@ them are on `main`.
 > suites, every result CSV behind the reported tables, and the documentation.
 > The `step-1-…` → `step-8-…` branches are kept only as development history.
 >
-> What is **not** in Git: the generated datasets (`data_a/`, `data_full_v2/`, ~79 MB)
-> and the 336 training checkpoints (`ckpt_norm/`, ~615 MB). You can regenerate the
-> datasets and retrain from this repository, and re-derive every table from the
-> committed CSVs, but replaying *our* saved models requires those artifacts, which
-> are distributed separately (see `docs/Reproducibility.md`).
+> The two generated datasets (`data_a/`, `data_full_v2/`, ~79 MB) **are** committed,
+> so you can train and replay against the exact data the reported numbers came from
+> without regenerating anything. The 336 training checkpoints (`ckpt_norm/`, 593 MB
+> compressed) are too large for Git and ship as a release asset:
+>
+> ```bash
+> curl -L -o ckpt_norm.tar.gz \
+>   https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_norm.tar.gz
+> sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_norm.tar.gz"
+> tar -xzf ckpt_norm.tar.gz   # -> ckpt_norm/<arm>_<model>/<file>.pt (paths as in
+>                             #    docs/tables/checkpoint_index.csv)
+> ```
+>
+> Per-file sizes and SHA-256s for all of it are in
+> [`docs/tables/artifact_manifest.csv`](docs/tables/artifact_manifest.csv). With the
+> datasets and that archive, `eval_checkpoints.py` reproduces the reported metrics
+> from *our* weights — no training required (`docs/Reproducibility.md` §3).
 >
 > `docs/figures/*.png` and the exploratory `full_run/` tree are from the
 > **superseded raw-unit run** and are retained for provenance only; the reported

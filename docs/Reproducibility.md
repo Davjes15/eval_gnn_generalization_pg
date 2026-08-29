@@ -181,11 +181,20 @@ de-normalization, in physical units, in both cases.
 | cross-context | `cc_<model>_<train_grid>_s<seed>.pt` | the **training** grid (tested on all four) |
 | leave-one-out | `ood_<model>_heldout_<grid>_s<seed>.pt` | the **held-out** grid (trained on the other three) |
 
-The weights live outside git for the same size reason as the datasets (~50 MB and
-growing), so what the repository carries is the **index**: one row per file with
-its relative path, byte size, SHA-256 and parameter count. That is enough to name
-the file behind any results row and to verify a copy received out of band. Build
-and check it with:
+The weights are too large for git (593 MB compressed), so they ship as the
+`ckpt_norm.tar.gz` asset of release `v1.0.0` and the repository carries the
+**index**: one row per file with its relative path, byte size, SHA-256 and
+parameter count. That is enough to name the file behind any results row and to
+verify a downloaded copy. Fetch, verify and unpack the archive with:
+
+```bash
+curl -L -o ckpt_norm.tar.gz \
+  https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_norm.tar.gz
+sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_norm.tar.gz"
+tar -xzf ckpt_norm.tar.gz
+```
+
+Build and check the index with:
 
 ```bash
 python checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
@@ -282,11 +291,16 @@ branches are retained as development history only.
 here that cite `full_run/results/...` (e.g. the legacy `gscore_smallN.csv`) do so
 deliberately — those numbers predate A1-A8 and are never the reported result.
 
-**What is not in Git.** The generated datasets (`data_a/`, `data_full_v2/`) and the
-336 checkpoints of the final campaign (`ckpt_norm/`, ~615 MB) are not committed.
-Everything needed to *regenerate* them is (§2-§4), and every result table can be
-re-derived from the committed CSVs (§5), but replaying our exact saved models
-requires the separately distributed artifact archive.
+**Where the artifacts are.** The two generated datasets (`data_a/`,
+`data_full_v2/`, ~79 MB) are **committed**, so the replay above runs against the
+exact tensors the reported numbers came from; the 336 checkpoints are the
+`v1.0.0` release asset above. `docs/tables/artifact_manifest.csv` carries the
+SHA-256 and byte size of every committed dataset file and of the archive, so an
+out-of-band copy can be verified. Regeneration (§2-§4) remains supported and
+gives statistically equivalent, not bit-identical, datasets: the generator is
+seeded per grid, but pandapower and PyTorch versions move underneath it. Every
+result table is re-derivable from the committed CSVs alone (§5), with no dataset
+and no checkpoint.
 
 ---
 

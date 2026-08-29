@@ -432,11 +432,13 @@ nothing else — mirroring PowerGraph's `gendataopf.m`; the load trajectory is o
 realization of the PowerGraph-Node demand series, so nothing here estimates variability across
 alternative demand histories.
 
-**L7 — artifacts are VM-local.** The 336 checkpoints (611 MB) and both datasets are binaries
-that are not in git. The repository reproduces the *procedure* exactly (pinned versions, exact
-commands, `dataset_src.csv` provenance, `checkpoint_index.csv` with SHA-256 per file); exact
-number-for-number replication by an outside reader still needs a release or Zenodo drop, which
-is the open half of A4.
+**L7 — artifacts, now published (closes the open half of A4).** Both generated datasets
+(~79 MB) are committed, and the 336 checkpoints ship as the `ckpt_norm.tar.gz` asset of
+release `v1.0.0` (593 MB compressed, SHA-256 in `docs/tables/artifact_manifest.csv`), so an
+outside reader can replay our exact weights on our exact tensors rather than only repeating
+the procedure. What remains outside the repository is the PowerGraph-Node demand and case
+files, which are the upstream dataset's to distribute and are required only for the
+`--feasibility` pass and for regenerating data.
 
 ---
 

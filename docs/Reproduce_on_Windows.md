@@ -184,8 +184,12 @@ flow** for each, and writes `data\<GRID>\<split>\dataset.pt`.
 python transmission_graph_gen.py --grid IEEE24 --n_train 30 --n_val 6 --n_test 6 --max_k 2 --out_dir data
 ```
 
-**Then the full generation.** The benchmark needs **two** datasets — a
-fixed-topology control arm and a varying-topology transfer arm — and their
+**Then the full generation — optional now.** Both published datasets are committed
+(`data_a/`, `data_full_v2/`, ~79 MB), so you can skip straight to training or to
+the checkpoint replay and still be on the exact tensors behind the reported
+numbers. Regenerate only if you are changing the protocol or checking that the
+generator still produces an equivalent draw. The benchmark needs **two** datasets
+— a fixed-topology control arm and a varying-topology transfer arm — and their
 protocols differ:
 
 ```powershell
@@ -204,10 +208,11 @@ leak across splits.
 `IEEE39`, `IEEE118`, `UK` for `--grid all` in either command above.
 
 A regenerated dataset is a **fresh draw from the same protocol**, not a byte copy
-of the published one: rejected samples (non-convergent AC solve, voltages outside
+of the committed one: rejected samples (non-convergent AC solve, voltages outside
 [0.8, 1.2] p.u.) shift the sampling. Reproduce the *protocol* with the validation
-gate below. The exact published numbers come from the saved checkpoints, which are
-too large for git and need a data release — status in `docs/Reproducibility.md`.
+gate below — or use the committed datasets if you want the published draw. The
+exact published numbers come from the saved checkpoints, released as
+`ckpt_norm.tar.gz` on tag `v1.0.0` (`docs/Reproducibility.md` §3).
 
 Each dataset is **4,000 graphs** (1,000 per grid), so the pair is 8,000 and about
 80 MB. Generation is CPU‑bound (the solver), so `numba` matters here; the GPU is
