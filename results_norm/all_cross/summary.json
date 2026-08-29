@@ -18,5 +18,46 @@
     "results_norm/cross_nnconv",
     "results_norm/cross_transformer"
   ],
-  "merged_file": "cross_context.csv"
+  "merged_file": "cross_context.csv",
+  "normalize": "pu_zscore",
+  "models": [
+    "arma_gnn",
+    "gat",
+    "gcn",
+    "gin",
+    "nnconv",
+    "transformer"
+  ],
+  "arch_config": {
+    "arma_gnn": {
+      "num_layers": 8,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gat": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gcn": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gin": {
+      "num_layers": 3,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "nnconv": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "transformer": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    }
+  }
 }

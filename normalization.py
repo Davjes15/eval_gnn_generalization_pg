@@ -34,7 +34,16 @@ CONTRACT
     * `transform` scales node-feature columns 3:7 and the targets with the SAME
       statistics, which is required because models re-inject known values from x
       into their prediction of y (`models.py::inference`).
-    * Masked (NaN) feature entries stay NaN.
+    * Masked (NaN) feature entries stay NaN here, and `models.py::forward`
+      replaces them with 0 before the first layer. THE SENTINEL THEREFORE MEANS
+      SOMETHING DIFFERENT IN EACH MODE (audit B8): under `none`/`pu` a masked
+      entry enters the network as physical zero, under `pu_zscore` as
+      `center`, i.e. the TRAINING MEAN of that quantity. The z-scored sentinel
+      is the better-behaved of the two -- an unknown is imputed at the mean of
+      what is known rather than at an arbitrary point of the distribution -- but
+      it is an imputation either way, and on an unseen grid the imputed value is
+      the source grid's mean, which is part of what the transfer numbers
+      measure.
     * `dc_pf` is left in physical units: the DC baseline is analytical and is
       scored directly against the physical targets.
     * The untransformed targets are carried as `y_raw` so metrics use the exact

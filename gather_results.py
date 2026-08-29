@@ -13,8 +13,15 @@ WHAT IS CHECKED
     would invalidate the comparison:
       * no architecture may appear in two shards (duplicated runs)
       * every requested architecture must be present (no partial ranking)
-      * all shards must agree on seeds, epochs, data_dir and batch size
+      * all shards must agree on seeds, epochs, data_dir, batch size and the
+        NORMALIZATION MODE -- merging a raw-unit shard into a `pu_zscore` table
+        would produce a leaderboard of two different objectives (audit B8)
       * each architecture must carry ONE (num_layers, hidden, learning_rate)
+
+    The merged summary also records the union of the architectures merged and
+    the per-architecture configuration each shard actually used, so the merged
+    table states its own provenance instead of requiring the reader to find the
+    shard directories.
 
 SEED AND FOLD SHARDS
     One architecture's runs are sometimes split further across processes -- one
@@ -48,7 +55,8 @@ import pandas as pd
 from models import MODELS
 
 CONFIG_COLS = ["num_layers", "hidden", "learning_rate"]
-SHARED_KEYS = ["seeds", "epochs", "data_dir", "batch_size", "batch_size_ood"]
+SHARED_KEYS = ["seeds", "epochs", "data_dir", "batch_size", "batch_size_ood",
+               "normalize"]
 # With the model and seed, these identify one run inside an arm. Which of them
 # exist depends on the arm, so only the columns actually present are used.
 RUN_ID_COLS = ["grid", "train_grid", "test_grid", "held_out_grid"]
@@ -87,6 +95,8 @@ def check_protocol(dirs, seed_shards=False):
     """
     shared = [k for k in SHARED_KEYS if not (seed_shards and k == "seeds")]
     seeds: list = []
+    models: list = []
+    arch_config: dict = {}
     reference, ref_dir = None, None
     for d in dirs:
         path = os.path.join(d, "summary.json")
@@ -99,14 +109,31 @@ def check_protocol(dirs, seed_shards=False):
         for seed in summary.get("seeds") or []:
             if seed not in seeds:
                 seeds.append(seed)
+        # Shards are per-architecture, so these are unions rather than shared
+        # values -- but an architecture appearing twice with two different
+        # configurations is the merge this whole function exists to refuse.
+        # Shards written before `models` was recorded still name their
+        # architectures in `arch_config`, which is the same set.
+        for name in (summary.get("models")
+                     or sorted(summary.get("arch_config") or {})):
+            if name not in models:
+                models.append(name)
+        for name, cfg in (summary.get("arch_config") or {}).items():
+            if arch_config.setdefault(name, cfg) != cfg:
+                raise SystemExit(
+                    f"{d} runs {name} with {cfg}, but another shard used "
+                    f"{arch_config[name]}: one architecture, two configurations")
         if reference is None:
             reference, ref_dir = keys, d
         elif keys != reference:
             differing = {k for k in shared if keys[k] != reference[k]}
             raise SystemExit(f"{d} disagrees with {ref_dir} on {differing}: "
                              "the shards were not run under one protocol")
-    if seed_shards and reference is not None:
-        reference = {**reference, "seeds": sorted(seeds)}
+    if reference is not None:
+        if seed_shards:
+            reference = {**reference, "seeds": sorted(seeds)}
+        reference = {**reference, "models": sorted(models),
+                     "arch_config": arch_config}
     return reference
 
 

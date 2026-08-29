@@ -497,6 +497,7 @@ def main():
 
     data = _load_all(args.data_dir, grids)
     summary = {"regime_tag": args.regime_tag, "seeds": seeds,
+               "models": args.models,
                "experiment": args.experiment, "data_dir": args.data_dir,
                "epochs": args.epochs, "arch_config_path": args.arch_config,
                "arch_config": arch_cfg,

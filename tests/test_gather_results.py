@@ -24,7 +24,7 @@ from gather_results import (check_protocol, gather, shard_dirs,
 FAILURES = []
 MODELS_2 = ["gcn", "gat"]
 SUMMARY = {"seeds": [0, 100], "epochs": 200, "data_dir": "data_a",
-           "batch_size": 32, "batch_size_ood": 96}
+           "batch_size": 32, "batch_size_ood": 96, "normalize": "pu_zscore"}
 
 
 def check(name, ok, detail=""):
@@ -105,6 +105,53 @@ def test_protocol_mismatch_refused():
         os.remove(os.path.join(d, "summary.json"))
         _expect_exit(lambda: check_protocol([d]),
                      "a shard with no summary.json is refused")
+
+
+def test_normalization_mismatch_refused():
+    """Two objectives must not be merged into one leaderboard (audit B8)."""
+    print("\n== mismatched normalization ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        _write(tmp, "a", _rows("gcn"))
+        _write(tmp, "b", _rows("gat"), summary={"normalize": "none"})
+        dirs = shard_dirs([os.path.join(tmp, "*")])
+        _expect_exit(lambda: check_protocol(dirs),
+                     "shards with different --normalize are refused")
+
+
+def test_merged_summary_records_provenance():
+    """The merged summary must state the objective, the models and their configs."""
+    print("\n== merged provenance ==")
+    cfg_gcn = {"num_layers": 2, "hidden": 128, "learning_rate": 0.001}
+    cfg_gat = {"num_layers": 3, "hidden": 128, "learning_rate": 0.001}
+    with tempfile.TemporaryDirectory() as tmp:
+        _write(tmp, "within_gcn", _rows("gcn"),
+               summary={"models": ["gcn"], "arch_config": {"gcn": cfg_gcn}})
+        _write(tmp, "within_gat", _rows("gat"),
+               summary={"models": ["gat"], "arch_config": {"gat": cfg_gat}})
+        dirs = shard_dirs([os.path.join(tmp, "within_*")])
+        protocol = check_protocol(dirs)
+        check("the objective is recorded",
+              protocol["normalize"] == "pu_zscore", str(protocol.get("normalize")))
+        check("the merged architectures are recorded",
+              protocol["models"] == ["gat", "gcn"], str(protocol.get("models")))
+        check("each architecture's configuration travels with it",
+              protocol["arch_config"] == {"gcn": cfg_gcn, "gat": cfg_gat},
+              str(protocol.get("arch_config")))
+        out = os.path.join(tmp, "merged")
+        os.makedirs(out)
+        written = write_summary(protocol, dirs, "within_grid.csv", out)
+        check("it is written to the merged summary",
+              written["normalize"] == "pu_zscore"
+              and written["arch_config"]["gat"] == cfg_gat, str(written))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _write(tmp, "s0", _rows("gcn", seeds=(0,)),
+               summary={"seeds": [0], "arch_config": {"gcn": cfg_gcn}})
+        _write(tmp, "s100", _rows("gcn", seeds=(100,)),
+               summary={"seeds": [100], "arch_config": {"gcn": cfg_gat}})
+        dirs = shard_dirs([os.path.join(tmp, "s*")])
+        _expect_exit(lambda: check_protocol(dirs, seed_shards=True),
+                     "one architecture with two configurations is refused")
 
 
 def test_two_configs_for_one_model_refused():
@@ -240,6 +287,8 @@ def main():
     test_duplicate_model_refused()
     test_missing_model_refused()
     test_protocol_mismatch_refused()
+    test_normalization_mismatch_refused()
+    test_merged_summary_records_provenance()
     test_two_configs_for_one_model_refused()
     test_seed_shards()
     test_fold_shards()
