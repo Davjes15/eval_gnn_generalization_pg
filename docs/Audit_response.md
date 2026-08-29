@@ -200,7 +200,9 @@ written above, one of them to my own paper check:
    KIT-IAI pretrained-GNN work (p.u. *and* z-score). Standard practice in the field is p.u. plus
    a per-dimension scaler with physical-unit reporting; ENGAGE is the exception.
 
-The cross-grid confound above still stands (nominal load: 2,850 / 6,254 / 3,733 / **56,326** MW),
+The cross-grid confound above still stands (nominal load 2,850 MW / 24 buses for IEEE24,
+6,254 MW / 39 buses for IEEE39, 3,733 MW / 118 buses for IEEE118, **56,326 MW** / 29 buses for
+UK, read from `transmission/cases/*.mat` via `transmission_grids.load_case`),
 but no unit system removes it — the UK system genuinely moves an order of magnitude more power.
 Isolating topology needs a per-grid physical base (e.g. nominal load, which is input data and so
 leak-free); a train-grid-fitted scaler keeps the size shift inside the OOD shift, which is
@@ -279,8 +281,9 @@ time split would be the right fix.
 
 ## A6 — The g-score is affine in (mean, sd) here. CONFIRMED exactly
 
-`Δ_MMD` is a property of the data, so it is one constant per arm: 0.516485 (cross-context),
-0.352837 (OOD), repeated down the whole column. Hence
+`Δ_MMD` is a property of the data, so it is one constant per arm: in the raw-unit campaign
+0.516485 (cross-context) and 0.352837 (OOD), repeated down the whole column (the normalized
+campaign's are 0.521637 and 0.349052, giving 0.805 and 0.858 below). Hence
 
 ```
 g = μ + σ·log(Δ+1)/Δ = μ + 0.8064·σ  (cross-context)
@@ -391,11 +394,14 @@ objective.** The paper's claim is about the ranking's transfer, not about each a
 optimum.
 
 **L2 — NNConv is replicated at 3 seeds, not 5.** A deliberate compute trade-off recorded as
-Decision 25 in `PowerGraph_to_ENGAGE_design_decisions.md`: NNConv emits a full 128×128
+Decision 17 in `PowerGraph_to_ENGAGE_design_decisions.md`: NNConv emits a full 128×128
 transform per edge, an IEEE118 run takes ~3 h, and five seeds across three arms would be
 ~1.5–2 days of extra wall clock for a variance estimate. The consequence is concrete and is
-stated wherever it bites: the permutation test has 12 complete (grid, seed) cells rather than
-20, because only the three NNConv seeds have all six architectures present, and NNConv's
+stated wherever it bites: NNConv contributes 12 rows per arm where the other five contribute 20
+(48 vs 80 for cross-context; `results_norm/all_within/within_grid.csv`,
+`all_cross/cross_context.csv`, `all_ood/ood.csv`), so every pooled mean and every ranking it
+appears in rests on three seeds; the permutation test has 12 complete (grid, seed) cells rather
+than 20, because only the three NNConv seeds have all six architectures present; and NNConv's
 spread is the least reliable in the set.
 
 **L3 — GCN's unseen-grid NaN is reported, not fixed.** Two of 448 cross-context rows are
@@ -407,8 +413,9 @@ without warning is one of the more informative results here. The affected cells 
 never averaged away.
 
 **L4 — four grids, and the g-score is underpowered.** IEEE24 / IEEE39 / IEEE118 / UK differ in
-size, density and load scale simultaneously, so "unseen grid" is not isolated topology
-transfer. Each per-training-grid g-score cell has three unseen points and each OOD cell has
+size, density and load scale simultaneously (24 / 39 / 118 / 29 buses at 2,850 / 6,254 / 3,733 /
+56,326 MW nominal load), so "unseen grid" is not isolated topology transfer but transfer to an
+unseen system — scale, structure and the Regime B protocol change together. Each per-training-grid g-score cell has three unseen points and each OOD cell has
 one grid, so those spreads are descriptive rather than inferential, and the ENGAGE-style
 g-score is affine in (mean, sd) at this n (A6).
 
@@ -420,7 +427,8 @@ tested against a null, and that test is underpowered at 12 cells (it cannot dete
 true correlation, which is why the wording is "no reliable guarantee", not "no correlation").
 
 **L6 — one data realization, and only active demand varies (B7).** Reactive demand stays at
-each case's base value, mirroring PowerGraph's `gendataopf.m`; the load trajectory is one
+each case's base value — `transmission_graph_gen._apply_demand` writes `net.load.p_mw` and
+nothing else — mirroring PowerGraph's `gendataopf.m`; the load trajectory is one
 realization of the PowerGraph-Node demand series, so nothing here estimates variability across
 alternative demand histories.
 
@@ -496,11 +504,12 @@ the same 336 checkpoints and the stored DC states, and C6 is a rename plus a sta
 The limitation added by C6 is recorded as **L8** below.
 
 **L8 — the same-grid step is not a clean protocol effect (C6).** Regime B differs from Regime A
-in two ways at once: blocked temporal splits with a one-day gap, and N-1/N-2 contingencies
-instead of the intact topology. `same_grid_factor` therefore bounds their combined cost and
-attributes it to neither. Isolating them needs two further datasets (blocked-split-only and
-contingencies-only) and a retrained campaign on each, which was declined along with the other
-training items.
+in two ways at once: blocked temporal splits with a one-day gap, and N-1/N-2 line contingencies
+(L9) instead of the intact topology. `same_grid_factor` therefore bounds their combined cost
+(1.5–10.5× across the six architectures,
+`results_norm/analysis/protocol_decomposition.csv`) and attributes it to neither. Isolating them
+needs two further datasets (blocked-split-only and contingencies-only) and a retrained campaign
+on each, which was declined along with the other training items.
 
 ---
 

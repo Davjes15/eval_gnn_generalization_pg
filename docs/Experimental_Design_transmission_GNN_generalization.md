@@ -7,8 +7,18 @@ Study **how well GNN architectures generalize to unseen transmission topologies*
 
 ### Framing (power-systems motivation — read this first)
 AC power flow is **deterministic physics**: given a grid's full model (topology + impedances + injections) you can just solve it with Newton-Raphson. So the value of a learned GNN surrogate is **not** "predict a grid you could otherwise solve" — it is **(i) amortization/speed** across huge numbers of cases (contingency screening, planning scenarios, real-time what-ifs) and **(ii) staying accurate as topology changes**. Accordingly:
-- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables.
+- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables. As executed, that variation is random N-1/N-2 outages of in-service **lines** only — no transformer or generator outages, no busbar splits or switching actions, and islanding cases are discarded rather than modelled (limitation L9 in [`Audit_response.md`](Audit_response.md)).
 - **Secondary, scientific stress test:** transfer between structurally very different grids (e.g. IEEE24 → UK). Interesting as a limit test, but it has weak *operational* motivation, so it is reported as a stress test, not the main result.
+
+**What each rung of the ladder actually varies.** The three arms are not a clean topology-only sequence, and the qualifier belongs here rather than in a footnote (limitations L4, L8, L9):
+
+| rung | what changes relative to the previous one |
+|---|---|
+| within-grid (Regime A) | active demand only, one fixed topology per grid |
+| cross-context / same grid (Regime B) | blocked temporal split **and** line contingencies, jointly (L8) |
+| unseen grid (leave-one-grid-out) | a different **system**: scale, structure and the Regime B protocol at once (L4) |
+
+The four cases differ in scale as much as in structure — nominal load 2,850 MW / 24 buses (IEEE24), 6,254 MW / 39 buses (IEEE39), 3,733 MW / 118 buses (IEEE118), 56,326 MW / 29 buses (UK), read from the committed `transmission/cases/*.mat` through `transmission_grids.load_case`. So the unseen-grid arm measures generalization to an unseen **system** (scale + topology + protocol), not isolated topology generalization, and no unit system removes the scale part of that shift (Decision 20).
 
 ## Grids
 IEEE24, IEEE39, IEEE118, and the UK 29-bus system (PowerGraph's own `System.m` cases). Task: **node-level AC power-flow (PF) state estimation** — predict per-bus `[P, Q, V, θ]`.
@@ -22,7 +32,7 @@ A single aggregate NRMSE **overstates** performance, because the four targets ar
 ## Experimental design at a glance
 ```mermaid
 flowchart TD
-    G["4 grids: IEEE24, IEEE39, IEEE118, UK<br/>each = distribution of topologies<br/>(demand snapshots × N-k contingencies)"] --> DS["per grid: 800 train / 100 val / 100 test graphs"]
+    G["4 grids: IEEE24, IEEE39, IEEE118, UK<br/>each = distribution of topologies<br/>(active-demand snapshots × N-k LINE outages)"] --> DS["per grid: 800 train / 100 val / 100 test graphs"]
 
     DS --> CC["EXP 1 — Cross-Context (CC)<br/>train on ONE grid → test on ALL grids"]
     DS --> OOD["EXP 2 — Out-of-Distribution (OOD)<br/>train on 3 grids → test on held-out grid<br/>(leave-one-grid-out)"]
@@ -109,29 +119,29 @@ Sub-questions:
 # LAYER 2 — Well-posed generalization benchmark with a topology distribution
 
 ## Research questions
-**RQ2 (primary — operational):** Across a **distribution of credible transmission topologies** (a base grid + its N-1/N-k contingencies), which GNN architectures **stay accurate on unseen topologies**, and how does that error scale with topological distance (MMD) from the training distribution? Does the GNN beat the DC-PF baseline, per quantity?
+**RQ2 (primary — operational):** Across a **distribution of credible transmission topologies** (a base grid + its N-1/N-2 in-service-line outages; no transformer, generator, busbar or switching actions, islanding discarded — L9), which GNN architectures **stay accurate on unseen topologies**, and how does that error scale with topological distance (MMD) from the training distribution? Does the GNN beat the DC-PF baseline, per quantity?
 
 Sub-questions:
 - **RQ2a:** Does a physically consistent, ENGAGE-format dataset (per-unit, bus-type NaN masking, `dc_pf` baseline) change the architecture ranking vs Layer 1?
 - **RQ2b:** How does each architecture's g-score compare (both the cross-context g-score and the better-posed **OOD g-score** over held-out grids), and does edge-awareness (GAT/GIN/Transformer/NNConv using `edge_attr`) help on transmission grids?
-- **RQ2c (secondary — scientific stress test):** Out-of-distribution across *different* grids — leave-one-grid-out (train on three grids, test on the fourth, incl. IEEE24↔UK). Reported as a limit test, not the operational headline.
+- **RQ2c (secondary — scientific stress test):** Out-of-distribution across *different* grids — leave-one-grid-out (train on three grids, test on the fourth, incl. IEEE24↔UK). Reported as a limit test, not the operational headline. The held-out grid differs from its training mixture in scale as well as structure (nominal load 2,850–56,326 MW over 24–118 buses), so what this arm measures is transfer to an unseen **system**, not isolated topology transfer (L4).
 - **RQ2d:** Per-quantity behaviour — is the apparent accuracy driven by trivially-bounded **V**, and how do the harder **θ** and **Q** generalize?
 
 ## Experimental setup
-- **Data:** regenerated from PowerGraph's `System.m` into **ENGAGE `Data`** (Decision 1/4/5), with a **distribution of topologies per grid** produced by contingency perturbation (see methodology). Operating points via **Route B** (real hourly demand) and/or Route A.
+- **Data:** regenerated from PowerGraph's `System.m` into **ENGAGE `Data`** (Decision 1/4/5), with a **distribution of topologies per grid** produced by contingency perturbation (see methodology; as executed, random N-1/N-2 **line** outages only — L9). Operating points via **Route B** (real hourly demand) and/or Route A. Only **active** demand varies across samples: reactive demand stays at each case's base-case value, mirroring PowerGraph's `gendataopf.m` (`transmission_graph_gen._apply_demand` writes `p_mw` only; limitation L6), so every "operating-point variation" in this document means active-demand variation.
 - **Model zoo (unified, ENGAGE interface):** `GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NNConv` — all with input dim 7, output dim 4, `edge_attr` dim 4, ENGAGE masking, and the per-bus-type `inference()` re-injection.
 - **Experiments:** ENGAGE's **Cross-Context** (ordered train-grid/test-grid) and **Out-of-Distribution** (leave-one-grid-out) scripts, unchanged.
-- **Seeds:** multiple seeds per configuration for error bars.
+- **Seeds:** multiple seeds per configuration for error bars — seeds vary training randomness (weight init, batch order) on **one** generated dataset, so the spread supports no claim about variability over data realizations (L5). Five architectures run seeds 0/100/300/700/1000; NNConv runs 0/100/300, a deliberate, approved compute trade-off (L2, Decision 17).
 
 ## Methodology — data generation engine
 1. **Grid model:** convert each `System.m` → pandapower net via Octave + `from_mpc` (Decision 5); commit the `.mat`.
-2. **Sample a credible topology (contingency):** remove line(s)/branch(es) — N-1, then N-2/N-k — optionally generator outages. Reject islanding (or handle islands); retune disconnection probabilities for meshed transmission.
-3. **Set demand:** real hourly profile (`hourlyDemandBus.mat`, Route B) or sampled (Route A).
+2. **Sample a credible topology (contingency):** remove line(s)/branch(es) — N-1, then N-2/N-k — optionally generator outages. Reject islanding (or handle islands); retune disconnection probabilities for meshed transmission. *As executed, only the line branch of this option was used: random N-1/N-2 outages of in-service lines, no generator or transformer outages, and islanding draws discarded rather than modelled (L9).*
+3. **Set demand:** real hourly profile (`hourlyDemandBus.mat`, Route B) or sampled (Route A) — **active** power only; reactive demand is left at the base case (L6).
 4. **Re-solve the physics — the re-solve engine.** A topology change invalidates all stored node values, so each sample is a fresh solve:
    ```python
    import pandapower as pp
    net.line.at[idx, "in_service"] = False   # the outage
-   net.load["p_mw"], net.load["q_mvar"] = demand_p, demand_q
+   net.load["p_mw"] = demand_p              # ACTIVE demand only; q_mvar stays at base case (L6)
    pp.runpp(net)                            # AC power flow (Newton-Raphson)
    # net.res_bus.vm_pu / va_degree, net.res_gen.p_mw/q_mvar, net.res_line...
    ```
@@ -184,7 +194,9 @@ from the external audit (see [`Audit_response.md`](Audit_response.md)).
 | dataset | regime | topology | demand split | role |
 |---|---|---|---|---|
 | `data_a` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
-| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers are never taken out; limitation L9), islanding rejected | `--time_split blocked` (disjoint contiguous windows, one-day gap) | cross-context + leave-one-grid-out |
+| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
+
+Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the `same_grid_factor` of the protocol decomposition (1.5–10.5×, `results_norm/analysis/protocol_decomposition.csv`) bounds their combined cost and attributes it to neither (limitation L8). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined.
 | `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
 
 800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).
@@ -204,9 +216,26 @@ scaled. `--normalize none` reproduces the raw-unit ablation bit-identically.
 
 **Training.** Six architectures at frozen equal-budget configurations
 (`configs/arch_config.json`, see [`Model_configurations.md`](Model_configurations.md)),
-seeds 0/100/300/700/1000 (NNConv 0/100/300, a compute decision), three arms: within-grid,
-cross-context, leave-one-grid-out. Every final run writes a checkpoint so results are
-replayable without retraining.
+seeds 0/100/300/700/1000 (NNConv 0/100/300, a deliberate and approved compute trade-off,
+Decision 17 / limitation L2), three arms: within-grid, cross-context, leave-one-grid-out.
+NNConv therefore contributes 12 rows per arm where the other five contribute 20 (48 vs 80 in
+the cross-context arm; `results_norm/all_within/within_grid.csv`,
+`all_cross/cross_context.csv`, `all_ood/ood.csv`), which affects every pooled mean and every
+ranking it appears in, and is why the rank correlation has 12 complete (grid, seed) cells of a
+possible 20 — only NNConv's three seeds carry all six architectures. Every final run writes a
+checkpoint so results are replayable without retraining.
+
+**The comparison is six architectures under one recipe tuned elsewhere.** Hyperparameters were
+selected by `tune_budget.py` under the *raw-unit* objective — the script takes no `normalize`
+argument, so the sweep scored candidates in a loss dominated by MW/Mvar — and were
+deliberately **not** re-tuned under `pu_zscore`; re-tuning plus the retraining it would imply
+was declined (limitation L1). So what is measured is six architectures under one recipe chosen
+under a different objective, not six architectures each at its own optimum, and a reported
+number may be slightly worse than an architecture's best achievable under the final objective.
+The reason the effect is expected to be small is an **argument, not evidence**: the procedure
+was identical for all six so it favours none of them, and all six selected the boundary of the
+search grid (hidden = 128, lr = 1e-3) with only depth differing, which is the pattern of a
+criterion that was not discriminating finely.
 
 **Tune once, freeze, then re-run for the reported numbers.** The three splits have
 non-overlapping jobs: weights are fitted on **train** (800), hyperparameters are *chosen*
@@ -242,7 +271,10 @@ initialisation and the batch ordering. It has two roles, and no third one:
   point into a sample, so an architecture gap can be compared against run-to-run noise. It
   also exposes instability that a single run hides — e.g. normalized GCN on IEEE24 scores
   0.00080 / 0.00067 / 0.00079 / 0.00066 / 0.052 at seeds 0/100/300/700/1000; that outlier is
-  a reportable property, not something to seed-select away.
+  a reportable property, not something to seed-select away. It does **not** have a third role:
+  there is one generated dataset and a single data realization, with no resampling, so the seed
+  spread supports no statement about variability over data realizations (L5), and NNConv's
+  spread rests on three seeds rather than five (L2).
 
 A seed is therefore **fixed and disclosed, never tuned**. There is no "best seed": choosing
 the seed per architecture would let any desired ranking be manufactured, and the number
@@ -263,4 +295,4 @@ g-score with its small-N caveat; rank correlations with permutation p-values.
 
 # Summary
 - **Layer 1** answers "does a within-grid-trained GNN transfer to an unseen grid, and by how much?" via a **per-unit-normalized cross-grid NRMSE transfer matrix**, reusing existing models. The g-score here is provisional because there is only one topology per grid.
-- **Layer 2** builds the **distribution of topologies** (contingency re-solves in ENGAGE's pandapower pipeline, optionally informed by PowerGraph-Graph) so the **g-score/MMD generalization study becomes well-posed**, and compares the full architecture zoo apples-to-apples against PowerGraph's within-grid benchmark.
+- **Layer 2** builds the **distribution of topologies** (N-1/N-2 in-service-line outage re-solves in ENGAGE's pandapower pipeline, optionally informed by PowerGraph-Graph; L9) so the **g-score/MMD generalization study becomes well-posed**, and compares the full architecture zoo apples-to-apples against PowerGraph's within-grid benchmark.

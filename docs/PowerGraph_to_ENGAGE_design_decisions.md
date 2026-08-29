@@ -41,6 +41,13 @@ for t in hours:
 - **Route B (real demand):** reproduces the *same operating points PowerGraph used* (same grids + same measured demand curves + AC PF) — this is exactly what PowerGraph's `gendataopf.m` does — but re-expressed in ENGAGE format. It carries realistic load patterns and is faithful to PowerGraph's data.
 - Route B also **reduces the dependency on the `powerdata-gen` submodule** (still empty/unfetchable here): it needs mainly pandapower + ENGAGE's feature code.
 
+**As implemented (narrower than the sketch above):** only **active** demand is written per sample.
+`transmission_graph_gen._apply_demand` sets `net.load.p_mw` from the demand column and leaves
+`q_mvar` at the case's base value, which is what `gendataopf.m` does too (it varies PD only). So
+every "operating-point" or "demand variation" statement in this document and in the results means
+active-demand variation at fixed base-case reactive demand (limitation L6 in
+[`Audit_response.md`](Audit_response.md)).
+
 **Note on ENGAGE synthetic data:** it is **not** "one value per bus per hour for a year." That description applies to PowerGraph's demand time series. ENGAGE synthetic data is a fixed count of independent random snapshots (`n_train/n_val/n_test`), with no chronology.
 
 ---
@@ -51,6 +58,13 @@ for t in hours:
 **Why:**
 - ENGAGE's Cross-Context and OOD experiments are inherently multi-grid (train on some, test on held-out). A single grid can't exercise the g-score / MMD machinery.
 - The four grids span a useful size range (24 / 39 / 29 / 118 buses).
+
+**What this coverage does not isolate:** the four cases differ in scale as much as in structure —
+nominal load 2,850 MW / 24 buses (IEEE24), 6,254 MW / 39 buses (IEEE39), 3,733 MW / 118 buses
+(IEEE118), 56,326 MW / 29 buses (UK), read from the committed `transmission/cases/*.mat` through
+`transmission_grids.load_case`. Size, density and load scale are therefore confounded at n = 4,
+and the leave-one-grid-out arm measures generalization to an unseen **system** (scale + topology +
+Regime B protocol), not isolated topology generalization (limitation L4).
 
 ---
 
@@ -169,6 +183,12 @@ Then filter (drop non-converged / islanded / voltage-violating / overloaded) and
 - N-1/N-k contingency analysis is standard transmission practice, so the perturbed states are physically credible, and removing lines genuinely changes degree/Laplacian descriptors → a real spread of topological distances for the MMD/g-score.
 - **Connectivity/tuning:** reject islanding (or handle islands) and retune disconnection probabilities for meshed transmission (islands less easily than radial distribution); use a range of contingency depths so descriptors spread and `mmd_range` is non-degenerate.
 
+**What was actually executed (narrower than this spec):** the final `data_full_v2` campaign drew
+random N-1/N-2 outages of in-service **lines** only — the optional generator outages sketched
+above were never run, and there are no transformer outages, no busbar splits and no switching
+actions. A draw that islands the network is discarded and resampled rather than modelled. Every
+"N-1/N-k contingency" claim about the results is scoped to that distribution (limitation L9).
+
 ---
 
 ## Decision 11 — Optionally harvest contingencies from PowerGraph-Graph to inform outages
@@ -253,6 +273,13 @@ per model); `gscore_smallN.csv` survives only in the legacy `full_run/results/`.
 ## Decision 17 — NNConv is our own addition, and is replicated at 3 seeds rather than 5
 **Decision:** keep `NNConv` in the comparison, run it at seeds `[0, 100, 300]` instead of `[0, 100, 300, 700, 1000]`, and disclose the reduced replication wherever its numbers appear.
 
+**Consequence to state with every NNConv number:** it contributes 12 rows per arm where the other
+five contribute 20 (48 vs 80 in the cross-context arm; `results_norm/all_within/within_grid.csv`,
+`all_cross/cross_context.csv`, `all_ood/ood.csv`). That affects every pooled mean and every
+ranking NNConv appears in, and it is why only 12 of 20 (grid, seed) cells are complete for the
+rank correlation — the three shared seeds are the only ones carrying all six architectures. This
+is a deliberate, approved compute trade-off (limitation L2), not a missing run.
+
 **Provenance, stated plainly:** PowerGraph's baselines are exactly four — `GCNConv`, `GATConv`, `GINEConv`, `TransformerConv`. `ARMAConv` comes from ENGAGE (via Hansen et al.). **`NNConv` is neither paper's baseline; it is our addition**, included as the most edge-expressive layer available, which is the interesting case for power flow where edge admittances carry the physics. Dropping it would therefore cost no coverage of either source paper — it would cost the edge-expressive end of the architecture axis.
 
 **Why the reduction:** NNConv's edge network emits a full `hidden × hidden` transform **per edge**. At the frozen 2 × 128 that is a 128×128 matrix per edge, making one IEEE118 training ≈ 3 h and the full 60-run programme (within + cross-context + OOD × 5 seeds) ≈ 1.5–2 days wall clock on 8 cores — the pooled-grid OOD arm being most of it. Three seeds keeps a variance estimate at ~60% of the cost. This is a **compute** decision, explicitly approved, not a methodological one, and it is the only architecture with fewer than 5 seeds.
@@ -333,6 +360,14 @@ data and is what makes "unseen operating conditions" defensible. Regime A (`data
 already generated with `--unique_demand` and is unaffected, which is why only Regime B is
 regenerated.
 
+**What the Regime A → Regime B step therefore bundles:** `data_full_v2` differs from `data_a` in
+*two* ways at once — the blocked temporal split above and the line-contingency topologies of
+Decision 10. The `same_grid_factor` of the protocol decomposition
+(1.5-10.5x, `results_norm/analysis/protocol_decomposition.csv`) bounds their combined cost and
+attributes the degradation to neither of them individually (limitation L8); separating them would
+need a split-only and a contingency-only dataset with a retrained campaign on each, which was
+declined.
+
 **Sequencing consequence (why this came before training):** A5 changes the Regime B data, so
 the cross-context and OOD arms had to be trained *after* regeneration, not before —
 otherwise the same six architectures would have been trained twice on those two arms.
@@ -372,7 +407,8 @@ dead reference is indistinguishable from a fabricated one to a reader, which is 
 ## Decision 24 — The g-score is reported as a risk-averse summary, not as a distance-aware ranking; MMD gains an electrical descriptor (audit items A6, A7)
 **Decision:** `μ` and `σ` are the primary transfer numbers and the g-score accompanies them for
 ENGAGE comparability, with the degeneracy stated: `Δ_MMD` is a property of the data, so within an arm
-it is one constant and `g = μ + 0.806σ` (cross-context) or `μ + 0.857σ` (OOD) — verified against all
+it is one constant and `g = μ + 0.806σ` (cross-context) or `μ + 0.857σ` (OOD) in the raw-unit
+campaign, `μ + 0.805σ` and `μ + 0.858σ` in the normalized one — verified against all
 committed rows to 1e-4, with rank-by-g ≡ rank-by-mean (τ = 1.0). For the distance itself, `mmd()` is
 named as the biased V-statistic (with `unbiased=True` available), the per-pair median bandwidth is
 stated, and `mmd_utils.reactance_histogram` adds a `log10(x_pu)` electrical descriptor alongside the
@@ -406,6 +442,17 @@ transfer data would select on the very quantity being measured. The cost is disc
 configuration tuned under fixed topology may be suboptimal under varying topology, so absolute
 Regime B errors are an upper bound on a per-arm-tuned model.
 
+**The objective the selection used is not the objective the campaign reports.** Pass 1 ran under
+the **raw-unit** loss — `tune_budget.py` accepts no `normalize` argument — while the final campaign
+trained with `--normalize pu_zscore` (Decision 20), and re-tuning under the new objective was
+deliberately declined because it would have required retraining everything (limitation L1). The
+comparison the results support is therefore *six architectures under one recipe tuned elsewhere*,
+not *six architectures each at its own optimum*, and a reported number may be slightly worse than
+that architecture's best achievable under `pu_zscore`. Why the effect is expected to be small is
+an **argument, not evidence**: the procedure was identical for all six so it favours none, and all
+six selected the boundary of the search grid (hidden = 128, lr = 1e-3) with only depth differing,
+which is what a weakly discriminating criterion looks like.
+
 On seeds: a seed fixes weight initialisation and batch ordering, and serves exactly two purposes
 — exact reproducibility of a single row (the seed is carried in every result row and every
 checkpoint filename) and a spread over training randomness, so an architecture gap can be judged
@@ -414,7 +461,9 @@ desired ranking be manufactured and would not reproduce elsewhere. Five seeds ma
 (p. 5; ENGAGE does not report its seed count — see `Paper_verification.md` §5), and is small enough
 that fine-grained gaps are not claimed — hence τ per seed and per grid with permutation
 p-values instead of one aggregate ranking. It also captures training randomness only, not the
-uncertainty of the dataset draw. Full statement: the *Final protocol* section of
+uncertainty of the dataset draw: there is one generated dataset per regime, a single data
+realization with no resampling, so the seed spread supports no claim about variability across
+demand or contingency draws (limitation L5). Full statement: the *Final protocol* section of
 `docs/Experimental_Design_transmission_GNN_generalization.md`.
 
 ---
@@ -470,4 +519,4 @@ recomputation over artifacts that already exist.
 ---
 
 ## Summary of the chosen path
-**Two layers.** **Layer 1** corrects `engage_pg` v2's Level-2 probe: harmonize to per-unit normalization, fix the MMD defects, and report a **cross-grid NRMSE transfer matrix** (g-score provisional) using the already-trained models. **Layer 2** is the well-posed study: **Level 1 / Route B, all four grids, Octave-based conversion** (done once in-session and committed as `.mat`, validated against a PowerGraph PF solution), a **distribution of topologies via N-1/N-k contingency re-solves** (`pp.runpp`, optionally informed by PowerGraph-Graph), the full ENGAGE+PowerGraph model zoo (`GCN, ARMA_GNN, GAT, GIN, TRANSFORMER, NNConv`) under ENGAGE's interface, and ENGAGE masking + per-unit + weighted-MSE throughout. This is the most faithful *and* cleanest way to turn PowerGraph's source transmission data into ENGAGE-format datasets and unlock a well-posed cross-grid generalization study across architectures on transmission grids.
+**Two layers.** **Layer 1** corrects `engage_pg` v2's Level-2 probe: harmonize to per-unit normalization, fix the MMD defects, and report a **cross-grid NRMSE transfer matrix** (g-score provisional) using the already-trained models. **Layer 2** is the well-posed study: **Level 1 / Route B, all four grids, Octave-based conversion** (done once in-session and committed as `.mat`, validated against a PowerGraph PF solution), a **distribution of topologies via N-1/N-2 in-service-line outage re-solves** (`pp.runpp`, optionally informed by PowerGraph-Graph; no transformer, generator, busbar or switching actions, islanding discarded — L9), the full ENGAGE+PowerGraph model zoo (`GCN, ARMA_GNN, GAT, GIN, TRANSFORMER, NNConv`) under ENGAGE's interface, and ENGAGE masking + per-unit + weighted-MSE throughout. This is the most faithful *and* cleanest way to turn PowerGraph's source transmission data into ENGAGE-format datasets and unlock a well-posed cross-grid generalization study across architectures on transmission grids.

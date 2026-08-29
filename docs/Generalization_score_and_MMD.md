@@ -22,11 +22,15 @@ score = mean_nrmse + alpha * std_nrmse * log(mmd_range + 1) / mmd_range
 where `mmd_range` is the spread of the topological distances across the test grids
 of an arm, and `mean_nrmse` / `std_nrmse` are that model's mean and standard
 deviation of error over the same grids (after trimming the outer 2% of errors).
+The distances are Laplacian MMDs under the **biased** estimator throughout, that
+being what every committed `mmd_laplacian.csv` / `ood_distance.csv` holds (§2.1).
 
 The decisive point is that **`mmd_range` is a property of the data, not of the
 model.** Every architecture in an arm is evaluated on the same set of grids, so
 every architecture gets the same distance spread. In our runs it is a single
 constant repeated down the column:
+
+Raw-unit campaign, `results/analysis/` (biased Laplacian MMD on `data_full_v2`):
 
 | arm | `mmd_range` | `log(Δ+1)/Δ` | so the score is |
 |---|---|---|---|
@@ -34,12 +38,28 @@ constant repeated down the column:
 | leave-one-grid-out (OOD) | 0.352837 | 0.85651 | `g = μ + 0.857 σ` |
 | cross-context, per train grid (`gscore.csv`) | 0.0 | -- (`Δ = 0`) | `g = μ` exactly |
 
+The normalized campaign reported in
+[`Normalization_results.md`](Normalization_results.md) §4.4 has slightly
+different distances, hence slightly different constants; the structure of the
+argument is identical:
+
+| arm | `mmd_range` | `log(Δ+1)/Δ` | so the score is |
+|---|---|---|---|
+| cross-context (`results_norm/analysis/gscore_cc_aggregate.csv`) | 0.521637 | 0.80475 | `g = μ + 0.805 σ` |
+| leave-one-grid-out (`results_norm/analysis/gscore_ood.csv`) | 0.349052 | 0.85776 | `g = μ + 0.858 σ` |
+
 Verified against the committed artifacts rather than asserted: over all 33
 cross-context and 28 OOD rows in `results/analysis/`, the largest deviation between
 the stored `g_score` and `μ + cσ` with the constants above is **1.0e-4** and
-**3.5e-5** respectively -- i.e. the identity holds to rounding. Ranking the six
-architectures by `g_score` and by `mean_nrmse` gives **Kendall τ = 1.0 in both
-arms**: the MMD machinery does not move a single position.
+**3.5e-5** respectively -- i.e. the identity holds to rounding. In the normalized
+campaign it holds to **1.0e-7** over the 28 cross-context rows with `Δ > 0` and
+**1.3e-7** over the 28 OOD rows (`results_norm/analysis/`; the `dc_pf` rows have
+`Δ = 0` and are excluded, see below). Ranking
+the six architectures by `g_score` and by `mean_nrmse` gives **Kendall τ = 1.0 in
+both arms**: the MMD machinery does not move a single position. (Those six
+per-model averages are over 5 seeds each except nnconv, which ran 3 -- limitation
+L2 -- so nnconv's mean, spread and rank rest on a 40 % smaller sample than every
+other architecture's, here and in every pooled table.)
 
 **Consequence.** With a *fixed* dataset the g-score is a monotone re-expression of
 "mean plus about 0.85 standard deviations". It is a legitimate risk-averse summary
@@ -72,17 +92,33 @@ the U-statistic (within-sample diagonals dropped).
 
 The default remains the biased form, deliberately: every committed result CSV was
 produced with it, and silently changing published numbers is worse than naming the
-estimator correctly. The size of the difference is now measurable in
-`docs/tables/mmd_data_full_v2.csv`, which reports both for all 16 grid pairs:
+estimator correctly. Concretely, **biased** is what
+`results_norm/topology/mmd_degree.csv`, `mmd_laplacian.csv` and
+`ood_distance.csv` hold, and therefore what the `mmd_range` and every g-score in
+`results_norm/analysis/` and in `results/analysis/` are built from; the only
+committed table holding both is `docs/tables/mmd_data_full_v2.csv`, which carries
+an `estimator` column with a `biased` and an `unbiased` row for each of the 16
+grid pairs and all three descriptors:
 
-* different-grid pairs: the two estimators agree to ~0.005 (e.g. IEEE24 -> IEEE39
-  degree MMD 1.0579 biased vs 1.0558 unbiased);
-* same-grid pairs: the bias is the whole value. IEEE39 -> IEEE39 is 0.0713 biased
-  and **0.0000** unbiased -- as it should be, since a distribution's distance from
-  itself is zero and the biased estimator's diagonal self-similarities inflate it.
+* different-grid pairs: the two estimators agree to ~0.005 (IEEE24 -> IEEE39
+  degree MMD **1.0579 biased vs 1.0558 unbiased**; UK -> IEEE24 degree 0.2763 vs
+  0.2762; the mean over different-grid pairs is 0.899 / 0.960 / 1.014 biased and
+  0.897 / 0.958 / 1.011 unbiased for degree / Laplacian / reactance). No
+  cross-grid statement in either document depends on the choice.
+* same-grid pairs: the bias is most or all of the value, i.e. the diagonal is an
+  **estimator artefact**. IEEE39 -> IEEE39 degree is 0.0713 biased and
+  **0.0000** unbiased; IEEE24 -> IEEE24 is 0.0856 biased against 0.0387 unbiased
+  on degree and 0.0671 against **0.0000** on the Laplacian. Averaged over the
+  four same-grid pairs the drop is 0.061 -> 0.010 (degree), 0.055 -> 0.0004
+  (Laplacian) and 0.067 -> 0.010 (reactance). What is left under the unbiased
+  estimator is a train-split vs test-split difference within one grid (the two
+  splits carry different N-k topologies), not a distance between grids; the exact
+  0.0 cells are the U-statistic going negative, since `mmd_utils.mmd` returns
+  `sqrt(max(mmd2, 0))`, i.e. the two splits are not distinguishable at this
+  sample size.
 
-So the bias never affects a cross-grid comparison, but it does mean the *within*-grid
-MMD floor reported anywhere is an artifact of the estimator, not a real distance.
+So the bias never affects a cross-grid comparison, but the *within*-grid MMD floor
+reported anywhere is an artifact of the estimator, not a real distance.
 
 ### 2.2 The bandwidth is refit per pair
 
@@ -108,21 +144,26 @@ reported alongside the topological ones, not instead of them, and
 identical topology gives degree/Laplacian MMD of 0.0 and reactance MMD of 1.12,
 while a ring-vs-star change at identical impedance gives the reverse.
 
-On the real data (`data_full_v2`, train split vs test split, biased estimator):
+On the real data (`docs/tables/mmd_data_full_v2.csv`, `data_full_v2`, train split
+vs test split), with the **biased** estimator that every result CSV uses and the
+**unbiased** one alongside it:
 
-| | degree | Laplacian | reactance |
-|---|---:|---:|---:|
-| mean over same-grid pairs | 0.061 | 0.055 | 0.067 |
-| mean over different-grid pairs | 0.899 | 0.960 | 1.014 |
+| estimator | | degree | Laplacian | reactance |
+|---|---|---:|---:|---:|
+| biased | mean over same-grid pairs | 0.061 | 0.055 | 0.067 |
+| biased | mean over different-grid pairs | 0.899 | 0.960 | 1.014 |
+| unbiased | mean over same-grid pairs | 0.010 | 0.0004 | 0.010 |
+| unbiased | mean over different-grid pairs | 0.897 | 0.958 | 1.011 |
 
 The gap between the diagonal and the off-diagonal is what makes the arm labels
 meaningful, and it is present under all three descriptors -- our "unseen grid" is
 genuinely far from the training grids however the distance is measured.
 
 The interesting disagreement is per pair. UK -> IEEE24 has a degree MMD of only
-**0.276** -- the lowest off-diagonal value in the matrix, because the dense UK
-network has a degree profile not unlike the small IEEE24 -- while its reactance MMD
-is **0.833**. A purely topological reading would call that pair "nearly
+**0.276** (biased; 0.276 unbiased) -- the lowest off-diagonal value in the matrix,
+because the dense UK network has a degree profile not unlike the small IEEE24 --
+while its reactance MMD is **0.833** (biased; 0.828 unbiased).
+A purely topological reading would call that pair "nearly
 in-distribution"; electrically it is not. This is the concrete reason the g-score's
 distance axis should not be treated as a measure of how hard a transfer is.
 

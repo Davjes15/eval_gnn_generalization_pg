@@ -54,6 +54,17 @@ Three dataset directories exist and they are not interchangeable.
 | `data_full` | B (transfer) | k <= 2, random time sampling | **superseded** -- shared demand snapshots across splits (A5) |
 | `data_full_v2` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
 
+What varies across samples in all three is **active** demand only: `_apply_demand` in
+`transmission_graph_gen.py` writes `net.load.p_mw` and leaves `q_mvar` at the case's base
+value, mirroring PowerGraph's `gendataopf.m` (limitation L6 in
+[`Audit_response.md`](Audit_response.md)). `k <= 2` means random N-1/N-2 outages of in-service
+**lines** only -- no transformer outages, no generator outages, no busbar splits, no switching
+actions, and a draw that islands the network is rejected and resampled rather than modelled
+(L9). `data_full_v2` also changes the split from `data_a`: it differs from Regime A in the
+blocked temporal split **and** the contingencies at once, which is why the `same_grid_factor`
+in `results_norm/analysis/protocol_decomposition.csv` (1.5-10.5x) bounds the two jointly and
+attributes the degradation to neither (L8).
+
 Regeneration commands:
 
 ```bash
@@ -116,8 +127,19 @@ numbers; use the saved checkpoints (§4) for the exact numbers.
 Configurations are frozen in `configs/arch_config.json` (selection evidence:
 `results_a/*/tuning.csv`, `tuning_summary.csv`, `tuning_per_grid_argmin.csv`,
 rationale in `docs/Model_configurations.md`). Seeds are `0 100 300 700 1000` for
-every architecture except NNConv, which has `0 100 300` (documented asymmetry;
-A8).
+every architecture except NNConv, which has `0 100 300` -- a deliberate, approved compute
+trade-off, not a missing run (limitation L2). NNConv therefore contributes 12 rows per arm
+where the other five contribute 20 (48 vs 80 for cross-context), which affects every pooled
+mean and every ranking it appears in and is why only 12 of 20 (grid, seed) cells are complete
+for the rank correlation. The seeds themselves vary training randomness only -- weight init and
+batch order over a single generated dataset -- so their spread supports no claim about
+variability across demand or contingency draws (L5).
+
+The configurations being frozen also fixes what the architecture comparison can say: they were
+selected by `tune_budget.py` under the **raw-unit** objective (the script has no `normalize`
+argument) and were deliberately not re-tuned under `pu_zscore`, so the campaign compares six
+architectures under one recipe tuned elsewhere, not six architectures each at its own optimum
+(L1).
 
 The final normalized campaign is one script:
 
@@ -355,13 +377,18 @@ python -m flake8 .
 
 Stated because it cannot be fixed by tooling:
 
-* **One data-generation realization.** Seeds vary training initialization only.
+* **One data-generation realization** (L5). Seeds vary training initialization only.
   There is no second dataset draw, so every error bar understates total
   uncertainty -- the contingency and demand sampling contribute variance that is
   nowhere measured.
-* **Four grids.** n = 4 with size, density and load scale confounded. This bounds
-  what the rank correlations and the g-score can support (A6, A8).
-* **NNConv has three seeds, not five**, while being the highest-variance model.
+* **Four grids.** n = 4 with size, density and load scale confounded -- 2,850 MW / 24 buses
+  (IEEE24), 6,254 MW / 39 buses (IEEE39), 3,733 MW / 118 buses (IEEE118), 56,326 MW / 29 buses
+  (UK), read from `transmission/cases/*.mat` via `transmission_grids.load_case`. This bounds
+  what the rank correlations and the g-score can support (A6, A8, L4), and it is why the
+  leave-one-grid-out arm measures transfer to an unseen *system* rather than isolated topology
+  transfer.
+* **NNConv has three seeds, not five** (L2, a compute trade-off), while being the
+  highest-variance model.
 * **CPU determinism only.** Runs are reproducible on the same platform with the
   pinned versions; torch does not promise bit-identical results across versions or
   hardware, so replay-from-checkpoint is the stronger of the two paths.

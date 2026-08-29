@@ -26,6 +26,18 @@ topologies and unseen grids** (cross-context transfer + leave-one-grid-out),
 reporting per-quantity errors (P, Q, V, θ), a DC-power-flow baseline, and a
 topological-distance-aware g-score (NRMSE vs. MMD).
 
+Three scoping clauses belong with that paragraph rather than in the caveat list at the end
+(limitations L4, L6, L9 in [`Audit_response.md`](Audit_response.md)). The sampled contingencies
+are random N-1/N-2 outages of in-service **lines** only: no transformer outages, no generator
+outages, no busbar splits, no switching actions, and a draw that islands the network is
+discarded rather than modelled. Only **active** demand varies across samples; reactive demand
+stays at each case's base value (`transmission_graph_gen._apply_demand` writes `p_mw` only),
+mirroring `gendataopf.m`. And the four grids differ in scale as well as structure — nominal load
+2,850 MW / 24 buses (IEEE24), 6,254 MW / 39 buses (IEEE39), 3,733 MW / 118 buses (IEEE118),
+56,326 MW / 29 buses (UK), from `transmission/cases/*.mat` via `transmission_grids.load_case` —
+so leave-one-grid-out measures generalization to an unseen **system** (scale + topology +
+protocol), not isolated topology generalization.
+
 ---
 
 ## 2. Flow diagram
@@ -44,8 +56,8 @@ flowchart TD
     subgraph S3["Step 3 — Data generation (transmission_graph_gen.py)"]
         B1 --> C1{"for each sample"}
         B2 --> C1
-        C1 --> C2["apply demand snapshot t"]
-        C2 --> C3["sample contingency<br/>random N-k  OR  harvested (Step 7)"]
+        C1 --> C2["apply ACTIVE demand snapshot t<br/>(q_mvar left at base case)"]
+        C2 --> C3["sample LINE contingency<br/>random N-k  OR  harvested (Step 7)"]
         C3 --> C4["reject islanding<br/>(topology.create_nxgraph)"]
         C4 --> C5["pp.runpp (AC PF)<br/>or pp.runopp (OPF)"]
         C5 --> C6["voltage-sanity filter<br/>0.8 <= vm <= 1.2, converged"]
@@ -93,7 +105,7 @@ flowchart TD
 ### 3.1 Why regenerate rather than reuse PowerGraph's tensors
 AC power flow is deterministic physics: an outage changes the admittance matrix
 and therefore the solution at **every** bus. PowerGraph-Node's published tensors
-are a *single fixed topology* per grid (only demand varies), so they cannot
+are a *single fixed topology* per grid (only active demand varies), so they cannot
 supply the **topology distribution** that MMD and the g-score need. We therefore
 replicate PowerGraph's `gendataopf.m` idea (load model → set demand → solve) in
 Python, and add topology perturbation + re-solve.
@@ -242,7 +254,14 @@ re-injection. Each subclass only implements the message-passing stack `_mp`:
 
 Depths and widths above are the **tuned, frozen** values in
 `configs/arch_config.json` (all at hidden = 128, lr = 1e-3); selection evidence and
-parameter counts are in `docs/Model_configurations.md`. ARMA's softplus is not
+parameter counts are in `docs/Model_configurations.md`. That tuning used the **raw-unit**
+objective — `tune_budget.py` takes no `normalize` argument — and the configurations were
+deliberately not re-tuned for the final `pu_zscore` campaign (limitation L1). What this report
+compares is therefore six architectures under one recipe tuned elsewhere, not six architectures
+each at its own optimum. The reason the effect is expected to be small is an *argument*, not
+evidence: the procedure was identical for all six, and all six selected the boundary of the
+search grid (hidden = 128, lr = 1e-3) with only depth differing, which is the signature of a
+criterion that discriminated weakly. ARMA's softplus is not
 cosmetic — a negative learned edge weight makes `ARMAConv`'s symmetric
 normalization take the square root of a negative number and the run diverges
 (Decision 16).
@@ -296,6 +315,13 @@ python3 experiments.py --experiment both --data_dir data_full_v2 --out results \
     --epochs 200 --normalize pu_zscore --arch_config configs/arch_config.json \
     --seeds 0 100 300 700 1000 --save_models models
 ```
+NNConv is the exception to that seed list: it ran `--seeds 0 100 300`, a deliberate and approved
+compute trade-off (limitation L2). It therefore contributes 12 rows per arm where the other five
+contribute 20 (48 vs 80 for cross-context; `results_norm/all_*/*.csv`), which affects every
+pooled mean and every ranking it appears in and is why only 12 of 20 (grid, seed) cells are
+complete for the rank correlation. Seeds vary training randomness only — weight init and batch
+order over one generated dataset, with no resampling — so the error bars they produce say
+nothing about variability across demand or contingency draws (L5).
 Then replay the saved weights for the physics-aware report, without retraining:
 ```bash
 python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a \
@@ -388,7 +414,11 @@ Relevant CLI flags:
   fixed in Decision 16 and no longer observed. Kept here because the superseded
   tables in `full_run/results/` still show it.
 - `gin`/`nnconv`/`transformer` transfer *from* IEEE118 to small grids is unstable
-  (large NRMSE) — expected for out-of-distribution structural transfer.
+  (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
+  scale as much as structure (L4).
+- The Regime A → Regime B step changes the temporal split **and** the topology at once, so the
+  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` (1.5-10.5x) bounds
+  the two jointly and attributes the degradation to neither (L8).
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
   P/Q/θ alongside V rather than the aggregate alone. Under `--normalize none` this
   was not only a reading hazard but a training defect — V carried ~5e-8 of the

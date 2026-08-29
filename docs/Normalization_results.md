@@ -88,6 +88,73 @@ cross-grid confound".
 All numbers from `results_norm/analysis/` (`rank_analysis.py` +
 `recompute_tables.py`), aggregate NRMSE in physical units, mean over seeds.
 
+### 4.0 What each table averages over
+
+Four of the tables below share a quantity with another committed table but not
+its population, so the bases are defined once here and named again at each
+table. Nothing in this subsection changes a computed value.
+
+**Seed count.** Every architecture contributes 20 rows per arm and per grid-seed
+cell (4 grids x 5 seeds; 80 ordered train->test rows in the cross-context table,
+60 of them unseen) except **nnconv**, which ran seeds 0/100/300 only as a compute
+trade-off (limitation L2) and contributes 12 (48 cross-context rows, 36 unseen).
+Every pooled mean and every ranking below therefore rests on a 40 % smaller
+sample for that one architecture, and its seed spread is estimated from 3 points.
+
+**The void-the-cell rule (audit D1).** A non-finite transfer error is not a
+measurement, so it is not averaged: the whole `(arm, model, train_grid, seed)`
+group containing it is voided and excluded. Averaging the pairs that did survive
+would report the run as *better* than runs that never broke down, because the
+pairs that diverge are the hard ones. `rank_analysis.load_arms`,
+`training_utils.gscore_row` and `summarize_feasibility.valid_mask` implement the
+same rule, and what it dropped is kept in the `n_voided` column of
+`docs/tables/ac_feasibility_norm.csv` and the `finite_rate` column of
+`gscore_cc_aggregate.csv`. Only GCN triggers it (2 non-finite rows, §4bis).
+Which table applies it:
+
+| table | void rule | effect on GCN cross-context |
+|---|---|---|
+| `ranking_table.csv` (§4.1), `protocol_decomposition.csv` | applied, unit = (model, train grid, seed) group of 3 unseen pairs | 2 of GCN's 20 groups voided; the mean is over the remaining 18, while the table's `n = 20` counts the groups before voiding |
+| `gscore_cc_aggregate.csv` (§4.4) | applied, unit = (model, seed) cell of 12 unseen pairs | seed 1000 voided whole; the mean is over the remaining 4 seeds (`finite_rate` 0.97) |
+| `ac_feasibility_norm.csv` (§4.6) | applied, unit = (arm, model, train grid, seed) group | 6 of 60 unseen-grid rows dropped (`n_voided = 6`) |
+| `per_quantity.csv`, `dc_comparison.csv` (§4.2, §4.3) | **not** applied: non-finite values are dropped row by row and counted in `nrmse_n_nonfinite` | 1-2 of GCN's 80 rows dropped, depending on the quantity |
+| `physics_summary_norm.csv` (§4.5) | **not** applied: the 2 non-finite rows are dropped row by row | GCN's cross row reports `n = 78` of 80 |
+
+So GCN's cross-context aggregate NRMSE is **1.058** in §4.1 and **1.145** in
+§4.4. Both are correct and neither supersedes the other: 1.058 is the mean over
+the 18 surviving groups, 1.145 the mean over the 4 complete seeds. The gap is
+not noise -- seed 1000's 10 surviving pairs average 0.516 against 0.90-1.44 for
+the four complete seeds (`gscore_cc_aggregate.csv`), so what the group void
+removes is GCN's most favourable partial cell. The same rule moved GCN's
+unseen-grid AC residual in §4.6 from 5,825 % of served load (mean over all 60
+rows) to **4,769 %** (mean over the 54 rows of the four surviving seeds,
+`ac_feasibility_norm.csv`).
+
+**All target entries vs predicted entries only.** `models.py::inference`
+re-injects the values a bus type fixes (V and theta at the slack bus, P and V at
+a PV bus, P and Q at a PQ bus), so those entries are exact by construction.
+`training_utils.nrmse_per_quantity` scores **all** target entries, including the
+re-injected ones, and feeds `per_quantity.csv` and `dc_comparison.csv` (§4.2,
+§4.3); `physics_metrics.predicted_only_metrics` masks to the two columns each
+bus type actually predicts (`PREDICTED_COLUMNS`) and feeds
+`physics_summary_norm.csv` (§4.5). Because only one bus in a case is the slack,
+the all-entry P error of a 24-bus grid is diluted by 23 exact entries out of 24:
+ARMA's within-grid P NRMSE is **2.1e-4** all-entries (`dc_comparison.csv`) and
+**3.5e-3** predicted-only (`physics_summary_norm.csv`), a factor of ~17. The
+re-injection flatters every architecture in the same way, so it does not change
+an ordering, but predicted-only is the honest basis and is the one the main text
+quotes; the all-entry tables are labelled as such where they appear.
+
+**12 complete cells vs 20 cells.** A Kendall tau over six architectures needs
+all six present in the (grid, seed) cell. There are 4 x 5 = 20 cells, and
+nnconv ran 3 seeds (L2), so only 4 x 3 = **12** cells are complete.
+`rank_permutation_test.csv` uses those 12 and is the headline statistic;
+`rank_correlation_summary.csv` averages all 20, the 8 nnconv-free ones being
+five-architecture taus, and is reported as the all-cells average. The two are
+not interchangeable: a mean taken over cells of different width has no single
+permutation null, which is why the exact test drops the incomplete cells
+(`rank_analysis.permutation_test`).
+
 ### 4.1 Ranking per arm
 
 Regime A and Regime B differ in **two** ways at once: Regime B uses a harder
@@ -114,8 +181,15 @@ other training items (limitation L8).
 | 5 | nnconv 0.0040 | nnconv 0.0089 | gat 1.105 | gcn 1.043 |
 | 6 | gcn 0.0100 | gcn 0.0155 | nnconv 1.985 | nnconv 3.410 |
 
+Population (`ranking_table.csv`, aggregate NRMSE): one point per (model, grid,
+seed), the cross-context column over **unseen** pairs only; void rule
+**applied**, so GCN's 1.058 is the mean over 18 of its 20 groups (§4.0 -- the
+complete-seed mean of the same quantity is 1.145 in §4.4); nnconv's column
+entries are means and ranks over 12 rows where every other architecture has 20.
+
 Decomposed as multiplicative factors (`protocol_decomposition.csv`, aggregate
-NRMSE):
+NRMSE, same population and same void rule as the table above, so nnconv's two
+factors also rest on 3 seeds):
 
 | model | same-grid step (A → diagonal) | grid step (diagonal → cross-context) | total |
 |---|---:|---:|---:|
@@ -133,13 +207,23 @@ that the raw A → unseen ratio suggests.
 
 **Where the ranking survives and where it breaks.** Kendall tau per (grid, seed)
 cell, averaged, with an exact permutation null over all 720 architecture
-relabellings (`rank_correlation_summary.csv`, `rank_permutation_test.csv`):
+relabellings. The headline columns are the **12 complete cells** — the cells in
+which all six architectures have a seed, i.e. 4 grids × the 3 seeds nnconv was
+run at (§4.0); the last column is the average over **all 20 cells**, where the 8
+cells without nnconv contribute a five-architecture tau and no permutation p is
+defined:
 
-| comparison | mean tau ± sd | permutation p |
-|---|---|---:|
-| A → Regime B diagonal | **0.663 ± 0.206** | **0.004** |
-| A → cross-context | 0.067 ± 0.369 | 0.72 |
-| A → OOD | 0.020 ± 0.380 | 1.00 |
+| comparison | 12-cell mean tau | permutation p (12 cells) | all-cells mean tau ± sd (20 cells) |
+|---|---:|---:|---:|
+| A → Regime B diagonal | **0.622** | **0.004** | 0.663 ± 0.206 |
+| A → cross-context | 0.067 | 0.72 | 0.023 ± 0.369 |
+| A → OOD | 0.000 | 1.00 | 0.020 ± 0.380 |
+
+12-cell columns from `rank_permutation_test.csv` (`observed_mean_tau`,
+`p_value`, aggregate NRMSE; the A → OOD value is -9.3e-18, i.e. exactly zero to
+floating point). All-cells column from `rank_correlation_summary.csv`
+(`tau_mean`, `tau_sd`). The two populations agree on the conclusion and differ
+by less than a third of one cell's spread.
 
 The fixed-topology leaderboard **does** survive a harder protocol on the same
 grid, and stops predicting anything once the grid changes. That contrast is the
@@ -151,9 +235,11 @@ grid-specific".
 pooled mean error gives tau = 0.60 (A vs cross-context) and 0.20 (A vs OOD)
 (`rank_correlation_pooled.csv`) — visibly not zero. There is no contradiction:
 the pooled leaderboard is one ordering of six averages, dominated by the extremes
-(ARMA good, NNConv bad, and those hold everywhere), while the per-cell tau asks
-whether that ordering reproduces in an individual grid × seed environment, and it
-does not — cells range from -0.73 to +0.87.
+(ARMA good, NNConv bad, and those hold everywhere — NNConv's average being over 3
+seeds rather than 5), while the per-cell tau asks whether that ordering reproduces
+in an individual grid × seed environment, and it does not — cells range from -0.73
+to +0.87 over the three metrics (-0.67 to +0.87 for aggregate NRMSE,
+`rank_correlation_summary.csv`).
 
 The defensible claim is therefore **rank instability**, not zero correlation. A
 permutation p of 1.00 says the data are consistent with random relabelling; it is
@@ -166,7 +252,20 @@ that leaderboard do tend to stay extreme.
 The 12 cells are 4 grids × the 3 seeds NNConv was run at. The earlier raw-unit
 reading (A ↔ OOD tau = 0.222, p = 0.21) does not survive the final protocol.
 
-### 4.2 Per quantity (NRMSE, mean over seeds)
+### 4.2 Per quantity (NRMSE, **all target entries**, mean over seeds)
+
+Basis (`per_quantity.csv`): every target entry is scored, including the values
+`models.py::inference` re-injects because the bus type fixes them, so these
+numbers are ~17× smaller than the predicted-only ones in §4.5 (§4.0) — read them
+for the cross-quantity and cross-model *pattern*, and §4.5 for the magnitude of
+what the model itself gets wrong. Two further population notes: the
+cross-context column averages all 80 ordered train→test rows per model, unseen
+**and** same-grid diagonal, so it is not the unseen-only cross-context arm of
+§4.1 (ARMA's aggregate NRMSE is 0.617 over all 80 pairs, `dc_comparison.csv`,
+against 0.821 over the 60 unseen ones, `ranking_table.csv`);
+and the void rule is not applied here, non-finite values being dropped row by
+row and counted in `nrmse_n_nonfinite`. nnconv's row is over 12 rows per arm (48
+cross-context) against 20 (80) for the others.
 
 | model | A: P / Q / V / θ | cross-context: P / Q / V / θ | OOD: P / Q / V / θ |
 |---|---|---|---|
@@ -189,10 +288,13 @@ aggregation makes it sensitive to the degree distribution of an unseen grid, and
 the aggregate NRMSE hides that entirely — the argument for reporting the four
 quantities separately.
 
-### 4.3 Against the DC baseline
+### 4.3 Against the DC baseline (**all target entries**)
 
 Ratio GNN / DC on the three quantities DC solves (P, V, θ); < 1 means the GNN
-wins:
+wins. Basis (`dc_comparison.csv`, `quantity = PVtheta`): the same all-entry
+basis and the same all-pairs cross-context population as §4.2, on both sides of
+the ratio, so the ratio itself is consistent even though each side is diluted by
+the re-injected entries; nnconv again over 12 rows per arm rather than 20:
 
 | model | Regime A | cross-context | OOD |
 |---|---|---|---|
@@ -208,10 +310,19 @@ grid every architecture is beaten by DC power flow by 12–87×, and DC needs no
 training data. Any deployment claim for a trained GNN on a grid it has not seen
 has to clear this bar first.
 
-### 4.4 g-scores
+### 4.4 g-scores (**complete seeds only, void rule applied**)
 
-Cross-context aggregate (`mean + 0.806 sd`) and OOD (`mean + 0.857 sd`), averaged
-over the seeds whose cell is complete:
+Cross-context aggregate (`mean + 0.805 sd`) and OOD (`mean + 0.858 sd`), averaged
+over the seeds whose cell is complete. The two constants are `log(Δ+1)/Δ` at this
+campaign's `mmd_range` (Δ = 0.5216 cross-context, 0.3491 OOD, from
+`gscore_cc_aggregate.csv` / `gscore_ood.csv`; the identity `g = mean + c·sd`
+holds to 1.3e-7 across those files' rows with `Δ > 0`),
+and they are computed from the **biased** MMD estimator — see
+[`Generalization_score_and_MMD.md`](Generalization_score_and_MMD.md) §1-2.
+Population: the cc columns are means over the (model, seed) cells of 12 unseen
+pairs in which every pair is finite — GCN's are over its 4 complete seeds, which
+is why its cc mean is 1.145 here and 1.058 in §4.1 (§4.0) — and nnconv's are over
+3 seeds where the other architectures have 5:
 
 | model | cc mean | cc sd | cc g | finite rate | OOD mean | OOD g |
 |---|---|---|---|---|---|---|
@@ -249,8 +360,14 @@ a distance-aware metric.
 
 Every one of the 336 checkpoints was replayed with `eval_checkpoints.py`, scoring
 **only the entries a model actually predicts** (the known bus-type values are
-re-injected, so including them would flatter every model equally).
-`docs/tables/physics_summary_norm.csv`, means over runs:
+re-injected, so including them would flatter every model equally: the all-entry
+form of the same quantity is ~17× smaller, §4.0 and §4.2). This predicted-only
+basis is the one the main text quotes.
+`docs/tables/physics_summary_norm.csv`, means over runs; `n` there is the row
+count behind each mean — 20 per architecture within-grid and OOD, 80
+cross-context, 12 and 48 for nnconv, and 78 for GCN cross-context, because this
+is the one table where the two non-finite rows are dropped row by row instead of
+voiding their whole group (§4.0):
 
 | arm | model | P | Q | V | θ | MAE V [p.u.] | p99 V | V-violation rate true / predicted | false alarms |
 |---|---|---|---|---|---|---|---|---|---|
@@ -316,9 +433,15 @@ non-finite is **voided here as it is in the ranking** — `feasibility_metrics`
 averages over buses with `nanmean` and would otherwise report a finite residual
 for a run that produced no answer, so the two diverged GCN cross-context cells
 (seed 1000, `IEEE118→IEEE24` and `IEEE39→IEEE118`) no longer enter any mean, and
-the count of dropped rows is the `n_voided` column of the CSV. And the
+the count of dropped rows is the `n_voided` column of the CSV (6 of GCN's 60
+unseen-grid rows: the void takes the whole group, not only the 2 rows that
+diverged, which is what moved that mean from 5,825 % to 4,769 % of served load,
+§4.0). And the
 distribution is heavy-tailed, so the CSV also carries a median and a max of the
-two residual columns; read the median as typical, not the mean:
+two residual columns; read the median as typical, not the mean. Population: void
+rule applied throughout the table (`n_rows`, `n_voided`), and every model row is a
+mean over 20 checkpoints per within / diagonal / OOD setting and 60 unseen-grid
+ones, except nnconv's 12 and 36 and GCN's voided 18 and 54 (§4.0):
 
 | setting | model | dP [% load] | dQ [% load] | max loading pred / true | overloads true / predicted | missed | false alarms |
 |---|---|---:|---:|---|---|---:|---:|
