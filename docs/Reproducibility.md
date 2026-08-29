@@ -61,7 +61,7 @@ Regeneration commands:
 python transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
 
-# Regime B -- N-1/N-2 contingencies, blocked temporal split (A5)
+# Regime B -- random N-1/N-2 line outages, blocked temporal split (A5)
 python transmission_graph_gen.py --grid all --max_k 2 \
     --time_split blocked \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
@@ -212,6 +212,13 @@ python summarize_feasibility.py \
     --baselines results_norm/physics/dc_feasibility.csv \
     --out docs/tables/ac_feasibility_norm.csv
 ```
+
+The summary drops any (arm, model, train grid, seed) group in which a checkpoint
+gave a non-finite error, under the same void-the-cell rule as the ranking, and
+records how many rows that cost in `n_voided` next to `n_rows` (audit D1); a cell
+whose every row was voided appears as NaN rather than as a mean. Both residual
+columns also carry a `_median` and a `_max`, and the median is the one to read as
+typical -- the unseen-grid distribution is heavy-tailed (audit D2).
 
 The replay re-fits the scaler exactly as training did -- train split of that grid
 for the within-grid and cross-context arms, pooled train splits of the three

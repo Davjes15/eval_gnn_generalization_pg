@@ -184,7 +184,7 @@ from the external audit (see [`Audit_response.md`](Audit_response.md)).
 | dataset | regime | topology | demand split | role |
 |---|---|---|---|---|
 | `data_a` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
-| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k, islanding rejected | `--time_split blocked` (disjoint contiguous windows, one-day gap) | cross-context + leave-one-grid-out |
+| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers are never taken out; limitation L9), islanding rejected | `--time_split blocked` (disjoint contiguous windows, one-day gap) | cross-context + leave-one-grid-out |
 | `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
 
 800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).

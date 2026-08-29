@@ -25,7 +25,7 @@
 
 This report interprets the **full run**: 4 grids (IEEE24, IEEE39, IEEE118, UK),
 800/100/100 train/val/test graphs per grid (4,000 graphs total, each = a demand
-snapshot + a random N-1/N-2 contingency, AC-re-solved with pandapower), 6
+snapshot + a random N-1/N-2 line outage, AC-re-solved with pandapower), 6
 architectures (`gcn`, `arma_gnn`, `gat`, `gin`, `transformer`, `nnconv`), 200
 epochs with early stopping. Metrics are range-normalized NRMSE (ENGAGE
 `nrmse_range`), reported aggregate **and** per quantity (P, Q, V, θ). Raw numbers

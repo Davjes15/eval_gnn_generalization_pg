@@ -271,7 +271,7 @@ transfer arm, and they are generated with different protocols.
 python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
 
-# Regime B -- N-1/N-2 contingencies, disjoint blocked demand windows (A5)
+# Regime B -- random N-1/N-2 LINE outages, disjoint blocked demand windows (A5)
 python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
 ```

@@ -501,3 +501,38 @@ instead of the intact topology. `same_grid_factor` therefore bounds their combin
 attributes it to neither. Isolating them needs two further datasets (blocked-split-only and
 contingencies-only) and a retrained campaign on each, which was declined along with the other
 training items.
+
+---
+
+## Fourth audit (verification pass) — D1–D4
+
+The fourth report re-verified C1–C6 and closed all six. It raised three minor findings, all
+correct and all handled here; none required retraining.
+
+| # | Finding | Verdict | What closes it |
+|---|---|---|---|
+| D1 | The void-the-cell policy (B5) is not applied to the feasibility table: the two GCN cross-context cells with a non-finite NRMSE still report finite `ac_*` values, because `feasibility_metrics` averages over buses with `nanmean`, and they are averaged into `cc_unseen` | correct | `summarize_feasibility.valid_mask` applies the ranking's rule — the whole (arm, model, train grid, seed) group is voided — and the table carries `n_rows` / `n_voided`, so a cell whose every row was voided is reported as NaN with its count rather than as a mean |
+| D2 | Means only; `cc_unseen`'s mean residual is driven by GIN, so the aggregate reads as typical | correct | the table adds a median and a max of both residual columns; §4.6 quotes the unseen-grid median (4,323 % of load) against the mean (8,174 %) and names GIN as the cause |
+| D3 | `build_case` assumes the post-contingency network stays connected and raises `IndexError` otherwise; unreachable through the pipeline but undocumented | correct | `build_case` states the precondition and rejects an islanding outage with a `ValueError` naming it, with a regression test on the radial IEEE24 line |
+
+Effect on reported numbers: D1 moves only the settings that contained the two voided GCN rows —
+Regime B same-grid `dP` 380 → 354 % of load, unseen-grid GCN 5,825 → 4,769 % — and leaves every
+other row unchanged. D2 and D3 change no reported value.
+
+Two notes on the report's own framing:
+
+* **D3 is unreachable for a stronger reason than given.** The generator does reject islanding
+  before solving, but the default sampler also only ever removes **lines**: `dataset_src.csv`
+  contains no transformer outage in either regime, and the 9-of-11 islanding transformer outages
+  on IEEE39 are therefore unreachable twice over. (One of those 9 raises an `AttributeError` on
+  the Ybus rather than an `IndexError`; both are now the same `ValueError`.)
+* **Contingency wording.** Several documents said "N-1/N-2 contingencies" where the sampler
+  draws random N-1/N-2 **line** outages; transformer outages are supported by the harvest path
+  (`contingency_harvest.py`) but were not used. The wording is now explicit wherever the datasets
+  are described. This narrows the topology distribution the results speak to and is recorded as
+  **L9**.
+
+**L9 — the topology distribution is line outages only.** Regime B's contingencies are random
+N-1/N-2 outages of in-service *lines*; transformer and generator outages, busbar splits and
+switching actions do not appear, and islanding cases are discarded rather than modelled as
+separated systems. Transformers are covered by the thermal screen (C4) but never taken out.

@@ -310,7 +310,15 @@ the **true** states have a residual of at most 2.8e-2 MW, so anything above that
 is the model's, not the checker's.
 
 Means over runs; `dP` is the summed absolute bus mismatch as a percentage of the
-snapshot's served load, which is the only cross-grid comparable form:
+snapshot's served load, which is the only cross-grid comparable form. Two policy
+points from the fourth audit (D1, D2): a checkpoint whose transfer error is
+non-finite is **voided here as it is in the ranking** — `feasibility_metrics`
+averages over buses with `nanmean` and would otherwise report a finite residual
+for a run that produced no answer, so the two diverged GCN cross-context cells
+(seed 1000, `IEEE118→IEEE24` and `IEEE39→IEEE118`) no longer enter any mean, and
+the count of dropped rows is the `n_voided` column of the CSV. And the
+distribution is heavy-tailed, so the CSV also carries a median and a max of the
+two residual columns; read the median as typical, not the mean:
 
 | setting | model | dP [% load] | dQ [% load] | max loading pred / true | overloads true / predicted | missed | false alarms |
 |---|---|---:|---:|---|---|---:|---:|
@@ -322,10 +330,16 @@ snapshot's served load, which is the only cross-grid comparable form:
 | within | gcn | 330 | 83 | 913 % / 364 % | 0.136 / 0.180 | 0.091 | 0.068 |
 | **DC power flow** (Regime B) | dc_pf | 34 | 159 | 333 % / 409 % | 0.126 / 0.113 | 0.126 | 0.005 |
 | Regime B, same grid | arma_gnn | 120 | 37 | 560 % / 409 % | 0.126 / 0.139 | 0.107 | 0.029 |
-| Regime B, same grid | gcn | 380 | 137 | 1,822 % / 409 % | 0.126 / 0.188 | 0.215 | 0.097 |
+| Regime B, same grid | gcn | 354 | 142 | 1,846 % / 392 % | 0.121 / 0.176 | 0.220 | 0.086 |
 | unseen grid | arma_gnn | 3,984 | 7,086 | 6,680 % / 409 % | 0.126 / 0.702 | 0.232 | 0.695 |
 | unseen grid | gin | 24,412 | 132,972 | 20,156 % / 409 % | 0.126 / 0.791 | 0.164 | 0.787 |
 | OOD | transformer | 3,951 | 8,673 | 7,231 % / 409 % | 0.126 / 0.768 | 0.216 | 0.764 |
+
+How much the mean overstates the typical case: on an unseen grid the mean `dP` is
+8,174 % of load across all models but the median is 4,323 %, and the gap is
+almost entirely GIN (mean 24,412 %, median 4,214 %, worst single run 393,485 %) —
+every other architecture's mean is within 14 % of its own median. The
+single-worst run in the whole replay is a GIN OOD fold at 303,891 %.
 
 The true column is not a formality: **the source OPF snapshots are not themselves
 thermally secure** — 13–14 % of branch-samples exceed their rating in the labels,

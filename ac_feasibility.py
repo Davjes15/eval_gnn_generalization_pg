@@ -156,12 +156,25 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
 
     A power flow is solved once here only to populate pandapower's internal ppc;
     the demand used is irrelevant to everything the case stores.
+
+    The post-contingency network must stay connected. pandapower drops islanded
+    buses from the internal ppc, which shifts `_pd2ppc_lookups["bus"]` out of
+    range of the arrays built from it below, so an islanding outage is rejected
+    here rather than producing a misaligned case or an opaque `IndexError`. The
+    generator applies the same test before it solves and keeps a sample only if
+    it passes (`transmission_graph_gen._is_connected`), so every outage recorded
+    in a `dataset_src.csv` is admissible; the check matters for callers that
+    supply their own outage list.
     """
-    from transmission_graph_gen import _apply_demand
+    from transmission_graph_gen import _apply_demand, _is_connected
 
     net = copy.deepcopy(base_net)
     _apply_demand(net, demand_col)
     _apply_outage(net, out_lines)
+    if not _is_connected(net):
+        raise ValueError(
+            f"outage {out_lines} islands the network; the feasibility checker "
+            "supports connected post-contingency topologies only")
     pp.runpp(net)
 
     ppc = net._ppc["internal"]

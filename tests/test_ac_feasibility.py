@@ -168,6 +168,27 @@ def test_overload_confusion_directions():
           "unflagged overloads are counted as misses")
 
 
+def test_islanding_is_rejected():
+    """An outage that splits the grid must be refused, not silently misaligned.
+
+    pandapower drops islanded buses from the internal ppc, so the bus lookup
+    `build_case` indexes with no longer covers every bus; before the check this
+    surfaced as an `IndexError` (or, when the split decoupled the solve, an
+    attribute error on the Ybus). Unreachable through the pipeline -- the
+    generator rejects islanding too -- but reachable for any caller passing its
+    own outage list.
+    """
+    base = load_case(GRID)
+    demand = load_hourly_demand(GRID)[:, 1000]
+    try:
+        build_case(base, demand, [9])          # radial line on IEEE24
+    except ValueError as exc:
+        check("islands the network" in str(exc),
+              f"islanding raises a ValueError that says so: {exc}")
+    else:
+        check(False, "an islanding outage was accepted")
+
+
 if __name__ == "__main__":
     for fn in (test_true_state_has_no_residual,
                test_shunt_is_not_double_counted,
@@ -175,7 +196,8 @@ if __name__ == "__main__":
                test_loading_matches_pandapower_with_trafo_outage,
                test_perturbed_state_is_penalised,
                test_metrics_shape_and_true_floor,
-               test_overload_confusion_directions):
+               test_overload_confusion_directions,
+               test_islanding_is_rejected):
         print(f"\n{fn.__name__}")
         fn()
     print("\n" + "=" * 50 + "\nALL CHECKS PASSED")

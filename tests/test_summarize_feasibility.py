@@ -8,6 +8,11 @@ checked here: the summary must refuse a replay CSV written without
 must keep the Regime B same-grid diagonal apart from the unseen-grid cells (B2);
 and the floor/DC reference rows must be appended per data regime, since a
 residual quoted as a share of served load means nothing without them (C5).
+
+The fourth audit adds two: a checkpoint that diverged must not contribute finite
+residuals to a mean (the same void-the-cell rule the ranking uses), and the
+heavy-tailed residual columns must carry a median so one outlier cannot make the
+aggregate read as typical.
 """
 from __future__ import annotations
 
@@ -18,9 +23,10 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import numpy as np
 import pandas as pd
 
-from summarize_feasibility import COLS, baseline_rows, setting_of
+from summarize_feasibility import COLS, baseline_rows, setting_of, valid_mask
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAILURES = []
@@ -47,6 +53,8 @@ def physics_frame():
     for i, row in enumerate(rows):
         row.update({c: float(i + 1) for c in COLS})
         row["ac_dp_true_max_mw"] = 0.01
+        row["seed"] = 0
+        row["nrmse"] = 0.1
     return pd.DataFrame(rows)
 
 
@@ -76,6 +84,58 @@ def test_baseline_rows_are_per_regime_and_state():
     check(keys == want, f"four reference rows, one per (regime, state): {keys}")
     check(abs(float(out[out.model == "floor"].iloc[0].ac_dp_pct_load) - 2.0)
           < 1e-9, "the reference row averages over grids (mean of 1 and 3)")
+
+
+def test_a_diverged_group_is_voided_not_averaged():
+    """A NaN error on one test grid voids that (arm, model, train grid, seed).
+
+    `feasibility_metrics` uses `nanmean` over buses, so the diverged checkpoint
+    still carries finite residuals; averaging them in reports the model as if it
+    had produced an answer.
+    """
+    df = physics_frame()
+    df.loc[(df.arm == "cross") & (df.test_grid == "UK"), "nrmse"] = np.nan
+    got = list(valid_mask(df))
+    check(got == [True, False, False, True],
+          f"the whole cross-context group is voided, got {got}")
+
+
+def test_the_table_counts_voided_rows_and_drops_them():
+    with tempfile.TemporaryDirectory() as tmp:
+        phys = os.path.join(tmp, "physics.csv")
+        out = os.path.join(tmp, "table.csv")
+        df = physics_frame()
+        df.loc[(df.arm == "cross") & (df.test_grid == "UK"), "nrmse"] = np.nan
+        df.to_csv(phys, index=False)
+        proc = run_cli(phys, os.path.join(tmp, "absent.csv"), out)
+        table = pd.read_csv(out).set_index("setting")
+        voided = table.loc[["cc_diagonal", "cc_unseen"]]
+        check(bool(voided.ac_dp_pct_load.isna().all())
+              and list(voided.n_voided) == [1, 1],
+              "a voided cell is NaN with its count, not a mean")
+        check(int(table.loc["within", "n_voided"]) == 0
+              and int(table.loc["ood", "n_voided"]) == 0
+              and abs(float(table.loc["ood", "ac_dp_pct_load"]) - 4.0) < 1e-9,
+              "the surviving arms are untouched")
+        check("voided" in proc.stdout, "and the exclusion is announced")
+
+
+def test_the_spread_columns_resist_an_outlier():
+    with tempfile.TemporaryDirectory() as tmp:
+        phys = os.path.join(tmp, "physics.csv")
+        out = os.path.join(tmp, "table.csv")
+        df = physics_frame()
+        unseen = df[df.test_grid == "UK"].iloc[[0]].copy()
+        unseen["seed"] = 100
+        unseen["ac_dp_pct_load"] = 10_000.0                   # one bad seed
+        pd.concat([df, unseen], ignore_index=True).to_csv(phys, index=False)
+        run_cli(phys, os.path.join(tmp, "absent.csv"), out)
+        row = pd.read_csv(out).set_index("setting").loc["cc_unseen"]
+        check(row.ac_dp_pct_load > 5000 and abs(row.ac_dp_pct_load_median
+                                                - 5001.5) < 1e-6,
+              "the mean follows the outlier and the median sits between the two")
+        check(abs(row.ac_dp_pct_load_max - 10_000.0) < 1e-6 and row.n_rows == 2,
+              f"the max and the row count are reported: {dict(row)}")
 
 
 def baseline_rows_from(df):
@@ -138,7 +198,10 @@ def main():
                test_baseline_rows_are_per_regime_and_state,
                test_cli_joins_models_and_baselines,
                test_cli_refuses_a_replay_without_the_ac_columns,
-               test_cli_without_baselines_still_writes_the_model_rows):
+               test_cli_without_baselines_still_writes_the_model_rows,
+               test_a_diverged_group_is_voided_not_averaged,
+               test_the_table_counts_voided_rows_and_drops_them,
+               test_the_spread_columns_resist_an_outlier):
         print(f"{fn.__name__}:")
         fn()
     print("\nALL CHECKS PASSED" if not FAILURES
