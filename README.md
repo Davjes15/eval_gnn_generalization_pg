@@ -462,6 +462,51 @@ python3 experiments.py --experiment ood    --data_dir data_full_v2 --normalize p
     --out results_norm/ood --save_models ckpt_norm/ood
 ```
 
+The campaign writes one results CSV and one checkpoint per shard; turning those into the
+reported tables is the last stage. Replay is also the entry point if you downloaded
+`ckpt_norm.tar.gz` instead of training:
+
+```bash
+# 1. Merge the per-shard result CSVs into one directory per arm. The exact
+#    gather_results.py invocations for the published shard layout (ARMA and NNConv ran
+#    split by seed) are in docs/Reproducibility.md §5, which also covers the shared
+#    topology/MMD shard and the Regime A DC baseline.
+
+# 2. Physics-aware replay of the saved models: per-quantity error on the entries the
+#    model genuinely predicts, error tails, voltage-band violations. Minutes, no training.
+python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a --data_b data_full_v2 \
+    --normalize pu_zscore --out results_norm/physics
+python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
+
+# 3. Is the predicted state a valid operating point at all? Adds the AC power-balance
+#    residual and the branch loading; needs POWERGRAPH_NODE_DIR to rebuild the
+#    post-contingency networks. Add --feasibility to re-run step 2 with those columns.
+python3 dc_feasibility.py --data data_a data_full_v2 \
+    --out results_norm/physics/dc_feasibility.csv
+python3 summarize_feasibility.py --physics results_norm/physics/physics_metrics.csv \
+    --baselines results_norm/physics/dc_feasibility.csv \
+    --out docs/tables/ac_feasibility_norm.csv
+
+# 4. The reported tables: ranks, rank stability across grids/seeds, g-scores,
+#    per-quantity errors, DC comparison, topology distances.
+python3 rank_analysis.py --regime_a results_norm/all_within/within_grid.csv \
+    --cross results_norm/all_cross/cross_context.csv \
+    --ood results_norm/all_ood/ood.csv --out results_norm/analysis
+python3 recompute_tables.py --within results_norm/all_within/within_grid.csv \
+    --cross results_norm/all_cross/cross_context.csv \
+    --ood results_norm/all_ood/ood.csv \
+    --topology results_norm/topology \
+    --dc_regime_a results_norm/dc_baseline_regime_a.csv \
+    --dc_regime_b results_norm/topology/dc_baseline.csv \
+    --out results_norm/analysis
+python3 mmd_report.py --data_dir data_full_v2 --out docs/tables
+```
+
+Apart from `mmd_report.py`, which reads `data_full_v2`, step 4 needs no dataset and no
+checkpoint: it runs on the committed result CSVs, and the 12 tables it writes come back
+byte-identical to the ones in `results_norm/analysis/`. Verify that first — it is the
+cheapest check that your environment agrees with the published numbers.
+
 `--normalize none` (the default) reproduces the raw-unit ablation instead, bit-identically to
 the earlier `results/` tables. `launch_normalized.sh` runs the same campaign sharded across
 cores; every job is resumable with `--skip_existing` because it checkpoints.
