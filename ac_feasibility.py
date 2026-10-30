@@ -21,15 +21,10 @@ WHY THIS MODULE EXISTS
     check against the ratings costs nothing extra.
 
 WHICH BRANCHES THE THERMAL CHECK COVERS
-    Lines and two-winding transformers, i.e. every branch of these four grids.
-    The two have different ratings: a line carries one `max_i_ka` at both ends,
-    a transformer is rated in MVA and pandapower's `loading_percent` is the
-    larger of the two end currents relative to that end's rated current
-    (`sn_mva / (sqrt(3) vn_side)`), so the check keeps a rating per branch END.
-    Transformers are 5/38, 11/46, 9/184 and 4/90 branches of IEEE24, IEEE39,
-    IEEE118 and UK, and they are the branches an outage most often removes in
-    the harvested contingencies, so excluding them would silently drop part of
-    every overload rate (audit C4).
+    Lines, two-winding transformers and symmetric impedance elements.
+    Lines retain max_i_ka ratings; transformers retain per-end nameplate ratings.
+    Impedance ratings use element sn_mva and each endpoint's nominal voltage.
+    Unsupported branch types are rejected by the shared branch contract.
 
 CONVENTIONS AND WHY THE SHUNT TERM IS THERE
     * Targets are pandapower `res_bus` rows, i.e. NET CONSUMPTION at the bus
@@ -63,6 +58,7 @@ import pandapower as pp
 import pandas as pd
 
 from transmission_grids import load_case, load_hourly_demand
+from engage_contract import branch_table
 
 # ppc branch columns (MATPOWER ordering).
 F_BUS, T_BUS, BR_R, BR_X, BR_B, TAP, SHIFT = 0, 1, 2, 3, 4, 8, 9
@@ -145,7 +141,11 @@ def _apply_outage(net, out_lines) -> None:
         return
     if isinstance(out_lines[0], str):        # a stringified ('line', 3) pair
         for item in out_lines:
-            etype, idx = ast.literal_eval(item)
+            if ":" in item:
+                etype, idx = item.split(":")
+                idx = int(idx)
+            else:
+                etype, idx = ast.literal_eval(item)
             net[etype].at[idx, "in_service"] = False
         return
     net.line.loc[net.line.index[list(out_lines)], "in_service"] = False
@@ -183,13 +183,37 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
     branch = ppc["branch"]
     order = net._pd2ppc_lookups["bus"][net.bus.index.values]
 
-    # The internal ppc drops out-of-service branches and keeps pandapower's
-    # element order, so the first rows are the in-service lines and the next the
-    # in-service two-winding transformers.
-    lines = net.line[net.line.in_service]
-    trafos = net.trafo[net.trafo.in_service]
-    n_branch = len(lines) + len(trafos)
-    rows = branch[:n_branch]
+    branches = branch_table(net)
+    lookup = net._pd2ppc_lookups["branch"]
+    active = np.asarray(ppc["branch_is"], dtype=bool)
+    internal_rows = np.cumsum(active) - 1
+    selected, limit_from, limit_to, is_line = [], [], [], []
+    for row in branches.itertuples():
+        etype = row.etype
+        start, stop = lookup[etype]
+        position = net[etype].index.get_loc(row.element)
+        external = start + position
+        if external >= stop:
+            raise ValueError(f"Invalid ppc branch lookup for {etype}:{row.element}")
+        if not row.in_service:
+            continue
+        if not active[external]:
+            raise ValueError(f"In-service {etype}:{row.element} missing from internal ppc")
+        selected.append(internal_rows[external])
+        element = net[etype].loc[row.element]
+        if etype == "line":
+            lf = lt = element.max_i_ka * element.df * element.parallel
+        elif etype == "trafo":
+            rating = element.sn_mva * element.df * element.parallel
+            lf = rating / (np.sqrt(3) * element.vn_hv_kv)
+            lt = rating / (np.sqrt(3) * element.vn_lv_kv)
+        else:
+            lf = element.sn_mva / (np.sqrt(3) * net.bus.at[row.from_bus, "vn_kv"])
+            lt = element.sn_mva / (np.sqrt(3) * net.bus.at[row.to_bus, "vn_kv"])
+        limit_from.append(lf)
+        limit_to.append(lt)
+        is_line.append(etype == "line")
+    rows = branch[np.asarray(selected, dtype=int)]
     f_bus = np.real(rows[:, F_BUS]).astype(int)
     t_bus = np.real(rows[:, T_BUS]).astype(int)
     r = np.real(rows[:, BR_R])
@@ -204,13 +228,8 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
     vn_kv[order] = net.bus.vn_kv.values
     i_base = net.sn_mva / (np.sqrt(3) * vn_kv)
 
-    line_ka = lines.max_i_ka.values * lines.df.values * lines.parallel.values
-    s_rated = (trafos.sn_mva.values * trafos.df.values
-               * trafos.parallel.values)
-    i_limit_from = np.concatenate(
-        [line_ka, s_rated / (np.sqrt(3) * trafos.vn_hv_kv.values)])
-    i_limit_to = np.concatenate(
-        [line_ka, s_rated / (np.sqrt(3) * trafos.vn_lv_kv.values)])
+    i_limit_from = np.asarray(limit_from)
+    i_limit_to = np.asarray(limit_to)
 
     return TopologyCase(
         ybus=ybus,
@@ -225,7 +244,7 @@ def build_case(base_net, demand_col, out_lines) -> TopologyCase:
         i_base_to=i_base[t_bus],
         i_limit_from_ka=i_limit_from,
         i_limit_to_ka=i_limit_to,
-        is_line=np.arange(n_branch) < len(lines),
+        is_line=np.asarray(is_line, dtype=bool),
     )
 
 

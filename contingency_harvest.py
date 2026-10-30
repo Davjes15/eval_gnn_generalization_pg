@@ -50,6 +50,8 @@ import os
 
 import numpy as np
 
+from engage_contract import branch_table
+
 # PowerGraph-Graph raw folder names (lower-case) keyed by our grid codes.
 _CODE_TO_PG_NAME = {
     "IEEE24": "ieee24",
@@ -77,12 +79,9 @@ def build_buspair_pool(net) -> dict:
     """Map frozenset({from_bus, to_bus}) -> list of (etype, element_index) for
     every branch (lines + transformers). Lists allow parallel branches."""
     pool: dict = {}
-    for i, row in net.line.iterrows():
-        key = frozenset((int(row["from_bus"]), int(row["to_bus"])))
-        pool.setdefault(key, []).append(("line", int(i)))
-    for i, row in net.trafo.iterrows():
-        key = frozenset((int(row["hv_bus"]), int(row["lv_bus"])))
-        pool.setdefault(key, []).append(("trafo", int(i)))
+    for row in branch_table(net).itertuples():
+        key = frozenset((int(row.from_bus), int(row.to_bus)))
+        pool.setdefault(key, []).append((row.etype, int(row.element)))
     return pool
 
 

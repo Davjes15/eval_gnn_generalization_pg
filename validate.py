@@ -43,6 +43,8 @@ Exit code is non-zero if any gate fails (usable in CI).
 from __future__ import annotations
 
 import argparse
+import ast
+from copy import deepcopy
 import os
 import sys
 import warnings
@@ -55,6 +57,11 @@ import numpy as np
 import torch
 
 import pandapower as pp
+from scipy.io import loadmat
+
+from engage_contract import branch_table, check_graph_matches_net
+from ac_feasibility import _apply_outage
+from transmission_grids import DEFAULT_CASES_DIR
 
 from transmission_grids import get_transmission_grid_codes, load_case
 from training_utils import load_grid_dataset
@@ -63,8 +70,8 @@ from training_utils import load_grid_dataset
 EXPECTED = {
     "IEEE24": (24, 38),
     "IEEE39": (39, 46),
-    "IEEE118": (118, 184),
-    "UK": (29, 90),
+    "IEEE118": (118, 186),
+    "UK": (29, 99),
 }
 
 
@@ -85,7 +92,12 @@ def gate_conversion(g: Gate, grids):
     for code in grids:
         net = load_case(code)
         n_bus = len(net.bus)
-        n_branch = int(net.line.in_service.sum() + net.trafo.in_service.sum())
+        n_branch = int(branch_table(net).in_service.sum())
+        mpc = loadmat(os.path.join(DEFAULT_CASES_DIR, f"{code}.mat"),
+                      squeeze_me=True, struct_as_record=False)["mpc"]
+        expected = int(np.count_nonzero(np.atleast_2d(mpc.branch)[:, 10]))
+        g.check(f"{code} MATPOWER branch count", n_branch == expected,
+                f"pandapower={n_branch} MATPOWER={expected}")
         try:
             pp.runpp(net)
             converged = bool(net.converged)
@@ -121,6 +133,26 @@ def gate_contract(g: Gate, data_dir, grids):
         # y must be fully known (no NaNs); x must carry masked NaNs.
         g.check(f"{code} y has no NaN", not bool(torch.isnan(d.y).any()))
         g.check(f"{code} x carries masked NaN inputs", bool(torch.isnan(d.x).any()))
+
+
+def gate_graph_topology(g: Gate, data_dir, grids):
+    print("\nB2. Graph topology matches pandapower (up to three samples per split)")
+    for code in grids:
+        base = load_case(code)
+        for split in ("train", "val", "test"):
+            try:
+                ds = load_grid_dataset(data_dir, code, split)
+                meta = _load_meta(data_dir, code, split)
+                if meta is None or len(meta) != len(ds) or not len(ds):
+                    raise ValueError("missing, empty or misaligned provenance")
+                for i in sorted(set(np.linspace(0, len(ds) - 1, min(3, len(ds)), dtype=int))):
+                    net = deepcopy(base)
+                    _apply_outage(net, ast.literal_eval(str(meta.iloc[i]["out_lines"])))
+                    d = ds[i]
+                    check_graph_matches_net(net, d.edge_index.cpu().numpy(), len(d.x))
+                g.check(f"{code}/{split} topology", True)
+            except (ValueError, FileNotFoundError, KeyError) as exc:
+                g.check(f"{code}/{split} topology", False, str(exc))
 
 
 def gate_masking(g: Gate, data_dir, grids):
@@ -317,6 +349,7 @@ def main():
     gate_conversion(g, grids)
     if args.data_dir:
         gate_contract(g, args.data_dir, grids)
+        gate_graph_topology(g, args.data_dir, grids)
         gate_masking(g, args.data_dir, grids)
         if args.regime == "a":
             gate_topology_invariance(g, args.data_dir, grids)
