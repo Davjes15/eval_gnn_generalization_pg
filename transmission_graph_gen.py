@@ -66,7 +66,7 @@ import networkx as nx
 import torch
 from torch_geometric.data import Data
 
-from engage_contract import get_node_features, get_edge_features
+from engage_contract import branch_table, get_node_features, get_edge_features, check_graph_matches_net
 from contingency_harvest import harvest_contingencies
 from transmission_grids import (
     get_transmission_grid_codes,
@@ -90,12 +90,14 @@ def _apply_demand(net, demand_col: np.ndarray) -> None:
         net.load.at[load_idx, "p_mw"] = float(demand_col[bus])
 
 
-def _sample_contingency(rng: np.random.Generator, n_lines: int, k: int) -> list[int]:
-    """Return k distinct line positions to take out of service (N-k)."""
+def _sample_contingency(rng, branches, k, outage_types=("line",)):
+    """Return distinct (etype, element) pairs in stable branch-table order."""
+    pool = branches[branches.etype.isin(outage_types)]
     if k <= 0:
         return []
-    k = min(k, n_lines)
-    return sorted(rng.choice(n_lines, size=k, replace=False).tolist())
+    k = min(k, len(pool))
+    positions = sorted(rng.choice(len(pool), size=k, replace=False).tolist())
+    return [(pool.iloc[i].etype, int(pool.iloc[i].element)) for i in positions]
 
 
 def _apply_line_contingency(net, out_lines: list[int]) -> None:
@@ -106,7 +108,7 @@ def _apply_line_contingency(net, out_lines: list[int]) -> None:
 
 def _apply_element_contingency(net, elements: list) -> None:
     """Take harvested elements out of service. `elements` is a list of
-    (etype, index) where etype is 'line' or 'trafo' (see contingency_harvest)."""
+    (etype, index) where etype is 'line', 'trafo' or 'impedance'."""
     for etype, idx in elements:
         net[etype].at[idx, "in_service"] = False
 
@@ -123,6 +125,7 @@ def _build_sample(net):
     """Extract one ENGAGE `Data` object from a solved net (+ its DC baseline)."""
     X_i, Y_i = get_node_features(net)
     A_i, E_i = get_edge_features(net)
+    check_graph_matches_net(net, A_i, len(X_i))
 
     # DC power-flow baseline (stored once so evaluation need not recompute it).
     # `rundcpp` never writes res_bus.q_mvar: DC power flow has no reactive power.
@@ -160,6 +163,7 @@ def generate_dataset(
     pg_graph_raw: str | None = None,
     used_t: set[int] | None = None,
     t_range: tuple[int, int] | None = None,
+    outage_types=("line",),
 ):
     """Generate `n_samples` valid (demand, contingency) operating points for `code`.
 
@@ -182,7 +186,7 @@ def generate_dataset(
     """
     base = load_case(code)
     demand = load_hourly_demand(code)
-    n_lines = len(base.line)
+    branches = branch_table(base)
     n_time = demand.shape[1]
     # k=0 anchors the base topology; higher k spreads the topology distribution.
     ks = np.arange(0, max_k + 1)
@@ -220,11 +224,12 @@ def generate_dataset(
         if harvested is not None:
             elements = harvested[int(rng.integers(0, len(harvested)))]
             _apply_element_contingency(net, elements)
-            k, out_lines = len(elements), [str(e) for e in elements]
+            k = len(elements)
         else:
             k = int(rng.choice(ks, p=k_probs))
-            out_lines = _sample_contingency(rng, n_lines, k)
-            _apply_line_contingency(net, out_lines)
+            elements = _sample_contingency(rng, branches, k, outage_types)
+            _apply_element_contingency(net, elements)
+        out_lines = [f"{etype}:{element}" for etype, element in elements]
 
         # 3) reject islanding before solving
         if not _is_connected(net):
@@ -297,6 +302,13 @@ def _save_split(out_dir: str, code: str, split: str, samples, metas):
     print(f"  saved {len(samples):4d} -> {os.path.join(split_dir, 'dataset.pt')}")
 
 
+def _outage_types(value):
+    types = tuple(value.split(","))
+    if not types or any(t not in ("line", "trafo", "impedance") for t in types):
+        raise argparse.ArgumentTypeError("outage_types must be a comma list of line,trafo,impedance")
+    return types
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--grid", default="all",
@@ -306,6 +318,8 @@ def parse_args():
     p.add_argument("--n_test", type=int, default=100)
     p.add_argument("--max_k", type=int, default=2,
                    help="maximum number of simultaneous line outages (N-k)")
+    p.add_argument("--outage_types", type=_outage_types, default=("line",),
+                   help="comma list of line,trafo,impedance (default: line)")
     p.add_argument("--redispatch", action="store_true",
                    help="use AC OPF (runopp) instead of PF-with-slack (runpp)")
     p.add_argument("--out_dir", default="data")
@@ -335,6 +349,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(f"[note] --outage_types={','.join(args.outage_types)}; default is line "
+          "for historical sampler compatibility; transformers/impedances require explicit opt-in.")
     codes = get_transmission_grid_codes() if args.grid == "all" else [args.grid]
     for code in codes:
         print(f"[{code}] generating "
@@ -360,6 +376,7 @@ def main():
                 pg_graph_raw=args.pg_graph_raw,
                 used_t=used_t,
                 t_range=windows[split] if windows else None,
+                outage_types=args.outage_types,
             )
             _save_split(args.out_dir, code, split, samples, metas)
 
