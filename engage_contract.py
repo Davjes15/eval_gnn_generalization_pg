@@ -13,7 +13,11 @@ WHY VENDORED (design decisions D6 + D8)
     ONE clean, self-contained pipeline. Rather than importing ENGAGE as a
     dependency, we vendor its two feature extractors here (attributed below) so
     this repo runs on its own. The logic mirrors ENGAGE's `graph_gen.py` almost
-    verbatim, with ONE deliberate change for our study:
+    verbatim, with explicit series-branch and contingency support:
+
+      * Impedance elements use the line encoding [0, r_pu, x_pu, NaN],
+        preserving the four-column edge contract. Bus positions follow the
+        full net.bus.index order, including buses without line/trafo elements.
 
       * CONTINGENCY SUPPORT: ENGAGE's original extractors read *all* rows of
         `net.line` / `net.trafo`. For N-1/N-k contingencies we take branches out
@@ -37,7 +41,12 @@ SOURCE / ATTRIBUTION
 """
 from __future__ import annotations
 
+from collections import Counter
+
+import networkx as nx
 import numpy as np
+import pandas as pd
+import pandapower.topology as top
 
 
 def get_node_features(net):
@@ -80,62 +89,86 @@ def get_node_features(net):
     return np.array(node_features_x), np.array(node_features_y)
 
 
-def get_edge_features(net):
-    """Return (edge_index, edge_attr) for the *in-service* branches of net.
+def branch_table(net) -> pd.DataFrame:
+    """Return all series elements on the system base, in table/index order.
 
-    edge_index : (2, 2E) COO for an undirected graph (both directions).
-    edge_attr  : (2E, 4) = [trafo?, r_pu, x_pu, sc_voltage].
+    Impedance shunts (gf/bf/gt/bt) are ignored, as are line shunts.
+    Asymmetric impedances cannot be represented by the undirected contract.
     """
+    supported = {"line", "trafo", "impedance"}
+    unsupported = {"trafo3w", "dcline", "tcsc", "line_dc", "vsc", "ssc"}
+    for name, table in net.items():
+        if not isinstance(table, pd.DataFrame) or not len(table):
+            continue
+        branch_like = ({"from_bus", "to_bus"} <= set(table.columns)
+                       or {"hv_bus", "lv_bus"} <= set(table.columns))
+        if name in unsupported or (branch_like and name not in supported):
+            raise NotImplementedError(f"Unsupported branch table {name}: {len(table)} rows")
+    switches = net.switch[(net.switch.et == "b") & net.switch.closed]
+    if len(switches):
+        raise NotImplementedError(f"Unsupported closed bus-bus switch table: {len(switches)} rows")
 
-    def get_line_features(net):
-        lines = net.line[net.line["in_service"]]  # <-- contingency-aware
-        edge_index = lines.loc[:, ["from_bus", "to_bus", "to_bus", "from_bus"]].values
-        edge_index = edge_index.reshape(-1, 2).T
+    rows = []
+    for etype in ("line", "trafo", "impedance"):
+        for element, row in net[etype].iterrows():
+            f, t = (row.hv_bus, row.lv_bus) if etype == "trafo" else (row.from_bus, row.to_bus)
+            if f not in net.bus.index or t not in net.bus.index:
+                raise ValueError(f"{etype}:{element} endpoint not in net.bus")
+            sc = np.nan
+            if etype == "line":
+                z = net.bus.at[t, "vn_kv"] ** 2 / net.sn_mva
+                r = row.r_ohm_per_km * row.length_km / z
+                x = row.x_ohm_per_km * row.length_km / z
+            elif etype == "trafo":
+                z = row.vk_percent / 100 * net.sn_mva / row.sn_mva
+                r = row.vkr_percent / 100 * net.sn_mva / row.sn_mva
+                x = np.sqrt(z ** 2 - r ** 2)
+                sc = row.vk_percent
+            else:
+                if row.rft_pu != row.rtf_pu or row.xft_pu != row.xtf_pu:
+                    raise ValueError(f"Asymmetric impedance:{element} cannot use undirected contract")
+                r = row.rft_pu * net.sn_mva / row.sn_mva
+                x = row.xft_pu * net.sn_mva / row.sn_mva
+            rows.append((etype, element, f, t, bool(row.in_service),
+                         int(etype == "trafo"), r, x, sc))
+    return pd.DataFrame(rows, columns=[
+        "etype", "element", "from_bus", "to_bus", "in_service",
+        "is_trafo", "r_pu", "x_pu", "sc_voltage"])
 
-        r = lines["r_ohm_per_km"].values * lines["length_km"].values
-        x = lines["x_ohm_per_km"].values * lines["length_km"].values
 
-        # Convert r, x to per-unit using the base impedance z = vn_kv**2 / sn_mva.
-        vn_kv = net.bus.loc[lines["to_bus"], ["vn_kv"]].values.reshape(-1)
-        z = np.square(vn_kv) / net.sn_mva
-        r_pu = (r / z).repeat(2)
-        x_pu = (x / z).repeat(2)
+def get_edge_features(net):
+    """Return both directions of every in-service branch in net.bus row order."""
+    branches = branch_table(net)
+    branches = branches.loc[branches.in_service.astype(bool)]
+    pos = {b: i for i, b in enumerate(net.bus.index)}
+    pairs = [(pos[r.from_bus], pos[r.to_bus]) for r in branches.itertuples()]
+    edges = np.asarray(pairs, dtype=np.int64).reshape(-1, 2)
+    edge_index = np.stack((edges, edges[:, ::-1]), axis=1).reshape(-1, 2).T
+    attrs = branches[["is_trafo", "r_pu", "x_pu", "sc_voltage"]].to_numpy(dtype=float)
+    return edge_index, attrs.repeat(2, axis=0)
 
-        e = edge_index.shape[1]
-        edge_features = np.vstack(
-            [np.zeros(e), r_pu, x_pu, np.nan * np.ones(e)]  # trafo?, r_pu, x_pu, sc_voltage
-        ).T
-        return edge_index, edge_features
 
-    def get_trafo_features(net):
-        trafos = net.trafo[net.trafo["in_service"]]  # <-- contingency-aware
-        edge_index = trafos.loc[:, ["hv_bus", "lv_bus", "lv_bus", "hv_bus"]].values
-        edge_index = edge_index.reshape(-1, 2).T
-
-        # Impedance per pandapower trafo docs (vk_percent = short-circuit voltage).
-        z_pu = (trafos["vk_percent"].values / 100) * (net.sn_mva / trafos["sn_mva"].values)
-        r_pu = (trafos["vkr_percent"].values / 100) * (net.sn_mva / trafos["sn_mva"].values)
-        x_pu = np.sqrt(np.square(z_pu) - np.square(r_pu))
-        sc_voltage = trafos["vk_percent"].values
-
-        e = edge_index.shape[1]
-        edge_features = np.vstack(
-            [np.ones(e), r_pu.repeat(2), x_pu.repeat(2), sc_voltage.repeat(2)]
-        ).T
-        return edge_index, edge_features
-
-    A_line, E_line = get_line_features(net)
-    A_trafo, E_trafo = get_trafo_features(net)
-
-    A = np.hstack([A_line, A_trafo])
-    E = np.vstack([E_line, E_trafo])
-
-    # Remap (possibly sparse) bus ids to a dense 0..N-1 range for edge_index.
-    # NOTE: this remaps only nodes that appear in the edge list; for a connected
-    # in-service graph that is every node.
-    unique_nodes = set(A[0])
-    remapping = dict(zip(sorted(unique_nodes), range(len(unique_nodes))))
-    applyall = np.vectorize(lambda v: remapping[v])
-    A = applyall(A)
-
-    return A, E
+def check_graph_matches_net(net, edge_index, n_nodes):
+    """Raise ValueError unless the bidirectional graph matches pandapower topology."""
+    edges = np.asarray(edge_index)
+    if edges.ndim != 2 or edges.shape[0] != 2 or edges.shape[1] % 2:
+        raise ValueError("edge_index must have shape (2, 2E)")
+    if n_nodes != len(net.bus) or (edges.size and (
+            edges.min() < 0 or edges.max() >= n_nodes)):
+        raise ValueError("Graph node count or edge endpoint outside net.bus rows")
+    if not np.issubdtype(edges.dtype, np.integer):
+        raise ValueError("edge_index endpoints must be integer row positions")
+    if not np.array_equal(edges[:, ::2], edges[::-1, 1::2]):
+        raise ValueError("Graph branches must have paired reverse directions")
+    pos = {b: i for i, b in enumerate(net.bus.index)}
+    reference = top.create_nxgraph(net, respect_switches=True, multi=True,
+                                   include_out_of_service=False)
+    wanted = Counter(tuple(sorted((pos[u], pos[v]))) for u, v in reference.edges())
+    actual = Counter(tuple(sorted(e)) for e in edges[:, ::2].T.tolist())
+    if actual != wanted:
+        raise ValueError(f"Graph branches differ from pandapower: missing={wanted - actual}, extra={actual - wanted}")
+    graph = nx.MultiGraph()
+    graph.add_nodes_from(range(n_nodes))
+    graph.add_edges_from(edges[:, ::2].T.tolist())
+    if nx.number_connected_components(graph) != nx.number_connected_components(reference):
+        raise ValueError("Graph connected components differ from pandapower")
