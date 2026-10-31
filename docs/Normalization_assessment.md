@@ -106,7 +106,7 @@ ENGAGE is the exception, and it gets away with it because of §2.1.
 ## 3. Is it technically necessary *here*? Measurements
 
 ### 3.1 The four target dimensions differ by 5-6 orders of magnitude
-`data_a` train split, per grid (min…max, std):
+`data_regime_a_fixed_topology` train split, per grid (min…max, std):
 
 | grid | P [MW] | Q [Mvar] | V [p.u.] | theta [deg] |
 |---|---|---|---|---|

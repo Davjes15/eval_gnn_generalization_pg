@@ -24,7 +24,7 @@ WHY
 HOW TO RUN
     python3 prefill_trials.py --model nnconv --grids IEEE118 \
         --num_layers 2 --hidden 128 --learning_rates 1e-3 3e-4 --seeds 100 \
-        --data_dir data_a --epochs 200 --out results_a/nnconv_bygrid/pf_118_128
+        --data_dir data_regime_a_fixed_topology --epochs 200 --out results_a/nnconv_bygrid/pf_118_128
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def parse_args():
     p.add_argument("--model", required=True, choices=list(MODELS.keys()))
     p.add_argument("--out", required=True,
                    help="shard directory whose tuning.csv is appended to")
-    p.add_argument("--data_dir", default="data_a")
+    p.add_argument("--data_dir", default="data_regime_a_fixed_topology")
     p.add_argument("--grids", nargs="+", default=None)
     p.add_argument("--num_layers", type=int, nargs="+", required=True)
     p.add_argument("--hidden", type=int, nargs="+", required=True)

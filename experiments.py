@@ -26,11 +26,11 @@ HOW TO RUN
     python3 experiments.py --experiment both --models gcn gat --epochs 20 \
         --data_dir data --out results --allow_default_config
     # fixed-topology control arm (Regime A), 5 seeds, tuned configs:
-    python3 experiments.py --experiment within --data_dir data_a \
+    python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
         --normalize pu_zscore --regime_tag A --out results_norm/regime_a
     # generalization arms (Regime B), same frozen configs:
-    python3 experiments.py --experiment both --data_dir data_full_v2 \
+    python3 experiments.py --experiment both --data_dir data_regime_b_contingencies \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
         --normalize pu_zscore --regime_tag B --out results_norm/regime_b
 

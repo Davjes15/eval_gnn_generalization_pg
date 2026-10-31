@@ -15,7 +15,7 @@ p.add_argument("--hidden", type=int, default=128)
 p.add_argument("--learning_rate", type=float, default=1e-3)
 p.add_argument("--grad_clip", type=float, default=1.0)
 p.add_argument("--epochs", type=int, default=200)
-p.add_argument("--data_dir", default="data_a")
+p.add_argument("--data_dir", default="data_regime_a_fixed_topology")
 a = p.parse_args()
 
 device = get_device()

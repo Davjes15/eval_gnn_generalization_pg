@@ -1,6 +1,6 @@
 {
   "epochs": 200,
-  "data_dir": "data_a",
+  "data_dir": "data_regime_a_fixed_topology",
   "batch_size": 32,
   "batch_size_ood": 96,
   "seeds": [

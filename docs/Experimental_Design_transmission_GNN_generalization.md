@@ -193,8 +193,8 @@ from the external audit (see [`Audit_response.md`](Audit_response.md)).
 
 | dataset | regime | topology | demand split | role |
 |---|---|---|---|---|
-| `data_a` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
-| `data_full_v2` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
+| `data_regime_a_fixed_topology` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
+| `data_regime_b_contingencies` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
 
 Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the `same_grid_factor` of the protocol decomposition (`results_norm/analysis/protocol_decomposition.csv`) mixes their effects, together with a change of NRMSE denominator, and is not quoted as a cost (limitations L8, L10). The same-grid result is the preserved ranking (Kendall τ = 0.62, p = 0.004). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined.
 | `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
@@ -203,7 +203,7 @@ Regime B therefore differs from Regime A in **two** ways at once — the blocked
 Every split ships its `dataset_src.csv` (grid, `t_idx`, `k`, outaged branches, contingency
 source), which is what makes the split property checkable rather than asserted.
 
-**Validation gates before training.** `validate.py --data_dir data_full_v2 --regime b
+**Validation gates before training.** `validate.py --data_dir data_regime_b_contingencies --regime b
 --expect_blocked` must pass: data contract, bus-type masking, topology variation, MMD
 non-degeneracy, and gate H (no demand snapshot shared between splits, no repeated
 (snapshot, outage) scenario, disjoint contiguous time windows).
@@ -242,7 +242,7 @@ non-overlapping jobs: weights are fitted on **train** (800), hyperparameters are
 on **validation** (100), and **test** (100) is read only to report. So the pipeline is two
 distinct passes, and the second is not a redundant repeat of the first:
 
-1. *Selection pass* (`tune_budget.py` on `data_a`): ~10 candidate configurations per
+1. *Selection pass* (`tune_budget.py` on `data_regime_a_fixed_topology`): ~10 candidate configurations per
    architecture, scored by mean best **validation** loss across the four grids, one seed
    plus a tie-break seed — enough to rank candidates. The winner is frozen into
    `configs/arch_config.json` and never changes again.

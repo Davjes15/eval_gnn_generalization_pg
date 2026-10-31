@@ -19,7 +19,7 @@ import urllib.request
 
 REPO = "Davjes15/eval_gnn_generalization_pg"
 API = f"https://api.github.com/repos/{REPO}"
-SKIP_DIRS = {"__pycache__", ".git", "data_a", "data_full", "data_full_v2",
+SKIP_DIRS = {"__pycache__", ".git", "data_regime_a_fixed_topology", "data_full", "data_regime_b_contingencies",
              "ckpt_a", "ckpt_b", "ckpt_norm", "full_run", "transmission",
              "logs", "results_norm_pilot"}
 SKIP_EXT = (".pt", ".png", ".mat", ".pyc", ".ipynb_checkpoints")

@@ -70,7 +70,7 @@ cross-grid confound".
 * All six architectures, all three arms, `--normalize pu_zscore`, frozen
   `configs/arch_config.json`, 200 epochs, seeds 0/100/300/700/1000 (nnconv
   0/100/300, as in the raw-unit campaign).
-* Data: `data_a` for Regime A; **`data_full_v2`** for Regime B — the A5
+* Data: `data_regime_a_fixed_topology` for Regime A; **`data_regime_b_contingencies`** for Regime B — the A5
   remediation (blocked temporal windows, one-day gap) landed before the Regime B
   arms were trained, so Regime B differs from the raw-unit campaign in *both* the
   representation and the split hygiene. Regime A differs only in the

@@ -1,7 +1,7 @@
 # Response to the external audit (verified point by point)
 
 Every finding was re-tested against the code and the committed/on-disk artifacts on this
-machine (pandapower 3.5.4, the same `data_a` / `data_full` used for the reported tables).
+machine (pandapower 3.5.4, the same `data_regime_a_fixed_topology` / `data_full` used for the reported tables).
 
 **Bottom line: the audit is correct on all eight points.** Three of them (A1, A2, A3) do
 invalidate statements currently written in `docs/Regime_comparison_results.md`. Two of the
@@ -40,9 +40,9 @@ section below and [`Normalization_assessment.md`](Normalization_assessment.md).
 | A2 | Node features/targets never scaled | **closed** | `normalization.py` + `experiments.py --normalize pu_zscore`, de-normalized before scoring (Decision 20). Final campaign complete: 6 architectures × 3 arms, 336 checkpoints, tables regenerated in `results_norm/analysis/` and reported in `docs/Normalization_results.md` §4. In-distribution voltage NRMSE 5.8–27 → 0.001–0.015 | **done** |
 | A3 | Aggregate metric hides the physics | **closed** | `physics_metrics.py` (per-quantity, predicted-entries-only, p95/p99/max tails, V-violation / false-secure / false-alarm rates) + `eval_checkpoints.py` replay driver + `tests/test_physics_metrics.py`. All 336 checkpoints replayed → 672 rows in `results_norm/physics/physics_metrics.csv`, summarised in `docs/tables/physics_summary_norm.csv` | no |
 | A4 | Not reproducible from the repository | **closed** | `docs/Reproducibility.md`: pinned versions, exact generation/training commands, `dataset_src.csv` provenance + realised split windows, `checkpoint_index.py` (path, size, SHA-256, parameter count) and one-command replay via `eval_checkpoints.py`; the 21 tuning artifacts the configuration tables cite are now committed. Remaining limits (one data realization, four grids, NNConv seeds) are stated, not fixed | no |
-| A5 | Split hygiene (shared demand snapshots in Regime B) | **closed** (data and training) | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_full_v2` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
+| A5 | Split hygiene (shared demand snapshots in Regime B) | **closed** (data and training) | `--time_split blocked` (Decision 21), gate H in `validate.py`, `tests/test_split_hygiene.py`; `data_regime_b_contingencies` generated and gate-passed (800/100/100 per grid, disjoint windows, one-day gap) | **yes** (Regime B only, once) |
 | A6 | g-score affine in (mean, sd) here | **closed** | `docs/Generalization_score_and_MMD.md` §1: the identity `g = μ + 0.806σ` (cross-context) / `μ + 0.857σ` (OOD) verified against the committed artifacts to 1e-4, and rank-by-g ≡ rank-by-mean (τ = 1.0) in both arms | no |
-| A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_full_v2.csv` | no |
+| A7 | MMD estimator details unstated | **closed** | `docs/Generalization_score_and_MMD.md` §2: biased V-statistic named as such, `unbiased=True` U-statistic added, per-pair median bandwidth stated, electrical `reactance_histogram` descriptor added, all 16 grid pairs × 3 descriptors × 2 estimators tabulated in `docs/tables/mmd_data_regime_b_contingencies.csv` | no |
 | A8 | Statistics weaker than claimed | **closed** (with L2 accepted) | permutation test moved into `rank_analysis.py` (exact, all 720 relabellings) and re-run on the normalized campaign: A↔cross-context τ = 0.067, p = 0.72; A↔OOD τ = 0.000, p = 1.00 (`results_norm/analysis/rank_permutation_test.csv`); wording corrected. The NNConv 3 → 5 seed expansion is declined as accepted limitation L2 | additive only, declined |
 
 **Non-finite accounting for the final tables.** Of the 672 replayed rows, exactly two are
@@ -58,7 +58,7 @@ reported the run as better than the transfer where it broke. The other 168 non-f
 **Ordering constraint that drove the plan:** A5 changes the Regime B *data*, and A2 changes the
 *training representation*. Doing them in either order separately would mean training the same six
 architectures twice on the cross-context and OOD arms. They are therefore bundled: Regime A (which
-uses `data_a`, unaffected by A5) trains under A2 immediately; Regime B waits for `data_full_v2` and
+uses `data_regime_a_fixed_topology`, unaffected by A5) trains under A2 immediately; Regime B waits for `data_regime_b_contingencies` and
 then trains once. A3/A4/A6/A7 are evaluation and documentation passes over the resulting
 checkpoints, which is why checkpointing every final run was made a requirement.
 
@@ -127,13 +127,13 @@ Implemented:
 - `transmission_graph_gen._build_sample` zeroes the reactive column explicitly after
   `rundcpp`, so the convention no longer depends on the pandapower version;
 - `training_utils.apply_dc_convention` re-applies it at scoring time, which corrects the
-  already-generated `data_a` / `data_full` without regeneration (P, V and θ are provably
+  already-generated `data_regime_a_fixed_topology` / `data_full` without regeneration (P, V and θ are provably
   untouched: a DC solve on a fresh net and on a copy of an AC-solved net agree on those
   three columns);
 - `training_utils.test_dc_pf(full=True)` additionally reports `nrmse_PVtheta`, the Q-excluded
   aggregate, so both conventions are available;
 - `recompute_dc_baseline.py` regenerates the baseline per dataset — the DC table is now
-  **per arm**, because Regime A (`data_a`) and Regime B (`data_full`) are different data and
+  **per arm**, because Regime A (`data_regime_a_fixed_topology`) and Regime B (`data_full`) are different data and
   the single shard table was being used for both;
 - `recompute_tables.py` takes `--dc_regime_a` / `--dc_regime_b` and emits a `PVtheta` row
   next to the four-quantity rows; the stale per-shard `dc_baseline.csv` files are no longer
@@ -253,7 +253,7 @@ a constant on voltage, in-distribution, on its own training grid**, while the DC
 ## A4 — Not reproducible from the repository. CONFIRMED (high)
 
 `.push_branch.py` commits an explicit file list through the GitHub Data API, so only what I
-named was ever pushed. On disk but *not* in the repo: `data_a` (40 MB), `data_full`
+named was ever pushed. On disk but *not* in the repo: `data_regime_a_fixed_topology` (40 MB), `data_full`
 (symlink to `full_run/data`), `ckpt_a`/`ckpt_b` (141 MB, gcn/gat/gin/transformer only), and
 every `tuning.csv` / `tuning_summary.csv` / `tuning_per_grid_argmin.csv` that
 `Model_configurations.md` §1 cites. Those citations are dead references as committed — the
@@ -270,7 +270,7 @@ The auditor found the leak in `full_run/data` and could not check the final data
 
 | Dataset | Arms it feeds | Shared demand snapshots train↔test | Duplicate train rows |
 |---|---|---|---|
-| `data_a` | Regime A (within-grid) | 0 on all four grids | 0 |
+| `data_regime_a_fixed_topology` | Regime A (within-grid) | 0 on all four grids | 0 |
 | `data_full` | Regime B (cross-context, OOD) | IEEE39 4, IEEE118 3, UK 1, IEEE24 0 | 1–4 per grid |
 
 So Regime A was generated with `--unique_demand` and is clean; **the leak is in exactly the
@@ -317,7 +317,7 @@ same-grid pairs (IEEE39 self-distance 0.0713 biased vs 0.0000 unbiased) — so a
 *floor* is an estimator artifact, while cross-grid comparisons are unaffected. For the blindness
 to electrical scale, `mmd_utils.reactance_histogram` adds a `log10(x_pu)` branch-reactance
 descriptor; `mmd_report.py` tabulates all 16 grid pairs under all three descriptors and both
-estimators (`docs/tables/mmd_data_full_v2.csv`). The pair that makes the point: UK → IEEE24 is the
+estimators (`docs/tables/mmd_data_regime_b_contingencies.csv`). The pair that makes the point: UK → IEEE24 is the
 closest off-diagonal pair topologically (degree MMD 0.276) yet far apart electrically (0.833).
 Details in `docs/Generalization_score_and_MMD.md` §2.
 
@@ -570,10 +570,10 @@ fixed-denominator NRMSE was added (Decision 30). ENGAGE's released code also dif
 paper: `training_utils.test` averages per-batch NRMSE and calls `nrmse_range(pred, batch.y)` with
 the arguments swapped, so its denominator is the range of the predictions. Our NRMSE follows the
 paper's formula, so ENGAGE's published values and ours are not on the same scale (DC baseline,
-`data_full_v2` test splits: 0.061 vs 0.077 on IEEE24, 0.051 vs 0.118 on IEEE118).
+`data_regime_b_contingencies` test splits: 0.061 vs 0.077 on IEEE24, 0.051 vs 0.118 on IEEE118).
 
 **L11 — Regime A's random split puts neighbouring snapshots in train and test (review E15).**
-`data_a` keeps PowerGraph's random split with unique snapshots (Decision 29). 4–9 % of its test
+`data_regime_a_fixed_topology` keeps PowerGraph's random split with unique snapshots (Decision 29). 4–9 % of its test
 samples have a training snapshot within 15 min and 11–26 % within 1 h, depending on the grid, so
 within-grid scores may be optimistic; by how much is not measured. A blocked Regime A can be
 added as an extra dataset (Decision 29); it has not been generated and the paper does not use it.

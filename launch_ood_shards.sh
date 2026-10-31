@@ -42,7 +42,7 @@ TARGET=${4:-8}
 OUT=results_norm
 CKPT=ckpt_norm/ood_${MODEL}
 CFG=configs/arch_config.json
-DATA_B=data_full_v2
+DATA_B=data_regime_b_contingencies
 
 mkdir -p "$OUT" "$CKPT" logs
 
