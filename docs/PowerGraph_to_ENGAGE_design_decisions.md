@@ -425,8 +425,8 @@ degree and Laplacian ones. Full write-up: `docs/Generalization_score_and_MMD.md`
 "the generalization metric" would imply information it does not carry; it is still worth reporting
 because it prefers uniform mediocrity over a catastrophic fold, which is the right preference for
 security screening. And a purely topological distance is blind to the ~20× load-scale spread between
-our cases — UK → IEEE24 is the closest off-diagonal pair by degree MMD (0.276) and far apart
-electrically (0.833), so an electrical complement is needed before any distance is used as a covariate.
+our cases (an identical topology with 100x impedances has degree/Laplacian MMD 0.0, `tests/test_mmd_utils.py`),
+so an electrical complement is needed before any distance is used as a covariate.
 
 **Update 2026-10-21 (review of E1/E2/E15/E16):** the per-pair median bandwidth stated above is replaced by one shared bandwidth (Decision 27). The UK → IEEE24 degree MMD of 0.276 quoted above is an artifact of the zero-median fallback (E1); with a shared bandwidth it is about 0.98 on `data_regime_b_contingencies`, so that pair is **not** the closest by degree. The electrical-descriptor argument stands; it is better supported by the reactance MMD itself than by that pair.
 
