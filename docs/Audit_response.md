@@ -367,7 +367,7 @@ listed as such below, so a later reviewer sees a choice rather than an oversight
 | # | Finding | Status | What closes it |
 |---|---|---|---|
 | B1 | No AC feasibility check; the promised residual/thermal metrics were never delivered | **closed** | `ac_feasibility.py` (Ybus P/Q residual with the shunt double-count removed, loading of every in-service branch against its rating), `eval_checkpoints.py --feasibility`, `tests/test_ac_feasibility.py` (calibrated against pandapower's own solution: true-state residual ≤ 2.8e-2 MW, loading matches `res_line` and `res_trafo` to 1e-12). All 336 checkpoints replayed; results in `docs/Normalization_results.md` §4.6 and `docs/tables/ac_feasibility_norm.csv` |
-| B2 | Regime A → Regime B confounds protocol and grid | **closed** | `rank_analysis.py` now carries four arms (`regime_a`, `regime_b_diagonal`, `cross_context`, `ood`) and a `protocol_decomposition.csv` splitting the gap into a same-grid factor (1.5–10.5×, which bundles two design changes — see L8) and an unseen-grid factor (34–382×) |
+| B2 | Regime A → Regime B confounds protocol and grid | **closed** | `rank_analysis.py` now carries four arms (`regime_a`, `regime_b_diagonal`, `cross_context`, `ood`) and a `protocol_decomposition.csv` splitting the gap into a same-grid factor (a diagnostic, not quoted as a cost: it bundles two design changes and the NRMSE denominator — see L8, L10) and an unseen-grid factor (34–382×) |
 | B3 | The rank inference is stated backwards | **closed** | pooled leaderboard τ (0.60 / 0.20) reported alongside the per-cell mean τ in `rank_correlation_pooled.csv`; wording changed to rank *instability* and "no reliable guarantee", and the claim that p = 1.00 proves a zero correlation is removed |
 | B4 | Hyperparameters selected under the raw-unit loss | **accepted limitation** | see L1 below — not retuned |
 | B5 | Non-finite policy inconsistent; a diverging model was rewarded | **closed** | `training_utils.gscore_row` voids an incomplete cell and records `n_expected` / `n_finite` / `finite_rate`, the same void-the-cell policy the ranking uses (`tests/test_gscore_policy.py`) |
@@ -430,7 +430,8 @@ true correlation, which is why the wording is "no reliable guarantee", not "no c
 each case's base value — `transmission_graph_gen._apply_demand` writes `net.load.p_mw` and
 nothing else — mirroring PowerGraph's `gendataopf.m`; the load trajectory is one
 realization of the PowerGraph-Node demand series, so nothing here estimates variability across
-alternative demand histories.
+alternative demand histories. Decision 28 keeps fixed Q as the default for PowerGraph
+replication and plans an optional `--q_mode constant_pf` (not yet implemented).
 
 **L7 — artifacts, now published (closes the open half of A4).** Both generated datasets
 (~79 MB) are committed, and the 336 checkpoints ship as the `ckpt_norm.tar.gz` asset of
@@ -507,9 +508,11 @@ The limitation added by C6 is recorded as **L8** below.
 
 **L8 — the same-grid step is not a clean protocol effect (C6).** Regime B differs from Regime A
 in two ways at once: blocked temporal splits with a one-day gap, and N-1/N-2 line contingencies
-(L9) instead of the intact topology. `same_grid_factor` therefore bounds their combined cost
-(1.5–10.5× across the six architectures,
-`results_norm/analysis/protocol_decomposition.csv`) and attributes it to neither. Isolating them
+(L9) instead of the intact topology. `same_grid_factor` in
+`results_norm/analysis/protocol_decomposition.csv` therefore mixes their effects, and the NRMSE
+denominator as well (L10); it attributes the higher Regime B error to neither and is not quoted
+as a cost. The same-grid evidence is the rank correlation (Kendall τ = 0.62, p = 0.004), which
+compares orderings inside each test set and so does not depend on the denominator. Isolating them
 needs two further datasets (blocked-split-only and contingencies-only) and a retrained campaign
 on each, which was declined along with the other training items.
 
@@ -547,3 +550,38 @@ Two notes on the report's own framing:
 N-1/N-2 outages of in-service *lines*; transformer and generator outages, busbar splits and
 switching actions do not appear, and islanding cases are discarded rather than modelled as
 separated systems. Transformers are covered by the thermal screen (C4) but never taken out.
+
+---
+
+## Limitations recorded in the 2026-10-21 review (L10–L12)
+
+**L10 — NRMSE depends on the set it is scored on (review E8).** `training_utils.nrmse_range`
+divides the RMSE by the mean per-quantity range (max − min) of the true targets in the evaluated
+set, as in ENGAGE's Eq. 3, so the same absolute error scores higher on a set with a narrower
+spread. This leaves every ranking and every Kendall τ unchanged, because all architectures in one
+cell are scored on the same set with the same denominator, and dividing by each grid's own range
+is what makes errors on different grids comparable. It does affect any ratio of NRMSEs from two
+test sets of the same grid. Measured on the targets of the committed datasets, Regime B's blocked
+test window spans 0.77 (IEEE24) and 0.80 (UK) of its training range, against 0.92–0.98 for
+Regime A's random test split; for the DC baseline on IEEE24 Regime B, dividing by the training
+range instead lowers NRMSE from 0.061 to 0.047. Such ratios — `same_grid_factor`, and a
+full-unseen-grid versus 100-sample comparison (E7) — are therefore not reported as costs, and no
+fixed-denominator NRMSE was added (Decision 30). ENGAGE's released code also differs from its
+paper: `training_utils.test` averages per-batch NRMSE and calls `nrmse_range(pred, batch.y)` with
+the arguments swapped, so its denominator is the range of the predictions. Our NRMSE follows the
+paper's formula, so ENGAGE's published values and ours are not on the same scale (DC baseline,
+`data_full_v2` test splits: 0.061 vs 0.077 on IEEE24, 0.051 vs 0.118 on IEEE118).
+
+**L11 — Regime A's random split puts neighbouring snapshots in train and test (review E15).**
+`data_a` keeps PowerGraph's random split with unique snapshots (Decision 29). 4–9 % of its test
+samples have a training snapshot within 15 min and 11–26 % within 1 h, depending on the grid, so
+within-grid scores may be optimistic; by how much is not measured. A blocked Regime A can be
+added as an extra dataset (Decision 29); it has not been generated and the paper does not use it.
+
+**L12 — MMD values depend on the kernel width (review E1, E2).** The committed MMD tables and
+g-scores use a width refitted for each grid pair, with a silent fallback to 1.0 when the median
+distance is zero (the UK rows), so cells measured with different widths are not strictly
+comparable. Decision 27 replaces this with one shared width for both regimes; it is not yet
+implemented. Even then the width comes from the median heuristic, not a tuned optimum, and depends
+on which datasets are pooled, so MMD values are comparable within this study only, and not with
+ENGAGE's Table 3 (which reports MMD² with an unbiased estimator and other descriptors).

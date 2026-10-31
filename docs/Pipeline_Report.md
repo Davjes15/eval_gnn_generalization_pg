@@ -417,8 +417,9 @@ Relevant CLI flags:
   (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
   scale as much as structure (L4).
 - The Regime A → Regime B step changes the temporal split **and** the topology at once, so the
-  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` (1.5-10.5x) bounds
-  the two jointly and attributes the degradation to neither (L8).
+  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` mixes the two, and
+  the NRMSE denominator as well, so it is not quoted as a cost (L8, L10). The same-grid
+  evidence is the rank correlation.
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
   P/Q/θ alongside V rather than the aggregate alone. Under `--normalize none` this
   was not only a reading hazard but a training defect — V carried ~5e-8 of the
