@@ -618,6 +618,34 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 
 ---
 
+## Decision 33 — Unseen grids keep their 100-sample test split for the main results; all 1 000 unseen samples are scored as a robustness check after retraining (review item E7)
+**Status:** decided 2026-10-21; not yet implemented or run (review prompt P6, after the P9 retraining).
+
+**Decision:** the published cross-context and leave-one-grid-out numbers keep scoring each unseen grid on its 100-sample test split (`experiments.py` `run_cross_context` and `run_ood`, `eval_checkpoints._test_sets`). After the models are retrained on the regenerated data (P9), the retrained checkpoints are also scored on all 1 000 samples (train + val + test) of every grid the model never saw. That result is reported next to the main results as a robustness check, not instead of them. Same-grid cells keep the test split, because the model trained on that grid's other samples.
+
+**Why:**
+- **The 100-sample test split covers one part of the year.** In Regime B the split is blocked in time (Decision 21): the test window is the last tenth of the demand year, so an unseen-grid score describes one period and its demand levels.
+- **Every sample of an unseen grid is unseen.** The model never trained on any of that grid's 1 000 samples, so scoring all of them adds evaluation data without leakage.
+- **It tests the paper's claim, not a new one.** The main result is that architecture rankings measured on one grid do not hold on another grid. If the 1 000-sample ranking agrees with the 100-sample one, the claim does not depend on which part of the year was tested; if it does not, the paper has to say so.
+- **Why after retraining:** the published checkpoints (`ckpt_norm.tar.gz`, release v1.0.0) were trained on the graphs before the branch-contract fix (E12, E13), and their UK and IEEE118 results are replaced by the P9 rerun. Scoring them would check rankings that are not in the paper.
+- **Why a check, not the headline:** the main protocol, splits and tables stay as defined, so the check changes nothing the reader has already seen.
+- **How the two are compared:** by the Kendall τ between the 100-sample and 1 000-sample architecture rankings in each arm, and by per-quantity RMSE in physical units. Never by a ratio of NRMSEs: the NRMSE denominator is the target range of the scored set, which differs between the two sets (Decision 30, L10).
+- **Caveat:** the 1 000 samples come from one demand time series, so nearby samples are correlated and they are not 1 000 independent tests. Recorded as L14.
+
+---
+
+## Decision 34 — Random outages hit lines only by default; transformer and impedance outages are opt-in (review item E14)
+**Status:** decided 2026-10-30 with the branch-contract fix (PR #3, which adds the option).
+
+**Decision:** `transmission_graph_gen.py --outage_types` accepts any comma list of `line`, `trafo` and `impedance`, with `line` as the default. Every dataset used in the paper uses `line`.
+
+**Why:**
+- **`line` keeps the published outage model.** With the same seed it reproduces the outage choices of the sampler used for the published Regime B data, so the regenerated data differ from the old data only by the graph-contract fixes (E12, E13), not by a new outage model.
+- **The other types are kept for other researchers,** so transformer or impedance-branch contingency experiments can be run without changing the code.
+- **Cost:** transformers and impedance branches never fail in the paper's data. This stays limitation L9.
+
+---
+
 ## Semantic mappings that must be preserved (implementation contract)
 - **Bus type → one-hot** `[Slack, PV, PQ]` from MATPOWER type (3/2/1).
 - **Per-unit base**: carry `baseMVA` / `baseKV` so `r_pu`, `x_pu` are correct (ENGAGE edge attr = `[trafo?, r_pu, x_pu, sc_voltage]`).

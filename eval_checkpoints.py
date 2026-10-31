@@ -92,7 +92,11 @@ def _scaler_for(arm, data, grid, normalize):
 
 
 def _test_sets(arm, data, grid, scaler):
-    """{test_grid: scaled test dataset} for this checkpoint's evaluation."""
+    """{test_grid: scaled test dataset} for this checkpoint's evaluation.
+
+    Unseen grids are scored on their 100-sample test split, as in training. The
+    all-samples robustness pass of Decision 33 is planned, not implemented.
+    """
     if arm == "within":
         targets = [grid]
     elif arm == "ood":

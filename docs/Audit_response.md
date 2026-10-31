@@ -551,10 +551,12 @@ Two notes on the report's own framing:
 N-1/N-2 outages of in-service *lines*; transformer and generator outages, busbar splits and
 switching actions do not appear, and islanding cases are discarded rather than modelled as
 separated systems. Transformers are covered by the thermal screen (C4) but never taken out.
+`--outage_types` (PR #3, Decision 34) can add transformer and impedance-branch outages for other
+experiments; the paper keeps the default `line`, so this limitation still holds.
 
 ---
 
-## Limitations recorded in the 2026-10-21 review (L10–L13)
+## Limitations recorded in the 2026-10-21 review (L10–L14)
 
 **L10 — NRMSE depends on the set it is scored on (review E8).** `training_utils.nrmse_range`
 divides the RMSE by the mean per-quantity range (max − min) of the true targets in the evaluated
@@ -595,3 +597,12 @@ not weighted by impedance: losing a weak or a strong circuit changes the descrip
 reactance descriptor covers impedance). The change is not yet implemented: the committed MMD
 tables and g-scores use the merged graph, which cannot see 98 of UK's 99 single-circuit outages,
 so their UK distances understate the topology shift until the MMD is recomputed.
+
+**L14 — unseen grids are scored on their 100 test samples (review E7).** The cross-context and
+leave-one-grid-out numbers score each unseen grid on its 100-sample test split, which in Regime B
+is the last tenth of the demand year (Decision 21), so they describe one period of the year.
+Decision 33 adds a robustness check after the models are retrained (P9): the retrained
+checkpoints scored on all 1 000 samples of each unseen grid, compared with the 100-sample results
+through the Kendall τ of the architecture rankings and physical-unit RMSE, never an NRMSE ratio
+(L10), and reported next to the main results. It has not been run. The 1 000 samples come from
+one demand time series and are correlated, so they are not 1 000 independent tests.

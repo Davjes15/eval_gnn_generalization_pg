@@ -245,6 +245,10 @@ quantities evaluated on the labels, so a reader can see the reconstruction floor
 and the true thermal state next to the model's numbers. Neither this pass nor any
 other replay writes to `ckpt_norm/`.
 
+The replay scores unseen grids on their 100-sample test split, as training did. Decision 33 adds
+a robustness pass over all 1 000 samples of each unseen grid, to be run on the retrained
+checkpoints and reported next to the main results; it is not implemented yet (L14).
+
 The two reference rows of that table need no checkpoint at all -- the labels give
 the reconstruction floor and the stored `dc_pf` state gives the DC baseline, both
 through the same checker -- and the summary joins them onto the model rows:
