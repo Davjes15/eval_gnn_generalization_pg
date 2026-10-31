@@ -85,9 +85,9 @@ flowchart LR
 > quantities DC power flow solves every architecture beats DC by **6–50×**
 > (`dc_comparison.csv`, ratio 0.019–0.169).
 >
-> **Two — it collapses in two steps, and the second one is the grid.** Same grid,
-> blocked temporal split plus contingencies: **0.0047–0.0155**, a factor of ~2 (ARMA
-> ~10). Unseen grid: **0.82–1.99** cross-context and **0.27–3.41** leave-one-grid-out
+> **Two — the large drop comes with the grid.** Same grid, blocked temporal split
+> plus line outages: **0.0047–0.0155**, higher than within-grid for every model (not
+> quoted as a ratio: split, topology and NRMSE denominator all change, L8/L10). Unseen grid: **0.82–1.99** cross-context and **0.27–3.41** leave-one-grid-out
 > — a further **68–222×** (`protocol_decomposition.csv`). So the headline gap is
 > generalization, not a split artefact.
 >

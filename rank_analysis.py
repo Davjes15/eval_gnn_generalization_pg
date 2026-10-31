@@ -279,9 +279,11 @@ def protocol_decomposition(arms, metric="nrmse"):
     `same_grid_factor` rather than `protocol_factor` for that reason (audit C6):
     Regime B differs from Regime A in two ways at once -- blocked temporal splits
     with a one-day gap, and N-1/N-2 contingencies instead of the intact
-    topology -- so it bounds their combined cost, not either one's. Separating
-    them needs two more datasets and a retrained campaign per dataset, which this
-    study does not run.
+    topology -- so it mixes their effects. It also divides scores from two test
+    sets whose NRMSE denominators (target ranges) differ (limitation L10), so it
+    is a diagnostic, not a reported cost. Separating split and topology needs two
+    more datasets and a retrained campaign per dataset, which this study does not
+    run.
     """
     if "regime_a" not in arms:
         return pd.DataFrame()

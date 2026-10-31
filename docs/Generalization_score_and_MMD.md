@@ -129,6 +129,13 @@ under different kernels. The matrix is a table of pairwise distances, not a set 
 values on a single common scale, and differences between cells should be read as
 ordinal.
 
+> **Update 2026-10-21 (decided, not yet implemented):** the per-pair refit is being replaced by
+> **one shared median bandwidth per descriptor, computed once over Regime A and Regime B together**.
+> The reason: the g-score's `Δ_MMD = max − min` compares cells, so it needs one ruler. The per-pair
+> width also falls back silently to 1.0 when the median is zero, which happens for every UK-train pair.
+> Every number in this document still uses the per-pair bandwidth. Reasoning and measured effect:
+> Decision 27 in [`PowerGraph_to_ENGAGE_design_decisions.md`](PowerGraph_to_ENGAGE_design_decisions.md).
+
 ### 2.3 The topological descriptors are blind to the shift that dominates our transfer error
 
 The degree histogram and the normalised-Laplacian spectral histogram are functions
@@ -166,6 +173,12 @@ while its reactance MMD is **0.833** (biased; 0.828 unbiased).
 A purely topological reading would call that pair "nearly
 in-distribution"; electrically it is not. This is the concrete reason the g-score's
 distance axis should not be treated as a measure of how hard a transfer is.
+
+> **Update 2026-10-21:** the 0.276 is an artifact. The UK training descriptors have a median pairwise
+> distance of 0, so the per-pair bandwidth fell back to `gamma = 1`. With a shared bandwidth, UK -> IEEE24 degree
+> MMD is about 0.98 on `data_full_v2`, so this pair is **not** the closest by degree. The point that
+> topological and electrical descriptors disagree is still shown by the 100x-impedance test in
+> `tests/test_mmd_utils.py`, but not by this pair. See Decision 27.
 
 ---
 

@@ -62,8 +62,8 @@ value, mirroring PowerGraph's `gendataopf.m` (limitation L6 in
 actions, and a draw that islands the network is rejected and resampled rather than modelled
 (L9). `data_full_v2` also changes the split from `data_a`: it differs from Regime A in the
 blocked temporal split **and** the contingencies at once, which is why the `same_grid_factor`
-in `results_norm/analysis/protocol_decomposition.csv` (1.5-10.5x) bounds the two jointly and
-attributes the degradation to neither (L8).
+in `results_norm/analysis/protocol_decomposition.csv` is not quoted as a cost: it mixes the two,
+and the NRMSE denominator too (L8, L10).
 
 Regeneration commands:
 

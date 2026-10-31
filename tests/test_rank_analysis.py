@@ -332,7 +332,7 @@ def test_protocol_decomposition_splits_the_two_steps():
         pd.DataFrame(rows_ood).to_csv(os.path.join(tmp, "ood.csv"), index=False)
         d = protocol_decomposition(load_arms(Args(tmp)), "nrmse").iloc[0]
         check(abs(d.same_grid_factor - 5.0) < 1e-9,
-              f"the same-grid step costs 5x, got {d.same_grid_factor}")
+              f"same_grid_factor should be 5, got {d.same_grid_factor}")
         check(abs(d.unseen_grid_factor_cross_context - 10.0) < 1e-9,
               f"the unseen grid costs a further 10x, got "
               f"{d.unseen_grid_factor_cross_context}")
