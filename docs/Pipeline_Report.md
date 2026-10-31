@@ -144,6 +144,8 @@ result. Powers are divided by `S_base = 100 MVA` and angles converted to radians
 then each of the four quantities is centred and scaled by statistics **fitted on
 training data only** — the training grid's split for within-grid and
 cross-context, the pooled retained grids for an OOD fold, never the unseen grid.
+Unseen grids are scored on their 100-sample test split; an all-1 000-sample robustness check on
+the retrained models is planned (Decision 33, L14).
 Features and targets share the scaler because `inference()` re-injects known
 values taken from `x` into the prediction, so the two must live in the same space.
 Predictions are de-normalized before any metric is computed, and the DC baseline
@@ -288,17 +290,17 @@ transfer arm, and they are generated with different protocols.
 ```bash
 # Regime A -- fixed topology, one demand snapshot per sample
 python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
 
 # Regime B -- random N-1/N-2 LINE outages, disjoint blocked demand windows (A5)
 python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
 ```
 
 ### 6.3 Validate (required before training)
 ```bash
-python3 validate.py --data_dir data_a --regime a          # fixed topology: skips gate E
-python3 validate.py --data_dir data_full_v2 --expect_blocked   # gate H: split hygiene
+python3 validate.py --data_dir data_regime_a_fixed_topology --regime a          # fixed topology: skips gate E
+python3 validate.py --data_dir data_regime_b_contingencies --expect_blocked   # gate H: split hygiene
 ```
 
 ### 6.4 Run the experiments
@@ -311,7 +313,7 @@ bash launch_normalized.sh 7 within cross ood     # 7 = pool size
 ```
 or a single arm by hand:
 ```bash
-python3 experiments.py --experiment both --data_dir data_full_v2 --out results \
+python3 experiments.py --experiment both --data_dir data_regime_b_contingencies --out results \
     --epochs 200 --normalize pu_zscore --arch_config configs/arch_config.json \
     --seeds 0 100 300 700 1000 --save_models models
 ```
@@ -324,15 +326,15 @@ order over one generated dataset, with no resampling — so the error bars they 
 nothing about variability across demand or contingency draws (L5).
 Then replay the saved weights for the physics-aware report, without retraining:
 ```bash
-python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a \
-    --data_b data_full_v2 --normalize pu_zscore --out results_norm/physics
+python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology \
+    --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm/physics
 python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
 ```
 The campaign runs with `--skip_mmd`, so the model-independent tables (MMD
 matrices, pooled OOD distances, DC baseline) are computed once for the whole
 campaign instead of 18 times in parallel with the training:
 ```bash
-python3 experiments.py --only_topology --experiment ood --data_dir data_full_v2 \
+python3 experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies \
     --out results_norm/topology --regime_tag B --models gcn \
     --arch_config configs/arch_config.json
 ```
@@ -417,8 +419,9 @@ Relevant CLI flags:
   (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
   scale as much as structure (L4).
 - The Regime A → Regime B step changes the temporal split **and** the topology at once, so the
-  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` (1.5-10.5x) bounds
-  the two jointly and attributes the degradation to neither (L8).
+  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` mixes the two, and
+  the NRMSE denominator as well, so it is not quoted as a cost (L8, L10). The same-grid
+  evidence is the rank correlation.
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
   P/Q/θ alongside V rather than the aggregate alone. Under `--normalize none` this
   was not only a reading hazard but a training defect — V carried ~5e-8 of the

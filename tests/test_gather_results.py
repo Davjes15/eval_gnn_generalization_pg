@@ -23,7 +23,7 @@ from gather_results import (check_protocol, gather, shard_dirs,
 
 FAILURES = []
 MODELS_2 = ["gcn", "gat"]
-SUMMARY = {"seeds": [0, 100], "epochs": 200, "data_dir": "data_a",
+SUMMARY = {"seeds": [0, 100], "epochs": 200, "data_dir": "data_regime_a_fixed_topology",
            "batch_size": 32, "batch_size_ood": 96, "normalize": "pu_zscore"}
 
 

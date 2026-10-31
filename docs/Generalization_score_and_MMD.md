@@ -7,7 +7,7 @@ protocol-level observations, because both change how the numbers in
 
 Nothing in this document required retraining. The code it describes is
 `training_utils.get_generalization_score`, `mmd_utils.py` and `mmd_report.py`; the
-table it reports is `docs/tables/mmd_data_full_v2.csv`.
+table it reports is `docs/tables/mmd_data_regime_b_contingencies.csv`.
 
 ---
 
@@ -21,7 +21,7 @@ score = mean_nrmse + alpha * std_nrmse * log(mmd_range + 1) / mmd_range
 
 where `mmd_range` is the spread of the topological distances across the test grids
 of an arm, and `mean_nrmse` / `std_nrmse` are that model's mean and standard
-deviation of error over the same grids (after trimming the outer 2% of errors).
+deviation of error over the same grids (no percentile trim, `bounds=0`; Decision 13).
 The distances are Laplacian MMDs under the **biased** estimator throughout, that
 being what every committed `mmd_laplacian.csv` / `ood_distance.csv` holds (§2.1).
 
@@ -30,7 +30,7 @@ model.** Every architecture in an arm is evaluated on the same set of grids, so
 every architecture gets the same distance spread. In our runs it is a single
 constant repeated down the column:
 
-Raw-unit campaign, `results/analysis/` (biased Laplacian MMD on `data_full_v2`):
+Raw-unit campaign, `results/analysis/` (biased Laplacian MMD on `data_regime_b_contingencies`):
 
 | arm | `mmd_range` | `log(Δ+1)/Δ` | so the score is |
 |---|---|---|---|
@@ -96,7 +96,7 @@ estimator correctly. Concretely, **biased** is what
 `results_norm/topology/mmd_degree.csv`, `mmd_laplacian.csv` and
 `ood_distance.csv` hold, and therefore what the `mmd_range` and every g-score in
 `results_norm/analysis/` and in `results/analysis/` are built from; the only
-committed table holding both is `docs/tables/mmd_data_full_v2.csv`, which carries
+committed table holding both is `docs/tables/mmd_data_regime_b_contingencies.csv`, which carries
 an `estimator` column with a `biased` and an `unbiased` row for each of the 16
 grid pairs and all three descriptors:
 
@@ -129,6 +129,19 @@ under different kernels. The matrix is a table of pairwise distances, not a set 
 values on a single common scale, and differences between cells should be read as
 ordinal.
 
+> **Update 2026-10-21 (decided, not yet implemented):** the per-pair refit is being replaced by
+> **one shared median bandwidth per descriptor, computed once over Regime A and Regime B together**.
+> The reason: the g-score's `Δ_MMD = max − min` compares cells, so it needs one ruler. The per-pair
+> width also falls back silently to 1.0 when the median is zero, which happens for every UK-train pair.
+> Every number in this document still uses the per-pair bandwidth. Reasoning and measured effect:
+> Decision 27 in [`PowerGraph_to_ENGAGE_design_decisions.md`](PowerGraph_to_ENGAGE_design_decisions.md).
+
+> **Update 2026-10-21 (decided, not yet implemented):** the MMD graph will count every parallel
+> circuit (`--mmd_graph multi`, the default; Decision 31). Today `mmd_utils.pyg_to_networkx`
+> merges parallel circuits into one edge, so the degree and Laplacian descriptors miss most UK
+> outages (98 of 99 single-circuit outages leave the merged graph unchanged). The merged `simple`
+> graph is kept only to reproduce the committed tables, and each graph mode has its own shared width.
+
 ### 2.3 The topological descriptors are blind to the shift that dominates our transfer error
 
 The degree histogram and the normalised-Laplacian spectral histogram are functions
@@ -144,7 +157,7 @@ reported alongside the topological ones, not instead of them, and
 identical topology gives degree/Laplacian MMD of 0.0 and reactance MMD of 1.12,
 while a ring-vs-star change at identical impedance gives the reverse.
 
-On the real data (`docs/tables/mmd_data_full_v2.csv`, `data_full_v2`, train split
+On the real data (`docs/tables/mmd_data_regime_b_contingencies.csv`, `data_regime_b_contingencies`, train split
 vs test split), with the **biased** estimator that every result CSV uses and the
 **unbiased** one alongside it:
 
@@ -159,13 +172,14 @@ The gap between the diagonal and the off-diagonal is what makes the arm labels
 meaningful, and it is present under all three descriptors -- our "unseen grid" is
 genuinely far from the training grids however the distance is measured.
 
-The interesting disagreement is per pair. UK -> IEEE24 has a degree MMD of only
-**0.276** (biased; 0.276 unbiased) -- the lowest off-diagonal value in the matrix,
-because the dense UK network has a degree profile not unlike the small IEEE24 --
-while its reactance MMD is **0.833** (biased; 0.828 unbiased).
-A purely topological reading would call that pair "nearly
-in-distribution"; electrically it is not. This is the concrete reason the g-score's
-distance axis should not be treated as a measure of how hard a transfer is.
+The committed degree matrix is not evidence of a per-pair disagreement. Its UK -> IEEE24
+value (0.276) is an artifact (review item E1): the UK training descriptors have a median
+pairwise distance of 0, so the per-pair bandwidth fell back to `gamma = 1`. With a shared
+bandwidth that pair's degree MMD is about 0.98 on `data_regime_b_contingencies`, so it is not
+the closest pair by degree (Decision 27). The disagreement between topological and electrical
+descriptors is shown by the 100x-impedance test in `tests/test_mmd_utils.py` (identical
+topology, degree/Laplacian MMD 0.0, reactance MMD 1.12). This is the concrete reason the
+g-score's distance axis should not be treated as a measure of how hard a transfer is.
 
 ---
 
@@ -173,7 +187,7 @@ distance axis should not be treated as a measure of how hard a transfer is.
 
 ```bash
 # grid-distance tables under all three descriptors and both estimators
-python mmd_report.py --data_dir data_full_v2 --out docs/tables
+python mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables
 
 # the A6 identity and the rank equivalence, from the committed artifacts
 python - <<'PY'

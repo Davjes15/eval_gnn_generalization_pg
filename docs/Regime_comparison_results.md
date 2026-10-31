@@ -12,7 +12,7 @@
 > - **A5 (split hygiene).** The Regime B data used here (`full_run/data/`) drew
 >   demand snapshots independently per split, so a test snapshot could be the
 >   neighbouring 15-minute step of a training one. Regime B is now
->   `data_full_v2`, blocked in time with a one-day gap.
+>   `data_regime_b_contingencies`, blocked in time with a one-day gap.
 >
 > What survives unchanged is the *design*: one frozen configuration per
 > architecture across regimes, the pre-registered τ decision rule, and the
@@ -46,7 +46,7 @@ ordering between regimes cannot be attributed to re-tuning.
 |---|---|---|
 | Topology | base case only, `k = 0` | sampled N-k, `k ∈ {0,1,2}` |
 | Evaluation | within-grid | cross-context (unseen grid) + leave-one-grid-out OOD |
-| Data | `data_a/` | `full_run/data/` (frozen) |
+| Data | `data_regime_a_fixed_topology/` | `full_run/data/` (frozen) |
 
 Row counts, all finite, all matching `configs/arch_config.json`: Regime A 112,
 cross-context 448, OOD 112.
@@ -348,7 +348,7 @@ python3 rank_analysis.py --regime_a results/regime_a/within_grid.csv \
     --cross results/regime_b/cross_context.csv \
     --ood results/regime_b/ood.csv --out results/analysis
 # 4a. DC baseline under the Q = 0 convention, once per dataset (see 7)
-python3 recompute_dc_baseline.py --data_dir data_a \
+python3 recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology \
     --out results/analysis/dc_baseline_regime_a.csv
 python3 recompute_dc_baseline.py --data_dir data_full \
     --out results/analysis/dc_baseline_regime_b.csv
@@ -383,7 +383,7 @@ python3 recompute_tables.py --within results/regime_a/within_grid.csv \
   deleted.
 - **No checkpoints for `arma_gnn` and `nnconv`** — they reproduce from the
   recorded seeds (D18).
-- **Regime A and Regime B use different datasets** (`data_a/` vs the frozen
+- **Regime A and Regime B use different datasets** (`data_regime_a_fixed_topology/` vs the frozen
   `full_run/data/`), matched on grids, split sizes and preprocessing but not
   identical draws, so a small part of the A→B change is dataset, not regime.
 - **No practitioner arm**, by explicit scope decision: nothing here estimates

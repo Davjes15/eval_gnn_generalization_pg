@@ -70,7 +70,7 @@ cross-grid confound".
 * All six architectures, all three arms, `--normalize pu_zscore`, frozen
   `configs/arch_config.json`, 200 epochs, seeds 0/100/300/700/1000 (nnconv
   0/100/300, as in the raw-unit campaign).
-* Data: `data_a` for Regime A; **`data_full_v2`** for Regime B — the A5
+* Data: `data_regime_a_fixed_topology` for Regime A; **`data_regime_b_contingencies`** for Regime B — the A5
   remediation (blocked temporal windows, one-day gap) landed before the Regime B
   arms were trained, so Regime B differs from the raw-unit campaign in *both* the
   representation and the split hygiene. Regime A differs only in the
@@ -167,8 +167,13 @@ the whole gap to generalization.
 
 The same-grid step is **not** a clean protocol effect, and audit C6 was right to
 say so: Regime B changed the temporal split *and* the topology at the same time,
-so `same_grid_factor` bounds the two jointly and attributes it to neither.
-Separating them would need a blocked-split-only dataset and a
+so `same_grid_factor` mixes the two and attributes the higher Regime B error to
+neither. A third difference rides along: NRMSE divides by the range of the
+targets in the set being scored, and Regime B's blocked test window has a
+narrower spread than Regime A's random test split, so part of the ratio is the
+denominator, not the model (limitation L10). The A → diagonal ratio is
+therefore not reported as the cost of a harder protocol; the same-grid evidence
+is the ranking (below). Separating split and topology would need a blocked-split-only dataset and a
 contingencies-only dataset with a retrained campaign on each — declined with the
 other training items (limitation L8).
 
@@ -187,23 +192,29 @@ seed), the cross-context column over **unseen** pairs only; void rule
 complete-seed mean of the same quantity is 1.145 in §4.4); nnconv's column
 entries are means and ranks over 12 rows where every other architecture has 20.
 
-Decomposed as multiplicative factors (`protocol_decomposition.csv`, aggregate
-NRMSE, same population and same void rule as the table above, so nnconv's two
-factors also rest on 3 seeds):
+The grid step as a multiplicative factor (`protocol_decomposition.csv`,
+aggregate NRMSE, same population and same void rule as the table above, so
+nnconv's factor also rests on 3 seeds). It divides a model's NRMSE on an unseen
+grid by its NRMSE on its own training grid under the same Regime B protocol, so
+each grid is scored relative to its own spread, as in ENGAGE:
 
-| model | same-grid step (A → diagonal) | grid step (diagonal → cross-context) | total |
-|---|---:|---:|---:|
-| arma_gnn | 10.5× | 177× | 1861× |
-| gat | 2.1× | 134× | 279× |
-| gcn | 1.5× | 68× | 105× |
-| gin | 2.3× | 117× | 273× |
-| nnconv | 2.3× | 222× | 501× |
-| transformer | 2.0× | 119× | 240× |
+| model | grid step (diagonal → cross-context) |
+|---|---:|
+| arma_gnn | 177× |
+| gat | 134× |
+| gcn | 68× |
+| gin | 117× |
+| nnconv | 222× |
+| transformer | 119× |
 
-Blocked splits plus contingencies together cost a factor of ~2 (ARMA ~10). **The
-unseen grid costs two orders of magnitude on top of that**, so the headline gap is a
-generalization result, not a split artefact — but it is 68–222×, not the ~1000×
-that the raw A → unseen ratio suggests.
+The CSV also carries `same_grid_factor` (diagonal ÷ Regime A) and the
+A → unseen totals. They are not quoted as results: both divide by the Regime A
+score, and Regime A and the Regime B diagonal differ in split, topology and
+NRMSE denominator at once (L8, L10). What the magnitudes support on the same
+grid is only that every architecture's NRMSE is higher on the Regime B diagonal
+than on Regime A. **The unseen grid then costs a further 68–222× on top of the
+same-grid Regime B score**, so the headline gap is a generalization result, not a
+split artefact.
 
 **Where the ranking survives and where it breaks.** Kendall tau per (grid, seed)
 cell, averaged, with an exact permutation null over all 720 architecture

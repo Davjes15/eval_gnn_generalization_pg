@@ -60,7 +60,7 @@ def physics_frame():
 
 def baseline_frame():
     rows = []
-    for data_dir in ("data_a", "data_full_v2"):
+    for data_dir in ("data_regime_a_fixed_topology", "data_regime_b_contingencies"):
         for grid, scale in (("IEEE24", 1.0), ("UK", 3.0)):
             for state in ("truth", "dc_pf"):
                 row = {"data_dir": data_dir, "grid": grid, "state": state}

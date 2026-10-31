@@ -17,7 +17,7 @@ them is attributable to the architecture rather than to a re-tuning.
 |---|---|
 | Search space | `num_layers ∈ {2, 3, 8}` × `hidden ∈ {32, 64, 128}` × `learning_rate ∈ {1e-3, 3e-4}` |
 | Budget | 10 candidates per architecture — the 9-point depth×width grid at `lr=1e-3`, then the leader re-scored at `lr=3e-4` |
-| Training data | Regime A (`data_a`, fixed topology), 800 train / 100 val / 100 test per grid |
+| Training data | Regime A (`data_regime_a_fixed_topology`, fixed topology), 800 train / 100 val / 100 test per grid |
 | Score | mean over the four grids of the best **validation** weighted MSE; test splits are never read |
 | Stage-1 seed | 0 |
 | Tie / confirmation seed | 100 |
@@ -331,7 +331,7 @@ gradient explosion at all.
 
 ```bash
 # per-architecture sweep (resumable; trials are cached by their full key)
-python3 tune_budget.py --data_dir data_a --epochs 200 --models gcn \
+python3 tune_budget.py --data_dir data_regime_a_fixed_topology --epochs 200 --models gcn \
     --out results_a/gcn --config_out results_a/gcn/arch_config.json --skip_existing
 
 # a slow architecture's remaining trials can be spread over processes ...

@@ -13,7 +13,7 @@
 > * **Nothing was normalized**, so voltage carried ~5e-8 of the training loss; the
 >   V readings below are a training defect, not only a range artefact (audit item A2).
 > * **Regime B shared demand snapshots across splits**; the final transfer numbers
->   come from `data_full_v2` with a blocked temporal split (audit item A5).
+>   come from `data_regime_b_contingencies` with a blocked temporal split (audit item A5).
 >
 > For current results use `docs/Normalization_results.md` §4 (the final normalized
 > campaign); `docs/Regime_comparison_results.md` is the raw-unit ablation; for what changed and why,
@@ -234,7 +234,8 @@ Off-diagonal transfer NRMSE, summarized per model:
 
 ## 5. Out-of-distribution — leave-one-grid-out (train on 3 grids → test on the held-out one)
 
-`ood.csv` — aggregate NRMSE on the held-out grid:
+`ood.csv` — aggregate NRMSE on the held-out grid's 100-sample test split (Decision 33 adds an
+all-1 000-sample robustness check on the retrained models; not run yet):
 
 | model | IEEE24 | IEEE39 | IEEE118 | UK |
 |---|---|---|---|---|

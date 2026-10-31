@@ -11,7 +11,7 @@ WHY
 
         python3 gather_trials.py --shards 'results_a/nnconv_bygrid/*' \
             --out results_a/nnconv
-        python3 tune_budget.py --data_dir data_a --epochs 200 --models nnconv \
+        python3 tune_budget.py --data_dir data_regime_a_fixed_topology --epochs 200 --models nnconv \
             --out results_a/nnconv --skip_existing
 
     The second command re-scores nothing that is already present: trials are
