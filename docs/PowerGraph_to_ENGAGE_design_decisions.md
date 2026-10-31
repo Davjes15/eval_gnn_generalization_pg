@@ -604,6 +604,20 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 
 ---
 
+## Decision 32 — The g-score uses the Laplacian MMD; the degree MMD is computed as a check and not used in the paper (review item E4)
+**Status:** decided 2026-10-21. The Laplacian has been the g-score axis since the first experiments commit (`5dd4b5d`, 2026-07-18), with no written reason; this decision records one. The degree g-score is not yet produced (review prompt P3).
+
+**Decision:** every g-score in the paper uses the Laplacian-spectrum MMD. The degree MMD is still computed and written (`mmd_degree.csv`, `mmd_pooled_degree`), and a degree g-score table is produced as a check, but it is not reported in the paper.
+
+**Why:**
+- **It measures what the study changes.** The degree histogram only counts lines per bus: one line outage moves two buses by one bin. The normalised-Laplacian spectrum reflects the whole network (loops, bottlenecks, how well connected it is), and its eigenvalues can move when any line goes out.
+- **On the committed tables it is the coherent descriptor.** The degree matrix is distorted by the zero-width fallback (E1): the UK row reads 0.28–0.47 while the UK column reads 1.21–1.23. The Laplacian matrix places UK far from every grid in both directions (1.00–1.25). On the pooled OOD distances, the Laplacian puts UK farthest (0.97 vs 0.62–0.67), consistent with UK being the hardest held-out grid; degree puts IEEE118 farthest (1.09). This agreement with the errors is supporting evidence only, since it looks at the results.
+- **ENGAGE comparability is no longer a reason for degree.** ENGAGE's paper reports degree "without loss of generality" and says the results generally hold for the Laplacian; its code computes both. Our MMD already differs from ENGAGE's in width, MMD vs MMD² and graph convention (L12, L13), so its numbers are not comparable either way.
+- **Cost:** under a shared width (`data_full_v2`), the degree ranking is more stable to halving/doubling the width (Spearman 0.94 / 1.00) than the Laplacian (0.92 / 0.73), so the paper reports the ×0.5 and ×2 width rows (Decision 27).
+- **Scope:** the descriptor does not affect NRMSE or the Kendall τ rank-transfer results, which are the paper's main claim; it only changes `Δ_MMD` and the σ weight of the g-score, which is the same for every model in an arm.
+
+---
+
 ## Semantic mappings that must be preserved (implementation contract)
 - **Bus type → one-hot** `[Slack, PV, PQ]` from MATPOWER type (3/2/1).
 - **Per-unit base**: carry `baseMVA` / `baseKV` so `r_pu`, `x_pu` are correct (ENGAGE edge attr = `[trafo?, r_pu, x_pu, sc_voltage]`).
