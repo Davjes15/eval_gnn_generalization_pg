@@ -136,6 +136,12 @@ ordinal.
 > Every number in this document still uses the per-pair bandwidth. Reasoning and measured effect:
 > Decision 27 in [`PowerGraph_to_ENGAGE_design_decisions.md`](PowerGraph_to_ENGAGE_design_decisions.md).
 
+> **Update 2026-10-21 (decided, not yet implemented):** the MMD graph will count every parallel
+> circuit (`--mmd_graph multi`, the default; Decision 31). Today `mmd_utils.pyg_to_networkx`
+> merges parallel circuits into one edge, so the degree and Laplacian descriptors miss most UK
+> outages (98 of 99 single-circuit outages leave the merged graph unchanged). The merged `simple`
+> graph is kept only to reproduce the committed tables, and each graph mode has its own shared width.
+
 ### 2.3 The topological descriptors are blind to the shift that dominates our transfer error
 
 The degree histogram and the normalised-Laplacian spectral histogram are functions
