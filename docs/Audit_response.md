@@ -317,8 +317,9 @@ same-grid pairs (IEEE39 self-distance 0.0713 biased vs 0.0000 unbiased) — so a
 *floor* is an estimator artifact, while cross-grid comparisons are unaffected. For the blindness
 to electrical scale, `mmd_utils.reactance_histogram` adds a `log10(x_pu)` branch-reactance
 descriptor; `mmd_report.py` tabulates all 16 grid pairs under all three descriptors and both
-estimators (`docs/tables/mmd_data_regime_b_contingencies.csv`). The pair that makes the point: UK → IEEE24 is the
-closest off-diagonal pair topologically (degree MMD 0.276) yet far apart electrically (0.833).
+estimators (`docs/tables/mmd_data_regime_b_contingencies.csv`). The point is made by the 100x-impedance test in
+`tests/test_mmd_utils.py` (identical topology, degree/Laplacian MMD 0.0, reactance MMD 1.12). The committed
+UK → IEEE24 degree MMD of 0.276 is not evidence: it comes from the zero-median fallback (E1, Decision 27).
 Details in `docs/Generalization_score_and_MMD.md` §2.
 
 ## A8 — Statistics are weaker than the doc implies. CONFIRMED, and worse

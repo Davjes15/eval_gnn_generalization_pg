@@ -21,7 +21,7 @@ score = mean_nrmse + alpha * std_nrmse * log(mmd_range + 1) / mmd_range
 
 where `mmd_range` is the spread of the topological distances across the test grids
 of an arm, and `mean_nrmse` / `std_nrmse` are that model's mean and standard
-deviation of error over the same grids (after trimming the outer 2% of errors).
+deviation of error over the same grids (no percentile trim, `bounds=0`; Decision 13).
 The distances are Laplacian MMDs under the **biased** estimator throughout, that
 being what every committed `mmd_laplacian.csv` / `ood_distance.csv` holds (§2.1).
 
@@ -172,19 +172,14 @@ The gap between the diagonal and the off-diagonal is what makes the arm labels
 meaningful, and it is present under all three descriptors -- our "unseen grid" is
 genuinely far from the training grids however the distance is measured.
 
-The interesting disagreement is per pair. UK -> IEEE24 has a degree MMD of only
-**0.276** (biased; 0.276 unbiased) -- the lowest off-diagonal value in the matrix,
-because the dense UK network has a degree profile not unlike the small IEEE24 --
-while its reactance MMD is **0.833** (biased; 0.828 unbiased).
-A purely topological reading would call that pair "nearly
-in-distribution"; electrically it is not. This is the concrete reason the g-score's
-distance axis should not be treated as a measure of how hard a transfer is.
-
-> **Update 2026-10-21:** the 0.276 is an artifact. The UK training descriptors have a median pairwise
-> distance of 0, so the per-pair bandwidth fell back to `gamma = 1`. With a shared bandwidth, UK -> IEEE24 degree
-> MMD is about 0.98 on `data_regime_b_contingencies`, so this pair is **not** the closest by degree. The point that
-> topological and electrical descriptors disagree is still shown by the 100x-impedance test in
-> `tests/test_mmd_utils.py`, but not by this pair. See Decision 27.
+The committed degree matrix is not evidence of a per-pair disagreement. Its UK -> IEEE24
+value (0.276) is an artifact (review item E1): the UK training descriptors have a median
+pairwise distance of 0, so the per-pair bandwidth fell back to `gamma = 1`. With a shared
+bandwidth that pair's degree MMD is about 0.98 on `data_regime_b_contingencies`, so it is not
+the closest pair by degree (Decision 27). The disagreement between topological and electrical
+descriptors is shown by the 100x-impedance test in `tests/test_mmd_utils.py` (identical
+topology, degree/Laplacian MMD 0.0, reactance MMD 1.12). This is the concrete reason the
+g-score's distance axis should not be treated as a measure of how hard a transfer is.
 
 ---
 
