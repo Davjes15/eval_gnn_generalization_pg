@@ -1,6 +1,6 @@
 {
   "epochs": 200,
-  "data_dir": "data_full_v2",
+  "data_dir": "data_regime_b_contingencies",
   "batch_size": 32,
   "batch_size_ood": 96,
   "seeds": [

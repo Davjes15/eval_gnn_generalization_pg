@@ -25,7 +25,7 @@ READING THE DC ROW
 
 USAGE
     POWERGRAPH_NODE_DIR=... python dc_feasibility.py \
-        --data data_a data_full_v2 --out results_norm/physics/dc_feasibility.csv
+        --data data_regime_a_fixed_topology data_regime_b_contingencies --out results_norm/physics/dc_feasibility.csv
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def score(data_dir: str, grid: str, cases_dir: str | None = None):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--data", nargs="+", default=["data_a", "data_full_v2"])
+    p.add_argument("--data", nargs="+", default=["data_regime_a_fixed_topology", "data_regime_b_contingencies"])
     p.add_argument("--grids", nargs="+", default=list(GRIDS))
     p.add_argument("--cases_dir", default=None)
     p.add_argument("--out", default="results_norm/physics/dc_feasibility.csv")

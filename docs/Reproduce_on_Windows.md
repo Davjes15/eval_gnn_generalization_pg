@@ -185,7 +185,7 @@ python transmission_graph_gen.py --grid IEEE24 --n_train 30 --n_val 6 --n_test 6
 ```
 
 **Then the full generation — optional now.** Both published datasets are committed
-(`data_a/`, `data_full_v2/`, ~79 MB), so you can skip straight to training or to
+(`data_regime_a_fixed_topology/`, `data_regime_b_contingencies/`, ~79 MB), so you can skip straight to training or to
 the checkpoint replay and still be on the exact tensors behind the reported
 numbers. Regenerate only if you are changing the protocol or checking that the
 generator still produces an equivalent draw. The benchmark needs **two** datasets
@@ -194,10 +194,10 @@ protocols differ:
 
 ```powershell
 # Regime A: fixed topology, one demand snapshot per sample
-python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
 
 # Regime B: random N-1/N-2 line outages, disjoint blocked demand windows (audit item A5)
-python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
 ```
 
 `--time_split blocked` is not optional for Regime B: without it, train/val/test
@@ -222,8 +222,8 @@ used later, in training.
 
 ## 9. Validate before trusting anything
 ```powershell
-python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
-python validate.py --data_dir data_full_v2 --expect_blocked
+python validate.py --data_dir data_regime_a_fixed_topology --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_regime_b_contingencies --expect_blocked
 ```
 
 Expected final line: **`ALL GATES PASSED`** (it checks tensor shapes, bus‑type
@@ -247,7 +247,7 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 | `--epochs` | training epochs (200 for the full run; 20 for quick tests) |
 | `--data_dir` / `--out` | input data folder / output results folder |
 | `--save_models <dir>` | also save every trained model's weights |
-| `--experiment within` | the fixed-topology control arm (use with `data_a`) |
+| `--experiment within` | the fixed-topology control arm (use with `data_regime_a_fixed_topology`) |
 | `--normalize` | `none` (raw-unit ablation) or `pu_zscore` (**the protocol**) |
 | `--arch_config` | frozen widths/depths/learning rates; always pass `configs\arch_config.json` |
 | `--seeds` | `0 100 300 700 1000` (`0 100 300` for `nnconv`) |
@@ -257,7 +257,7 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 **Quick smoke test** (2 models, 2 grids, few epochs — a couple of minutes):
 
 ```powershell
-python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data_full_v2 --out results_smoke --normalize pu_zscore
+python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data_regime_b_contingencies --out results_smoke --normalize pu_zscore
 ```
 
 ### Running ONE model at a time (recommended for you)
@@ -272,7 +272,7 @@ $seeds = "0","100","300","700","1000"
 # control arm (Regime A, fixed topology)
 foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
   python experiments.py --experiment within --models $m --epochs 200 `
-    --data_dir data_a --out results_norm\within_$m --regime_tag A `
+    --data_dir data_regime_a_fixed_topology --out results_norm\within_$m --regime_tag A `
     --normalize pu_zscore --arch_config $cfg --seeds $seeds `
     --save_models ckpt_norm\within_$m --skip_existing
 }
@@ -280,11 +280,11 @@ foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
 # transfer arms (Regime B, varying topology)
 foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
   python experiments.py --experiment cross --models $m --epochs 200 `
-    --data_dir data_full_v2 --out results_norm\cross_$m --regime_tag B `
+    --data_dir data_regime_b_contingencies --out results_norm\cross_$m --regime_tag B `
     --normalize pu_zscore --arch_config $cfg --seeds $seeds `
     --save_models ckpt_norm\cross_$m --skip_existing
   python experiments.py --experiment ood --models $m --epochs 200 `
-    --data_dir data_full_v2 --out results_norm\ood_$m --regime_tag B `
+    --data_dir data_regime_b_contingencies --out results_norm\ood_$m --regime_tag B `
     --batch_size_ood 96 --normalize pu_zscore --arch_config $cfg --seeds $seeds `
     --save_models ckpt_norm\ood_$m --skip_existing
 }
@@ -389,14 +389,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install torch_geometric; pip install -r requirements.txt
 $env:POWERGRAPH_NODE_DIR = "C:\gnn\PowerGraph-Node\13_Power_system"
 python transmission_grids.py
-python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
-python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
-python validate.py --data_dir data_a --regime a           # Regime A is fixed-topology by design
-python validate.py --data_dir data_full_v2 --expect_blocked
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+python validate.py --data_dir data_regime_a_fixed_topology --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_regime_b_contingencies --expect_blocked
 $env:OMP_NUM_THREADS = "1"
-python experiments.py --experiment within --epochs 200 --data_dir data_a --out results_norm --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_norm --skip_existing
-python experiments.py --experiment both   --epochs 200 --data_dir data_full_v2 --out results_norm --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_norm --skip_existing
-python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a --data_b data_full_v2 --normalize pu_zscore --out results_norm\physics
+python experiments.py --experiment within --epochs 200 --data_dir data_regime_a_fixed_topology --out results_norm --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_norm --skip_existing
+python experiments.py --experiment both   --epochs 200 --data_dir data_regime_b_contingencies --out results_norm --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_norm --skip_existing
+python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm\physics
 python rank_analysis.py --results_dir results_norm
 python recompute_tables.py --results_dir results_norm
 ```

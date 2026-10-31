@@ -14,8 +14,8 @@
 #   bash launch_normalized.sh 3 cross ood      # Regime B only, smaller pool
 #
 # Arms and their data:
-#   within        -> data_a         (Regime A, fixed topology, unique demand)
-#   cross | ood   -> data_full_v2  (Regime B, N-k topologies, blocked temporal
+#   within        -> data_regime_a_fixed_topology         (Regime A, fixed topology, unique demand)
+#   cross | ood   -> data_regime_b_contingencies  (Regime B, N-k topologies, blocked temporal
 #                                   split; the pre-A5 data_full is superseded)
 set -u
 cd "$(dirname "$0")"
@@ -26,8 +26,8 @@ ARMS=${*:-"within cross ood"}
 OUT=results_norm
 CKPT=ckpt_norm
 CFG=configs/arch_config.json
-DATA_A=data_a
-DATA_B=data_full_v2
+DATA_A=data_regime_a_fixed_topology
+DATA_B=data_regime_b_contingencies
 SEEDS_STD="0 100 300 700 1000"
 SEEDS_NNCONV="0 100 300"   # as agreed for the raw-unit campaign, kept identical
 # slowest first: a pool empties fastest when the long jobs start earliest

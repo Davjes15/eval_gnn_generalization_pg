@@ -44,8 +44,8 @@ is roughly one slide.
 > NNConv — one identical recipe, 200 epochs, seeds 0/100/300/700/1000 (NNConv 3
 > seeds: 0/100/300, a compute trade-off, limitation L2). A **DC power-flow**
 > baseline is scored through the same code path. Three arms: fixed topology
-> (Regime A, `data_a`), same grid under a blocked temporal split with contingencies
-> (Regime B, `data_full_v2`), and leave-one-grid-out on an unseen system.
+> (Regime A, `data_regime_a_fixed_topology`), same grid under a blocked temporal split with contingencies
+> (Regime B, `data_regime_b_contingencies`), and leave-one-grid-out on an unseen system.
 
 ## Beat 3 — How the model works (45s)
 > Same skeleton for all six: **encode → process → decode**, per node. An MLP encodes

@@ -60,9 +60,9 @@ OUTPUTS
     configs/arch_config.json             the frozen configuration per model
 
 HOW TO RUN
-    python3 tune_budget.py --data_dir data_a --epochs 200 --out results_a
+    python3 tune_budget.py --data_dir data_regime_a_fixed_topology --epochs 200 --out results_a
     # resumable: re-running skips trials already present in tuning.csv
-    python3 tune_budget.py --data_dir data_a --skip_existing
+    python3 tune_budget.py --data_dir data_regime_a_fixed_topology --skip_existing
 """
 from __future__ import annotations
 
@@ -317,7 +317,7 @@ def merge_config(payload, path):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--data_dir", default="data_a",
+    p.add_argument("--data_dir", default="data_regime_a_fixed_topology",
                    help="Regime A (fixed-topology) data directory")
     p.add_argument("--out", default="results_a")
     p.add_argument("--config_out", default="configs/arch_config.json")

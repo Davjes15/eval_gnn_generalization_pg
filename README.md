@@ -177,7 +177,7 @@ them are on `main`.
 > suites, every result CSV behind the reported tables, and the documentation.
 > The `step-1-…` → `step-8-…` branches are kept only as development history.
 >
-> The two generated datasets (`data_a/`, `data_full_v2/`, ~79 MB) **are** committed,
+> The two generated datasets (`data_regime_a_fixed_topology/`, `data_regime_b_contingencies/`, ~79 MB) **are** committed,
 > so you can train and replay against the exact data the reported numbers came from
 > without regenerating anything. The 336 training checkpoints (`ckpt_norm/`, 593 MB
 > compressed) are too large for Git and ship as a release asset:
@@ -440,24 +440,24 @@ the reasoning per decision is in
 ```bash
 # A. In-distribution control: one fixed topology per grid, each demand snapshot used once
 python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
-python3 validate.py --data_dir data_a --regime a
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
+python3 validate.py --data_dir data_regime_a_fixed_topology --regime a
 
 # B. Varying topology: N-k contingencies, blocked temporal split (no leakage of
 #    neighbouring demand snapshots into the test set)
 python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
-python3 validate.py --data_dir data_full_v2 --regime b --expect_blocked
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+python3 validate.py --data_dir data_regime_b_contingencies --regime b --expect_blocked
 
 # Training: frozen equal-budget configs, train-statistics scaling, checkpoints for replay.
 # Metrics are always reported in physical units (predictions are de-normalized first).
-python3 experiments.py --experiment within --data_dir data_a       --normalize pu_zscore \
+python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology       --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
     --out results_norm/within --save_models ckpt_norm/within
-python3 experiments.py --experiment cross  --data_dir data_full_v2 --normalize pu_zscore \
+python3 experiments.py --experiment cross  --data_dir data_regime_b_contingencies --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
     --out results_norm/cross --save_models ckpt_norm/cross
-python3 experiments.py --experiment ood    --data_dir data_full_v2 --normalize pu_zscore \
+python3 experiments.py --experiment ood    --data_dir data_regime_b_contingencies --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
     --out results_norm/ood --save_models ckpt_norm/ood
 ```
@@ -474,14 +474,14 @@ reported tables is the last stage. Replay is also the entry point if you downloa
 
 # 2. Physics-aware replay of the saved models: per-quantity error on the entries the
 #    model genuinely predicts, error tails, voltage-band violations. Minutes, no training.
-python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a --data_b data_full_v2 \
+python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
     --normalize pu_zscore --out results_norm/physics
 python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
 
 # 3. Is the predicted state a valid operating point at all? Adds the AC power-balance
 #    residual and the branch loading; needs POWERGRAPH_NODE_DIR to rebuild the
 #    post-contingency networks. Add --feasibility to re-run step 2 with those columns.
-python3 dc_feasibility.py --data data_a data_full_v2 \
+python3 dc_feasibility.py --data data_regime_a_fixed_topology data_regime_b_contingencies \
     --out results_norm/physics/dc_feasibility.csv
 python3 summarize_feasibility.py --physics results_norm/physics/physics_metrics.csv \
     --baselines results_norm/physics/dc_feasibility.csv \
@@ -499,10 +499,10 @@ python3 recompute_tables.py --within results_norm/all_within/within_grid.csv \
     --dc_regime_a results_norm/dc_baseline_regime_a.csv \
     --dc_regime_b results_norm/topology/dc_baseline.csv \
     --out results_norm/analysis
-python3 mmd_report.py --data_dir data_full_v2 --out docs/tables
+python3 mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables
 ```
 
-Apart from `mmd_report.py`, which reads `data_full_v2`, step 4 needs no dataset and no
+Apart from `mmd_report.py`, which reads `data_regime_b_contingencies`, step 4 needs no dataset and no
 checkpoint: it runs on the committed result CSVs, and the 12 tables it writes come back
 byte-identical to the ones in `results_norm/analysis/`. Verify that first — it is the
 cheapest check that your environment agrees with the published numbers.

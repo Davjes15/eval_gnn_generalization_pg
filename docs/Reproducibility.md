@@ -50,9 +50,9 @@ Three dataset directories exist and they are not interchangeable.
 
 | directory | regime | protocol | status |
 |---|---|---|---|
-| `data_a` | A (within-grid) | k = 0, no contingencies, `--unique_demand` | **final** |
+| `data_regime_a_fixed_topology` | A (within-grid) | k = 0, no contingencies, `--unique_demand` | **final** |
 | `data_full` | B (transfer) | k <= 2, random time sampling | **superseded** -- shared demand snapshots across splits (A5) |
-| `data_full_v2` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
+| `data_regime_b_contingencies` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
 
 What varies across samples in all three is **active** demand only: `_apply_demand` in
 `transmission_graph_gen.py` writes `net.load.p_mw` and leaves `q_mvar` at the case's base
@@ -60,7 +60,7 @@ value, mirroring PowerGraph's `gendataopf.m` (limitation L6 in
 [`Audit_response.md`](Audit_response.md)). `k <= 2` means random N-1/N-2 outages of in-service
 **lines** only -- no transformer outages, no generator outages, no busbar splits, no switching
 actions, and a draw that islands the network is rejected and resampled rather than modelled
-(L9). `data_full_v2` also changes the split from `data_a`: it differs from Regime A in the
+(L9). `data_regime_b_contingencies` also changes the split from `data_regime_a_fixed_topology`: it differs from Regime A in the
 blocked temporal split **and** the contingencies at once, which is why the `same_grid_factor`
 in `results_norm/analysis/protocol_decomposition.csv` is not quoted as a cost: it mixes the two,
 and the NRMSE denominator too (L8, L10).
@@ -70,12 +70,12 @@ Regeneration commands:
 ```bash
 # Regime A -- fixed topology, one demand snapshot per sample
 python transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_a
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
 
 # Regime B -- random N-1/N-2 line outages, blocked temporal split (A5)
 python transmission_graph_gen.py --grid all --max_k 2 \
     --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_full_v2
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
 ```
 
 Every split directory carries a `dataset_src.csv` with one row per sample:
@@ -89,7 +89,7 @@ without the archive. Releasing the tensors and the checkpoints needs a data
 release (e.g. Zenodo), not a git commit; until then the reproduction path is
 regenerate-then-verify, and `docs/provenance/` is what a verification is against.
 
-For `data_full_v2` the realised demand-time windows are:
+For `data_regime_b_contingencies` the realised demand-time windows are:
 
 | grid | train `t_idx` | val `t_idx` | test `t_idx` |
 |---|---|---|---|
@@ -107,12 +107,12 @@ sit inside them because samples whose AC solve failed or whose voltages left
 Verify a dataset directory before using it:
 
 ```bash
-python validate.py --data_dir data_full_v2 --expect_blocked   # gate H = split hygiene
+python validate.py --data_dir data_regime_b_contingencies --expect_blocked   # gate H = split hygiene
 python tests/test_split_hygiene.py
 ```
 
 Regeneration is not bit-exact: the two commands above resample demand snapshots
-and contingencies, so a regenerated `data_full_v2` is a *different draw from the
+and contingencies, so a regenerated `data_regime_b_contingencies` is a *different draw from the
 same protocol*, not the same file. What must be reproduced is the protocol
 (counts, disjoint blocked windows, `k` distribution, convergence) -- which is
 exactly what `validate.py --expect_blocked` checks, and why the realised windows
@@ -151,7 +151,7 @@ which expands to 18 independent jobs of the form
 
 ```bash
 OMP_NUM_THREADS=1 python -u experiments.py \
-    --experiment within --data_dir data_a --batch_size 32 \
+    --experiment within --data_dir data_regime_a_fixed_topology --batch_size 32 \
     --models gcn --seeds 0 100 300 700 1000 --epochs 200 \
     --arch_config configs/arch_config.json \
     --normalize pu_zscore --regime_tag A \
@@ -159,7 +159,7 @@ OMP_NUM_THREADS=1 python -u experiments.py \
     --skip_existing
 ```
 
-with `--experiment cross` / `--experiment ood` on `data_full_v2` (and
+with `--experiment cross` / `--experiment ood` on `data_regime_b_contingencies` (and
 `--batch_size_ood 96`) for the transfer arms. `--skip_existing` makes a job
 resumable: an interrupted arm restarts at the first missing checkpoint rather than
 from the beginning.
@@ -220,7 +220,7 @@ and the physics-aware evaluation replays the whole tree without training anythin
 
 ```bash
 python eval_checkpoints.py --ckpt_root ckpt_norm \
-    --data_a data_a --data_b data_full_v2 \
+    --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
     --normalize pu_zscore --out results_norm/physics
 ```
 
@@ -234,7 +234,7 @@ generated datasets, because the post-contingency networks are rebuilt from
 ```bash
 POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
 python eval_checkpoints.py --ckpt_root ckpt_norm \
-    --data_a data_a --data_b data_full_v2 \
+    --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
     --normalize pu_zscore --out results_norm/physics --feasibility
 python tests/test_ac_feasibility.py     # same env var; calibrates the checker
                                         # against pandapower's own solution
@@ -251,7 +251,7 @@ through the same checker -- and the summary joins them onto the model rows:
 
 ```bash
 POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
-python dc_feasibility.py --data data_a data_full_v2 \
+python dc_feasibility.py --data data_regime_a_fixed_topology data_regime_b_contingencies \
     --out results_norm/physics/dc_feasibility.csv
 python summarize_feasibility.py \
     --physics results_norm/physics/physics_metrics.csv \
@@ -306,8 +306,8 @@ branches are retained as development history only.
 here that cite `full_run/results/...` (e.g. the legacy `gscore_smallN.csv`) do so
 deliberately — those numbers predate A1-A8 and are never the reported result.
 
-**Where the artifacts are.** The two generated datasets (`data_a/`,
-`data_full_v2/`, ~79 MB) are **committed**, so the replay above runs against the
+**Where the artifacts are.** The two generated datasets (`data_regime_a_fixed_topology/`,
+`data_regime_b_contingencies/`, ~79 MB) are **committed**, so the replay above runs against the
 exact tensors the reported numbers came from; the 336 checkpoints are the
 `v1.0.0` release asset above. `docs/tables/artifact_manifest.csv` carries the
 SHA-256 and byte size of every committed dataset file and of the archive, so an
@@ -368,12 +368,12 @@ python gather_results.py --shards "results_norm/ood_*merged" "results_norm/ood_g
     --out results_norm/all_ood --models $MODELS --seed_shards
 
 # 2. the model-independent tables (see below) -- one shared copy
-python experiments.py --only_topology --experiment ood --data_dir data_full_v2 \
+python experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies \
     --out results_norm/topology --regime_tag B --models gcn \
     --arch_config configs/arch_config.json
 
 # 3. the DC baseline on the Regime A data (the topology shard covers Regime B)
-python recompute_dc_baseline.py --data_dir data_a \
+python recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology \
     --out results_norm/dc_baseline_regime_a.csv
 
 # 4. ranking and downstream tables
@@ -388,7 +388,7 @@ python recompute_tables.py --within results_norm/all_within/within_grid.csv \
     --dc_regime_a results_norm/dc_baseline_regime_a.csv \
     --dc_regime_b results_norm/topology/dc_baseline.csv \
     --out results_norm/analysis
-python mmd_report.py --data_dir data_full_v2 --out docs/tables   # A7 distances
+python mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables   # A7 distances
 ```
 
 **Step 4 needs no GPU, no dataset and no checkpoint** (nor does

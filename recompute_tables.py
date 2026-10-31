@@ -23,7 +23,7 @@ WHAT IT COMPUTES
   dc_comparison.csv        per (arm, model, quantity) the GNN error, the DC-PF
                            error on the same grids, and their ratio. The DC
                            table is per ARM, because Regime A and Regime B were
-                           generated separately (`data_a` vs `data_full`).
+                           generated separately (`data_regime_a_fixed_topology` vs `data_full`).
 
 Topology-only inputs (`mmd_laplacian.csv`, `ood_distance.csv`) are
 model-independent, so any tuned shard's copy is valid; the script checks the
@@ -61,11 +61,11 @@ def parse_args():
                    help="tuned shard dirs holding the model-independent "
                         "mmd_laplacian.csv / ood_distance.csv / dc_baseline.csv")
     p.add_argument("--dc_regime_a", required=True,
-                   help="DC baseline table for the Regime A data (data_a), "
+                   help="DC baseline table for the Regime A data (data_regime_a_fixed_topology), "
                         "from recompute_dc_baseline.py")
     p.add_argument("--dc_regime_b", required=True,
                    help="DC baseline table for the Regime B data "
-                        "(data_full_v2)")
+                        "(data_regime_b_contingencies)")
     p.add_argument("--out", required=True)
     return p.parse_args()
 

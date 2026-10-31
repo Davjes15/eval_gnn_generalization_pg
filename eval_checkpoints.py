@@ -26,8 +26,8 @@ SCALER
     before any metric, and the physical targets are read from `y_raw`.
 
 USAGE
-    python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_a \
-        --data_b data_full_v2 --normalize pu_zscore --out results_norm/physics \
+    python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology \
+        --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm/physics \
         --feasibility
 """
 from __future__ import annotations
@@ -128,8 +128,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ckpt_root", default="ckpt_norm")
-    p.add_argument("--data_a", default="data_a", help="data for the within arm")
-    p.add_argument("--data_b", default="data_full_v2",
+    p.add_argument("--data_a", default="data_regime_a_fixed_topology", help="data for the within arm")
+    p.add_argument("--data_b", default="data_regime_b_contingencies",
                    help="data for the cross-context and OOD arms")
     p.add_argument("--normalize", default="pu_zscore",
                    help="the mode the checkpoints were trained with")

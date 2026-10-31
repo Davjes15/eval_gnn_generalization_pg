@@ -13,7 +13,7 @@
 > * **Nothing was normalized**, so voltage carried ~5e-8 of the training loss; the
 >   V readings below are a training defect, not only a range artefact (audit item A2).
 > * **Regime B shared demand snapshots across splits**; the final transfer numbers
->   come from `data_full_v2` with a blocked temporal split (audit item A5).
+>   come from `data_regime_b_contingencies` with a blocked temporal split (audit item A5).
 >
 > For current results use `docs/Normalization_results.md` §4 (the final normalized
 > campaign); `docs/Regime_comparison_results.md` is the raw-unit ablation; for what changed and why,

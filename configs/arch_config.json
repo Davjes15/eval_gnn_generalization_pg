@@ -1,7 +1,7 @@
 {
   "protocol": {
     "regime": "A (fixed topology)",
-    "data_dir": "data_a",
+    "data_dir": "data_regime_a_fixed_topology",
     "search_space": {
       "num_layers": [2, 3, 8],
       "hidden": [32, 64, 128],
