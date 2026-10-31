@@ -553,7 +553,7 @@ separated systems. Transformers are covered by the thermal screen (C4) but never
 
 ---
 
-## Limitations recorded in the 2026-10-21 review (L10–L12)
+## Limitations recorded in the 2026-10-21 review (L10–L13)
 
 **L10 — NRMSE depends on the set it is scored on (review E8).** `training_utils.nrmse_range`
 divides the RMSE by the mean per-quantity range (max − min) of the true targets in the evaluated
@@ -585,3 +585,12 @@ comparable. Decision 27 replaces this with one shared width for both regimes; it
 implemented. Even then the width comes from the median heuristic, not a tuned optimum, and depends
 on which datasets are pooled, so MMD values are comparable within this study only, and not with
 ENGAGE's Table 3 (which reports MMD² with an unbiased estimator and other descriptors).
+
+**L13 — the MMD graph counts parallel circuits, unlike ENGAGE's (review E3).** Decision 31 makes
+the degree and Laplacian descriptors count every circuit (`multi` graph), so an outage of one of
+two parallel circuits changes the descriptor. ENGAGE's graphs merge parallel circuits, so our
+topological MMDs are not computed on the same graph convention as ENGAGE's. Circuits are counted,
+not weighted by impedance: losing a weak or a strong circuit changes the descriptor equally (the
+reactance descriptor covers impedance). The change is not yet implemented: the committed MMD
+tables and g-scores use the merged graph, which cannot see 98 of UK's 99 single-circuit outages,
+so their UK distances understate the topology shift until the MMD is recomputed.

@@ -539,7 +539,7 @@ recomputation over artifacts that already exist.
 - RBF kernel `exp(-||a-b||^2/m)` with one shared median width for both regimes (the value of `m` for each descriptor).
 - The estimator: biased V-statistic by default, unbiased available (Decision 24).
 - We report **MMD** (square root). ENGAGE's code returns **MMD²** (unbiased, no square root), while ENGAGE's paper (Eq. 5) writes the biased MMD². So `Δ_MMD` values are not on ENGAGE's scale unless MMD² is used. MMD² is reported alongside.
-- Our descriptors: 20-bin degree and 40-bin Laplacian histograms (ENGAGE: 200-bin Laplacian). Parallel circuits are merged in the graph (E3, open).
+- Our descriptors: 20-bin degree and 40-bin Laplacian histograms (ENGAGE: 200-bin Laplacian). Parallel circuits: every circuit is counted (`multi` graph, Decision 31); ENGAGE merges them.
 - The ENGAGE paper's kernel formula and ENGAGE's code disagree (σ divides vs. σ multiplies, E10). We follow neither; we state our formula explicitly.
 - The width depends on which datasets are pooled, so values are comparable within this study only.
 
@@ -577,6 +577,30 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 - **What is said instead:** every architecture's NRMSE is higher on the Regime B diagonal than on Regime A, and that ratio is not decomposed further. The grid step (unseen grid ÷ Regime B diagonal) stays, because it compares grids, each scored relative to its own spread.
 - **ENGAGE's code vs its paper:** ENGAGE's `test()` averages per-batch NRMSE and swaps the arguments of `nrmse_range`, so it divides by the range of the predictions. We follow the paper, so ENGAGE's published NRMSEs are not on our scale. Recorded as L10.
 - **Reverses:** the earlier review proposal to add `nrmse_fixed` (prompt P5).
+
+## Decision 31 — The MMD graph counts every parallel circuit (`multi`, default); the merged `simple` graph is kept only to reproduce committed numbers (review item E3)
+**Status:** decided 2026-10-21; **not yet implemented** in `mmd_utils.py` (review prompt P1). Every committed MMD and g-score still uses the simple graph.
+
+**Decision:** `mmd_utils` builds each sample's graph with **one edge per in-service circuit** (`graph_mode="multi"`). The degree of a bus is the number of circuits that end at it, and the Laplacian spectrum is computed on the graph weighted by the number of circuits between each pair of buses. Every caller (`experiments.py`, `mmd_report.py`, `validate.py`, the EDA notebook) gets `--mmd_graph {multi,simple}` with **`multi` as the default**, and only `multi` is reported. `simple` (today's `nx.Graph`, which merges parallel circuits like ENGAGE's PyG `to_networkx`) is kept only to reproduce the committed CSVs. The reactance descriptor does not change: it already reads the features of every circuit.
+
+**Why:**
+- **The paper is about topology change, so the distance must see it.** With the simple graph, an outage of one of two parallel circuits leaves the graph unchanged. Counted from the MATPOWER case files (in-service branches, after the branch-contract fix E12/E13):
+
+  | Grid | Branches | Bus pairs | Pairs with parallel circuits | Single outages the simple graph cannot see |
+  |---|---|---|---|---|
+  | IEEE24 | 38 | 34 | 4 | 8 of 38 |
+  | IEEE39 | 46 | 46 | 0 | 0 |
+  | IEEE118 | 186 | 179 | 7 | 14 of 186 |
+  | UK | 99 | 50 | 49 | 98 of 99 |
+
+  On the committed `data_full_v2`, 561 of 563 UK N-1/N-2 training samples have the same simple graph as the intact grid. This is also why the UK median distance is 0 (E1).
+- **Why not delete the edge when one parallel circuit is out:** the two buses stay connected through the remaining circuit and power still flows between them. Deleting the edge would show a cut that does not exist and could show a bus as islanded, overstating the change. Weight 2 → 1 is the faithful representation.
+- **The MMD now describes the graph the models see:** after the branch-contract fix, `edge_index` contains both directions of every circuit, so the GNNs already see parallel circuits as separate edges.
+- **Why only `multi` is reported:** two versions would invite comparing numbers measured on different graphs, and the simple graph would report almost no topology shift for UK's outages.
+- **Kernel width:** `multi` descriptors get their own shared width, computed with the rule of Decision 27; `simple` keeps a separate one. Decision 27's comparability rule holds within one graph mode, and numbers from the two modes are never mixed.
+- **Cost:** this departs from ENGAGE's graph convention, so our degree and Laplacian MMDs are not computed on the same graph as ENGAGE's (they already differ in width, bins and estimator, L12). IEEE39 has no parallel circuits, so its descriptors are unchanged. Recorded as L13.
+- **Edge case for the implementation:** the degree histogram covers [0, 20]. The largest `multi` degree today is 12 (UK, IEEE118), and the code must raise if a degree falls outside the range instead of dropping it.
+- **Changes:** Decision 27's line "Parallel circuits are merged in the graph (E3, open)".
 
 ---
 
