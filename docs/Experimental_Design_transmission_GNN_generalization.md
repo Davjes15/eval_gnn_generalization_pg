@@ -200,6 +200,9 @@ Regime B therefore differs from Regime A in **two** ways at once — the blocked
 | `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
 
 800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).
+Unseen grids (cross-context and leave-one-grid-out) are scored on their 100-sample test split.
+Scoring all 1 000 samples of each unseen grid is a robustness check, run on the retrained models
+and reported next to the main results, not instead of them (Decision 33, L14).
 Every split ships its `dataset_src.csv` (grid, `t_idx`, `k`, outaged branches, contingency
 source), which is what makes the split property checkable rather than asserted.
 

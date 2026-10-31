@@ -144,6 +144,8 @@ result. Powers are divided by `S_base = 100 MVA` and angles converted to radians
 then each of the four quantities is centred and scaled by statistics **fitted on
 training data only** — the training grid's split for within-grid and
 cross-context, the pooled retained grids for an OOD fold, never the unseen grid.
+Unseen grids are scored on their 100-sample test split; an all-1 000-sample robustness check on
+the retrained models is planned (Decision 33, L14).
 Features and targets share the scaler because `inference()` re-injects known
 values taken from `x` into the prediction, so the two must live in the same space.
 Predictions are de-normalized before any metric is computed, and the DC baseline

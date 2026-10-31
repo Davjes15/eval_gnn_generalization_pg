@@ -234,7 +234,8 @@ Off-diagonal transfer NRMSE, summarized per model:
 
 ## 5. Out-of-distribution — leave-one-grid-out (train on 3 grids → test on the held-out one)
 
-`ood.csv` — aggregate NRMSE on the held-out grid:
+`ood.csv` — aggregate NRMSE on the held-out grid's 100-sample test split (Decision 33 adds an
+all-1 000-sample robustness check on the retrained models; not run yet):
 
 | model | IEEE24 | IEEE39 | IEEE118 | UK |
 |---|---|---|---|---|
