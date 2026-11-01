@@ -49,7 +49,7 @@ active-demand variation at fixed base-case reactive demand (limitation L6 in
 [`Audit_response.md`](Audit_response.md)).
 
 
-**Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode is planned for other experiments. See Decision 28.
+**Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode (`--q_mode constant_pf`) is available for other experiments. See Decision 28.
 
 **Note on ENGAGE synthetic data:** it is **not** "one value per bus per hour for a year." That description applies to PowerGraph's demand time series. ENGAGE synthetic data is a fixed count of independent random snapshots (`n_train/n_val/n_test`), with no chronology.
 
