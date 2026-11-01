@@ -33,11 +33,13 @@ FIXED-TOPOLOGY REGIME (`--regime a`)
     G.  Split disjointness    -- no demand snapshot shared between two splits
                                  (with one topology, a repeat is an exact
                                  duplicate sample, i.e. test leakage).
+    With --expect_blocked, H also requires disjoint contiguous time windows.
 
 HOW TO RUN
     python3 validate.py                       # conversion checks only
     python3 validate.py --data_dir data       # + data/contract/topology/MMD checks
     python3 validate.py --data_dir data_regime_a_fixed_topology --regime a   # fixed-topology gates
+    python3 validate.py --data_dir <folder> --regime a --expect_blocked       # blocked Regime A
 Exit code is non-zero if any gate fails (usable in CI).
 """
 from __future__ import annotations
@@ -333,11 +335,13 @@ def parse_args():
     p.add_argument("--grids", nargs="+", default=None)
     p.add_argument("--regime", choices=["a", "b"], default="b",
                    help="'b' (default): topology varies -- gates B-E, H. "
-                        "'a': fixed topology -- gates B, C, D', F, G.")
+                        "'a': fixed topology -- gates B, C, D', F, G; "
+                        "also H with --expect_blocked.")
     p.add_argument("--expect_blocked", action="store_true",
-                   help="additionally require each split's demand snapshots to "
+                   help="require each split's demand snapshots to "
                         "occupy a contiguous window disjoint from the other "
-                        "splits' (datasets built with --time_split blocked)")
+                        "splits' (datasets built with --time_split blocked; "
+                        "applies to either regime)")
     return p.parse_args()
 
 
@@ -355,6 +359,8 @@ def main():
             gate_topology_invariance(g, args.data_dir, grids)
             gate_contingency_metadata(g, args.data_dir, grids)
             gate_split_disjointness(g, args.data_dir, grids)
+            if args.expect_blocked:
+                gate_split_hygiene(g, args.data_dir, grids, expect_blocked=True)
             print("\n(Gate E skipped: with one topology per grid the within-grid "
                   "MMD is 0 by construction and the g-score is undefined.)")
         else:

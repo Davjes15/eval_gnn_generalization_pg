@@ -428,11 +428,12 @@ tested against a null, and that test is underpowered at 12 cells (it cannot dete
 true correlation, which is why the wording is "no reliable guarantee", not "no correlation").
 
 **L6 — one data realization, and only active demand varies (B7).** Reactive demand stays at
-each case's base value — `transmission_graph_gen._apply_demand` writes `net.load.p_mw` and
-nothing else — mirroring PowerGraph's `gendataopf.m`; the load trajectory is one
-realization of the PowerGraph-Node demand series, so nothing here estimates variability across
-alternative demand histories. Decision 28 keeps fixed Q as the default for PowerGraph
-replication and plans an optional `--q_mode constant_pf` (not yet implemented).
+each case's base value by default — `transmission_graph_gen._apply_demand` writes
+`net.load.p_mw` and nothing else in `base` mode — mirroring PowerGraph's `gendataopf.m`;
+the load trajectory is one realization of the PowerGraph-Node demand series, so nothing here
+estimates variability across alternative demand histories. Decision 28's
+`--q_mode constant_pf` option now exists; `base` remains the default, and all committed
+data and results use `base`.
 
 **L7 — artifacts, now published (closes the open half of A4).** Both generated datasets
 (~79 MB) are committed, and the 336 checkpoints ship as the `ckpt_norm.tar.gz` asset of
@@ -578,8 +579,10 @@ paper's formula, so ENGAGE's published values and ours are not on the same scale
 **L11 — Regime A's random split puts neighbouring snapshots in train and test (review E15).**
 `data_regime_a_fixed_topology` keeps PowerGraph's random split with unique snapshots (Decision 29). 4–9 % of its test
 samples have a training snapshot within 15 min and 11–26 % within 1 h, depending on the grid, so
-within-grid scores may be optimistic; by how much is not measured. A blocked Regime A can be
-added as an extra dataset (Decision 29); it has not been generated and the paper does not use it.
+within-grid scores may be optimistic; by how much is not measured. The blocked Regime A option
+now exists (`--max_k 0 --time_split blocked`, checked by
+`validate.py --regime a --expect_blocked`); the dataset has not been generated and the paper
+does not use it.
 
 **L12 — MMD values depend on the kernel width (review E1, E2).** The committed MMD tables and
 g-scores use a width refitted for each grid pair, with a silent fallback to 1.0 when the median
