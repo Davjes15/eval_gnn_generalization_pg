@@ -297,7 +297,7 @@ def gate_split_hygiene(g: Gate, data_dir, grids, expect_blocked: bool):
             g.check(f"{code} split time windows are disjoint", disjoint, str(spans))
 
 
-def gate_mmd(g: Gate, data_dir, grids):
+def gate_mmd(g: Gate, data_dir, grids, mmd_graph="multi"):
     print("\nE. MMD non-degeneracy (within-grid < cross-grid, not constant)")
     from mmd_utils import evaluate_mmd
 
@@ -318,7 +318,7 @@ def gate_mmd(g: Gate, data_dir, grids):
     within, cross = [], []
     for a in grids:
         for b in grids:
-            _, ml = evaluate_mmd(data[a]["train"], data[b]["test"])
+            _, ml = evaluate_mmd(data[a]["train"], data[b]["test"], graph_mode=mmd_graph)
             (within if a == b else cross).append(ml)
     within_mean, cross_mean = float(np.mean(within)), float(np.mean(cross))
     g.check("within-grid MMD < cross-grid MMD", within_mean < cross_mean,
@@ -332,6 +332,7 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data_dir", default=None,
                    help="if given, also run data/contract/topology/MMD gates")
+    p.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
     p.add_argument("--grids", nargs="+", default=None)
     p.add_argument("--regime", choices=["a", "b"], default="b",
                    help="'b' (default): topology varies -- gates B-E, H. "
@@ -366,7 +367,7 @@ def main():
         else:
             gate_topology_variation(g, args.data_dir, grids)
             gate_split_hygiene(g, args.data_dir, grids, args.expect_blocked)
-            gate_mmd(g, args.data_dir, grids)
+            gate_mmd(g, args.data_dir, grids, args.mmd_graph)
     else:
         print("\n(Skipping data-dependent gates B-E; pass --data_dir to enable.)")
 

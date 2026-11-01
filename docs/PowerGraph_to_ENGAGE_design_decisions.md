@@ -579,7 +579,7 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 - **Reverses:** the earlier review proposal to add `nrmse_fixed` (prompt P5).
 
 ## Decision 31 — The MMD graph counts every parallel circuit (`multi`, default); the merged `simple` graph is kept only to reproduce committed numbers (review item E3)
-**Status:** decided 2026-10-21; **not yet implemented** in `mmd_utils.py` (review prompt P1). Every committed MMD and g-score still uses the simple graph.
+**Status:** implemented (code). Every previously committed MMD and g-score still uses the simple graph; final recomputation requires P9.
 
 **Decision:** `mmd_utils` builds each sample's graph with **one edge per in-service circuit** (`graph_mode="multi"`). The degree of a bus is the number of circuits that end at it, and the Laplacian spectrum is computed on the graph weighted by the number of circuits between each pair of buses. Every caller (`experiments.py`, `mmd_report.py`, `validate.py`, the EDA notebook) gets `--mmd_graph {multi,simple}` with **`multi` as the default**, and only `multi` is reported. `simple` (today's `nx.Graph`, which merges parallel circuits like ENGAGE's PyG `to_networkx`) is kept only to reproduce the committed CSVs. The reactance descriptor does not change: it already reads the features of every circuit.
 

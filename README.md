@@ -1,5 +1,10 @@
 # eval_gnn_generalization_pg
 
+## MMD graph mode
+
+MMD CLIs accept `--mmd_graph {multi,simple}` (default `multi`, counting every
+parallel circuit). `simple` is only for reproducing legacy committed tables.
+
 Evaluating the **generalization of GNN architectures for the AC power-flow (PF) node task on transmission grids**.
 
 ## Goal

@@ -1,5 +1,12 @@
 # Reproducibility: exact commands, versions, data provenance, checkpoints
 
+## MMD graph mode
+
+The paper uses the default `--mmd_graph multi`: every in-service circuit counts.
+Use `--mmd_graph simple` only to reproduce legacy committed tables. The electrical
+descriptor is unchanged. Current-data multigraph smoke tables are provisional;
+final numbers require P9 regeneration.
+
 Audit item **A4**. The finding was that the results could not be reproduced from
 the repository: the tuning artifacts the configuration tables cite were not
 committed, the environment was not pinned, the datasets carried no provenance, and

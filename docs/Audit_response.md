@@ -597,7 +597,7 @@ the degree and Laplacian descriptors count every circuit (`multi` graph), so an 
 two parallel circuits changes the descriptor. ENGAGE's graphs merge parallel circuits, so our
 topological MMDs are not computed on the same graph convention as ENGAGE's. Circuits are counted,
 not weighted by impedance: losing a weak or a strong circuit changes the descriptor equally (the
-reactance descriptor covers impedance). The change is not yet implemented: the committed MMD
+reactance descriptor covers impedance). Decision 31 is implemented (code): the previously committed MMD
 tables and g-scores use the merged graph, which cannot see 98 of UK's 99 single-circuit outages,
 so their UK distances understate the topology shift until the MMD is recomputed.
 
