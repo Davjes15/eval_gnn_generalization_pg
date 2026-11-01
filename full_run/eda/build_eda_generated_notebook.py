@@ -11,6 +11,8 @@ import nbformat as nbf
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
+parser.add_argument("--mmd_bandwidth", choices=["reference", "pair"], default="reference")
+parser.add_argument("--mmd_bandwidth_file", default="configs/mmd_bandwidth.json")
 args = parser.parse_args()
 
 nb = nbf.v4.new_notebook()
@@ -57,7 +59,7 @@ DATA = "/home/ubuntu/full_run/data"
 
 import numpy as np, pandas as pd, torch
 import matplotlib.pyplot as plt
-from mmd_utils import evaluate_mmd
+from mmd_utils import evaluate_mmd, resolve_mmd_bandwidth
 
 plt.rcParams.update({
     "figure.facecolor": "white", "axes.facecolor": "white",
@@ -342,7 +344,8 @@ rng = np.random.default_rng(0)
 sub = {g: [train[g][i] for i in rng.choice(len(train[g]), size=120, replace=False)] for g in GRIDS}
 Dd = np.zeros((4, 4)); Dl = np.zeros((4, 4))
 for i, j in itertools.combinations(range(4), 2):
-    md_ij, ml_ij = evaluate_mmd(sub[GRIDS[i]], sub[GRIDS[j]], graph_mode=MMD_GRAPH)
+    md_ij, ml_ij = evaluate_mmd(sub[GRIDS[i]], sub[GRIDS[j]], graph_mode=MMD_GRAPH,
+                              bandwidth=MMD_BANDWIDTH)
     Dd[i, j] = Dd[j, i] = md_ij; Dl[i, j] = Dl[j, i] = ml_ij
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.6))
@@ -405,6 +408,8 @@ md(r"""
 for cell in cells:
     if cell.cell_type == "code" and "from mmd_utils import evaluate_mmd" in cell.source:
         cell.source += f"\nMMD_GRAPH = {args.mmd_graph!r}"
+        cell.source += (f"\nMMD_BANDWIDTH = resolve_mmd_bandwidth({args.mmd_bandwidth!r}, "
+                        f"os.path.join(REPO, {args.mmd_bandwidth_file!r}), [DATA], MMD_GRAPH)")
 nb["cells"] = cells
 nb["metadata"] = {
     "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},

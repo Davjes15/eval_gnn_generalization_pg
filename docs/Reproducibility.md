@@ -7,6 +7,12 @@ Use `--mmd_graph simple` only to reproduce legacy committed tables. The electric
 descriptor is unchanged. Current-data multigraph smoke tables are provisional;
 final numbers require P9 regeneration.
 
+All MMD callers default to `--mmd_bandwidth reference --mmd_bandwidth_file
+configs/mmd_bandwidth.json`. The ruler is shared across both regimes, per
+descriptor and graph mode (reactance is mode-independent). Use **both**
+`--mmd_graph simple --mmd_bandwidth pair` for committed legacy numbers; a
+simple graph with the reference ruler is not the legacy computation.
+
 Audit item **A4**. The finding was that the results could not be reproduced from
 the repository: the tuning artifacts the configuration tables cite were not
 committed, the environment was not pinned, the datasets carried no provenance, and
@@ -91,7 +97,26 @@ python validate.py --data_dir <folder> --regime a --expect_blocked
 python transmission_graph_gen.py --grid all --max_k 2 \
     --time_split blocked \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+
+# After generating BOTH regimes, before experiments.py or the MMD validation gate:
+python mmd_bandwidth.py \
+    --data_dirs data_regime_a_fixed_topology data_regime_b_contingencies \
+    --out configs/mmd_bandwidth.json
 ```
+
+This uses every train/test graph (not validation), computes exact nonzero-distance
+medians in chunks, and records SHA-256 fingerprints. Regenerating any reference
+train/test dataset invalidates the ruler: recompute it before experiments,
+`mmd_report.py`, `validate.py`, or the generated-data EDA. Additional datasets
+(including blocked Regime A) reuse it without refitting. The checked-in JSON has
+`"provisional": true`: it is only a smoke test on current data. P9 must replace it
+after regeneration; `--provisional` is for smoke rulers only.
+
+Reference reports include MMD and MMD² columns and the bandwidth mode; their
+filenames end in `_reference.csv`. The `simple`/`pair` report intentionally keeps
+the legacy columns for byte reproduction, with the added columns in a companion
+`_details.csv` file. Always use a fresh `--out` directory
+for verification; never overwrite committed CSVs.
 
 Every split directory carries a `dataset_src.csv` with one row per sample:
 `grid, t_idx, k, out_lines, source, q_mode`. That file *is* the provenance -- it

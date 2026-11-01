@@ -30,10 +30,9 @@ ESTIMATOR AND BANDWIDTH (audit item A7 -- stated, not hidden)
       U-statistic (diagonals excluded); the default stays biased because the
       committed result CSVs were produced with it, and silently changing
       published numbers is worse than naming the estimator correctly.
-    * The bandwidth is refit per PAIR by the median heuristic, so two cells of an
-      MMD matrix are computed under different kernels. That keeps every pair
-      well-scaled -- it also means the matrix is a table of pairwise distances,
-      not a set of values on one common scale.
+    * CLI callers use one reference width per descriptor and graph mode, pooled
+      over Regime A + B (Decision 27). The library default remains the legacy
+      per-pair heuristic solely to reproduce committed CSVs.
 
 WHAT THESE DESCRIPTORS CAN AND CANNOT SEE
     Degree and Laplacian histograms are purely TOPOLOGICAL and invariant to the
@@ -52,9 +51,112 @@ REFERENCES
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
+import json
+from numbers import Real
+from pathlib import Path
+import warnings
 
 import numpy as np
 import networkx as nx
+from scipy.spatial.distance import cdist
+
+
+def _reference_bandwidth_stats(descriptor_sets, chunk_size=256):
+    """Exact nonzero-distance median and zero fraction; bounded distance blocks."""
+    pooled = np.vstack(descriptor_sets).astype(float, copy=False)
+    if pooled.ndim != 2 or len(pooled) < 2 or not np.isfinite(pooled).all():
+        raise ValueError("Reference descriptors must contain >=2 finite rows")
+    n = len(pooled)
+    distances = np.empty(n * (n - 1) // 2, dtype=float)
+    offset = 0
+    for start in range(0, n, chunk_size):
+        block = cdist(pooled[start:start + chunk_size], pooled, "sqeuclidean")
+        for i, row in enumerate(block, start):
+            size = n - i - 1
+            distances[offset:offset + size] = row[i + 1:]
+            offset += size
+    positive = distances[distances > 0]
+    if not len(positive):
+        raise ValueError("All reference pairwise distances are zero")
+    zero_fraction = 1.0 - len(positive) / len(distances)
+    return float(np.median(positive, overwrite_input=True)), zero_fraction
+
+
+def reference_bandwidth(descriptor_sets: list[np.ndarray]) -> float:
+    """Median squared distance over all rows, excluding zeros (no subsampling)."""
+    return _reference_bandwidth_stats(descriptor_sets)[0]
+
+
+def dataset_fingerprint(path):
+    """SHA-256 of the serialized dataset, streamed rather than loaded twice."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _positive_bandwidth(value):
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError("Bandwidth must be 'pair' or a positive finite number")
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError("Bandwidth must be positive and finite")
+    return float(value)
+
+
+def load_reference_bandwidth(path, data_dirs) -> dict:
+    """Read the ruler and verify train/test fingerprints of reference folders.
+
+    Extra datasets intentionally reuse the same ruler without being added to it.
+    Relative reference paths are resolved from the repository containing the JSON.
+    """
+    path = Path(path).resolve()
+    with path.open() as f:
+        reference = json.load(f)
+    root = next((p for p in path.parents if (p / ".git").exists()), Path.cwd())
+    recorded = {str(d): (root / d).resolve() for d in reference["data_dirs"]}
+    fingerprints = reference["fingerprint"]
+    if reference["splits"] != ["train", "test"]:
+        raise ValueError("Reference bandwidth must use train and test splits only")
+    for graph_mode in ("multi", "simple"):
+        for kind in ("degree", "laplacian"):
+            _positive_bandwidth(reference[graph_mode][kind])
+    _positive_bandwidth(reference["reactance"])
+    for data_dir in dict.fromkeys(map(str, data_dirs)):
+        matches = [d for d, resolved in recorded.items()
+                   if Path(data_dir).resolve() == resolved]
+        if not matches:
+            print(f"MMD reference: {data_dir} is not in data_dirs; reusing the stored ruler.")
+            continue
+        prefix = matches[0]
+        for grid in ("IEEE24", "IEEE39", "IEEE118", "UK"):
+            for split in reference["splits"]:
+                key = f"{prefix}/{grid}/{split}"
+                expected = fingerprints[key]
+                dataset = Path(data_dir) / grid / split / "dataset.pt"
+                if dataset_fingerprint(dataset) != expected:
+                    raise ValueError(f"MMD reference fingerprint mismatch: {dataset}; "
+                                     "recompute mmd_bandwidth.py after data generation")
+    return reference
+
+
+def resolve_mmd_bandwidth(mode, path, data_dirs, graph_mode="multi"):
+    """Resolve the CLI policy once, before any MMD is computed."""
+    if mode == "pair":
+        return "pair"
+    if mode != "reference":
+        raise ValueError(f"Invalid MMD bandwidth mode: {mode}")
+    reference = load_reference_bandwidth(path, data_dirs)
+    return {**reference[graph_mode], "reactance": reference["reactance"]}
+
+
+def _descriptor_bandwidth(bandwidth, kind):
+    if isinstance(bandwidth, dict):
+        return _positive_bandwidth(bandwidth[kind])
+    if isinstance(bandwidth, str) and bandwidth == "pair":
+        return bandwidth
+    raise ValueError("Descriptor bandwidth must be 'pair' or a descriptor-width dict")
 
 
 def pyg_to_networkx(data, graph_mode="multi") -> nx.Graph:
@@ -137,6 +239,9 @@ def _median_bandwidth(a: np.ndarray, b: np.ndarray) -> float:
     sq = np.sum((pooled[:, None, :] - pooled[None, :, :]) ** 2, axis=-1)
     iu = np.triu_indices_from(sq, k=1)
     med = np.median(sq[iu])
+    if not med > 0:
+        warnings.warn("Pairwise median bandwidth is zero; using legacy fallback 1.0",
+                      RuntimeWarning, stacklevel=2)
     return float(med) if med > 0 else 1.0
 
 
@@ -153,7 +258,8 @@ def _offdiag_mean(k: np.ndarray) -> float:
     return float((k.sum() - np.trace(k)) / (n * (n - 1)))
 
 
-def mmd(descr_a: np.ndarray, descr_b: np.ndarray, unbiased: bool = False) -> float:
+def mmd(descr_a: np.ndarray, descr_b: np.ndarray, unbiased: bool = False,
+        bandwidth="pair") -> float:
     """Gaussian-kernel MMD between two descriptor matrices.
 
     `unbiased=False` (default) is the biased V-statistic, whose Gram means
@@ -161,7 +267,9 @@ def mmd(descr_a: np.ndarray, descr_b: np.ndarray, unbiased: bool = False) -> flo
     was computed with. `unbiased=True` is the standard U-statistic, which drops
     the diagonals from the two within-sample terms. See the module docstring.
     """
-    med_sq = _median_bandwidth(descr_a, descr_b)
+    med_sq = (_median_bandwidth(descr_a, descr_b)
+              if isinstance(bandwidth, str) and bandwidth == "pair"
+              else _positive_bandwidth(bandwidth))
     gamma = 1.0 / med_sq
     kxx = _gaussian_gram(descr_a, descr_a, gamma)
     kyy = _gaussian_gram(descr_b, descr_b, gamma)
@@ -173,17 +281,21 @@ def mmd(descr_a: np.ndarray, descr_b: np.ndarray, unbiased: bool = False) -> flo
     return float(np.sqrt(max(mmd2, 0.0)))
 
 
-def evaluate_mmd(dataset_a, dataset_b, unbiased: bool = False, graph_mode="multi"):
+def evaluate_mmd(dataset_a, dataset_b, unbiased: bool = False, graph_mode="multi",
+                 bandwidth="pair"):
     """Return (mmd_degree, mmd_laplacian) between two PyG datasets (distributions
     of graphs). Each dataset is a list of PyG Data objects."""
     ga = [pyg_to_networkx(d, graph_mode) for d in dataset_a]
     gb = [pyg_to_networkx(d, graph_mode) for d in dataset_b]
-    md = mmd(_descriptors(ga, "degree"), _descriptors(gb, "degree"), unbiased)
-    ml = mmd(_descriptors(ga, "laplacian"), _descriptors(gb, "laplacian"), unbiased)
+    md = mmd(_descriptors(ga, "degree"), _descriptors(gb, "degree"), unbiased,
+             _descriptor_bandwidth(bandwidth, "degree"))
+    ml = mmd(_descriptors(ga, "laplacian"), _descriptors(gb, "laplacian"), unbiased,
+             _descriptor_bandwidth(bandwidth, "laplacian"))
     return md, ml
 
 
-def evaluate_mmd_electrical(dataset_a, dataset_b, unbiased: bool = False) -> float:
+def evaluate_mmd_electrical(dataset_a, dataset_b, unbiased: bool = False,
+                            bandwidth="pair") -> float:
     """MMD between two datasets under the electrical (reactance) descriptor.
 
     Unchanged by graph_mode: edge_attr already includes every circuit.
@@ -194,4 +306,4 @@ def evaluate_mmd_electrical(dataset_a, dataset_b, unbiased: bool = False) -> flo
     """
     da = np.vstack([reactance_histogram(d) for d in dataset_a])
     db = np.vstack([reactance_histogram(d) for d in dataset_b])
-    return mmd(da, db, unbiased)
+    return mmd(da, db, unbiased, _descriptor_bandwidth(bandwidth, "reactance"))

@@ -14,6 +14,12 @@ from __future__ import annotations
 
 import os
 import sys
+import contextlib
+import io
+import json
+from pathlib import Path
+import tempfile
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,7 +31,9 @@ from torch_geometric.data import Data
 from mmd_utils import (_gaussian_gram, _median_bandwidth, degree_histogram,
                        evaluate_mmd, evaluate_mmd_electrical, mmd,
                        pyg_to_networkx, reactance_histogram,
-                       laplacian_spectrum_histogram)
+                       laplacian_spectrum_histogram, reference_bandwidth,
+                       _reference_bandwidth_stats, dataset_fingerprint,
+                       load_reference_bandwidth, resolve_mmd_bandwidth)
 
 FAILURES = []
 
@@ -184,6 +192,118 @@ for name, operation in [
         check(name + " raises ValueError", True)
     else:
         check(name + " raises ValueError", False)
+
+print("\nG. shared reference width uses the exact nonzero-distance median")
+
+
+def expect_error(error, operation, label):
+    try:
+        operation()
+    except error:
+        check(label, True)
+    else:
+        check(label, False)
+
+
+tiny = np.array([[0.0], [0.0], [2.0], [5.0]])
+check("hand-computed nonzero median is 9 (zeros excluded)",
+      reference_bandwidth([tiny[:2], tiny[2:]]) == 9.0)
+expect_error(ValueError, lambda: reference_bandwidth([np.ones((5, 3))]),
+             "all identical reference rows raise")
+random_rows = rng.normal(size=(301, 5))
+random_rows[-3:] = random_rows[0]
+sq = np.sum((random_rows[:, None] - random_rows[None, :]) ** 2, axis=-1)
+naive = sq[np.triu_indices(len(random_rows), 1)]
+naive_median = np.median(naive[naive > 0])
+for chunk in (1, 7, 256):
+    width, fraction = _reference_bandwidth_stats([random_rows], chunk_size=chunk)
+    check(f"chunk={chunk} equals naive median",
+          np.isclose(width, naive_median, rtol=1e-14, atol=0))
+    check(f"chunk={chunk} counts only off-diagonal zero distances",
+          np.isclose(fraction, np.mean(naive == 0)))
+
+print("\nH. fixed-width kernel, legacy fallback, validation and complementarity")
+width = 3.25
+for left, right in ((a, b), (a[:7], b[:4]), (b, a)):
+    hand_mmd = np.sqrt(max(
+        _gaussian_gram(left, left, 1 / width).mean()
+        + _gaussian_gram(right, right, 1 / width).mean()
+        - 2 * _gaussian_gram(left, right, 1 / width).mean(), 0))
+    check("each pair uses the same gamma=1/m",
+          mmd(left, right, bandwidth=width) == float(hand_mmd))
+check("explicit pair is bit-identical to section A",
+      mmd(a, b, bandwidth="pair") == mmd(a, b) == float(expected))
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    check("legacy zero-median fallback still returns 1.0",
+          _median_bandwidth(np.zeros((3, 1)), np.zeros((2, 1))) == 1.0)
+check("legacy fallback emits a warning",
+      any("fallback 1.0" in str(w.message) for w in caught))
+for invalid in (0, -1, float("nan"), float("inf"), "reference", "bad", None, True):
+    expect_error(ValueError, lambda v=invalid: mmd(a, b, bandwidth=v),
+                 f"invalid bandwidth {invalid!r} raises")
+expect_error(KeyError, lambda: evaluate_mmd(low, high, bandwidth={"degree": 1.0}),
+             "missing Laplacian width raises KeyError")
+expect_error(KeyError, lambda: evaluate_mmd_electrical(low, high, bandwidth={}),
+             "missing reactance width raises KeyError")
+fixed = {"degree": width, "laplacian": width, "reactance": width}
+md, ml = evaluate_mmd(same, same, bandwidth=fixed)
+check("fixed-width self-distance is ~0 for degree and Laplacian", md < 1e-9 and ml < 1e-9)
+check("fixed-width electrical self-distance is ~0",
+      evaluate_mmd_electrical(same, same, bandwidth=fixed) < 1e-9)
+md, ml = evaluate_mmd(low, high, bandwidth=fixed)
+check("fixed-width topology is still blind to a 100x impedance shift",
+      md < 1e-9 and ml < 1e-9)
+check("fixed-width reactance still sees the impedance shift",
+      evaluate_mmd_electrical(low, high, bandwidth=fixed) > 0.1)
+md, _ = evaluate_mmd(low, star_ds, bandwidth=fixed)
+check("fixed-width degree sees topology; reactance ignores it",
+      md > 0.1 and evaluate_mmd_electrical(low, star_ds, bandwidth=fixed) < 1e-9)
+
+print("\nI. reference loading is fail-loud, with intentional extra-dataset reuse")
+with tempfile.TemporaryDirectory() as tmp:
+    folder = Path(tmp) / "reference_data"
+    path = Path(tmp) / "ruler.json"
+    fingerprints = {}
+    for grid in ("IEEE24", "IEEE39", "IEEE118", "UK"):
+        for split in ("train", "test"):
+            dataset = folder / grid / split / "dataset.pt"
+            dataset.parent.mkdir(parents=True)
+            dataset.write_bytes(f"{grid}/{split}".encode())
+            fingerprints[f"{folder}/{grid}/{split}"] = dataset_fingerprint(dataset)
+    payload = {"multi": {"degree": 1.0, "laplacian": 2.0},
+               "simple": {"degree": 3.0, "laplacian": 4.0}, "reactance": 5.0,
+               "data_dirs": [str(folder)], "splits": ["train", "test"],
+               "fingerprint": fingerprints}
+    expect_error(FileNotFoundError, lambda: load_reference_bandwidth(path, [folder]),
+                 "missing ruler raises (no pair fallback)")
+    path.write_text(json.dumps(payload))
+    check("matching reference fingerprints accepted",
+          load_reference_bandwidth(path, [folder]) == payload)
+    check("mode-specific widths resolved with common reactance",
+          resolve_mmd_bandwidth("reference", path, [folder], "simple") ==
+          {"degree": 3.0, "laplacian": 4.0, "reactance": 5.0})
+    # Pair reproduction must not need the reference JSON.
+    check("pair opt-in ignores a nonexistent reference file",
+          resolve_mmd_bandwidth("pair", path.with_name("missing.json"), [folder]) == "pair")
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        extra = load_reference_bandwidth(path, [Path(tmp) / "optional_blocked"])
+    check("unlisted folder reuses unchanged ruler and logs one line",
+          extra == payload and len(output.getvalue().splitlines()) == 1
+          and "reusing" in output.getvalue())
+    dataset = folder / "UK" / "train" / "dataset.pt"
+    dataset.write_bytes(b"regenerated")
+    expect_error(ValueError, lambda: load_reference_bandwidth(path, [folder]),
+                 "changed reference data raises fingerprint mismatch")
+    del payload["multi"]
+    path.write_text(json.dumps(payload))
+    expect_error(KeyError, lambda: load_reference_bandwidth(path, [folder]),
+                 "missing graph-mode key raises")
+    payload["multi"] = {"degree": 1.0}
+    path.write_text(json.dumps(payload))
+    expect_error(KeyError, lambda: load_reference_bandwidth(path, [folder]),
+                 "missing descriptor key raises")
 
 print("\n" + ("ALL CHECKS PASSED" if not FAILURES
               else f"{len(FAILURES)} FAILURE(S): {FAILURES}"))

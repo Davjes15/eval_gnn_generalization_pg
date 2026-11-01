@@ -587,8 +587,10 @@ does not use it.
 **L12 — MMD values depend on the kernel width (review E1, E2).** The committed MMD tables and
 g-scores use a width refitted for each grid pair, with a silent fallback to 1.0 when the median
 distance is zero (the UK rows), so cells measured with different widths are not strictly
-comparable. Decision 27 replaces this with one shared width for both regimes; it is not yet
-implemented. Even then the width comes from the median heuristic, not a tuned optimum, and depends
+comparable. Decision 27 is implemented: `configs/mmd_bandwidth.json` stores one shared
+width per descriptor and graph mode for both regimes (reactance is mode-independent).
+The current ruler is provisional until P9 regenerates the datasets; committed historical
+tables are unchanged. Even now the width comes from the median heuristic, not a tuned optimum, and depends
 on which datasets are pooled, so MMD values are comparable within this study only, and not with
 ENGAGE's Table 3 (which reports MMD² with an unbiased estimator and other descriptors).
 

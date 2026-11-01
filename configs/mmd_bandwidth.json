@@ -1,0 +1,68 @@
+{
+  "multi": {
+    "degree": 0.09973565524578717,
+    "laplacian": 10.056313821672521
+  },
+  "simple": {
+    "degree": 0.05126150558842868,
+    "laplacian": 9.17125589685079
+  },
+  "data_dirs": [
+    "data_regime_a_fixed_topology",
+    "data_regime_b_contingencies"
+  ],
+  "splits": [
+    "train",
+    "test"
+  ],
+  "n_descriptors": {
+    "data_regime_a_fixed_topology/IEEE24/train": 800,
+    "data_regime_a_fixed_topology/IEEE24/test": 100,
+    "data_regime_a_fixed_topology/IEEE39/train": 800,
+    "data_regime_a_fixed_topology/IEEE39/test": 100,
+    "data_regime_a_fixed_topology/IEEE118/train": 800,
+    "data_regime_a_fixed_topology/IEEE118/test": 100,
+    "data_regime_a_fixed_topology/UK/train": 800,
+    "data_regime_a_fixed_topology/UK/test": 100,
+    "data_regime_b_contingencies/IEEE24/train": 800,
+    "data_regime_b_contingencies/IEEE24/test": 100,
+    "data_regime_b_contingencies/IEEE39/train": 800,
+    "data_regime_b_contingencies/IEEE39/test": 100,
+    "data_regime_b_contingencies/IEEE118/train": 800,
+    "data_regime_b_contingencies/IEEE118/test": 100,
+    "data_regime_b_contingencies/UK/train": 800,
+    "data_regime_b_contingencies/UK/test": 100
+  },
+  "fingerprint": {
+    "data_regime_a_fixed_topology/IEEE24/train": "6ccd41b533b17d1f12171254d4ae23e712563b83cccf4f7f37320aa2aadf6d29",
+    "data_regime_a_fixed_topology/IEEE24/test": "f8512248a0b8c6462e2b82910f1492dced9387a647da42ae60f30b3a2432bd47",
+    "data_regime_a_fixed_topology/IEEE39/train": "29f8b8e644eaea065a95440f7f46d23ac46f1f3a66c600bb0341fc4691a2ee0c",
+    "data_regime_a_fixed_topology/IEEE39/test": "3cbf30e52502b31d26f7dee5e3cb90b4b84b53b458cad8057fd0b66fbabbc8cc",
+    "data_regime_a_fixed_topology/IEEE118/train": "3839c9d9bc81c1cd509773760bbd06aebe2c85060f7f3faeec344a9ed00d13ca",
+    "data_regime_a_fixed_topology/IEEE118/test": "e3f8033d248fd6be5e9cb6f6aa643e5e49ee09b344f7ee70e787e76c89938e52",
+    "data_regime_a_fixed_topology/UK/train": "70db246980f119deeb3664746b9a2816c0f4cbe748d2777a6e880981c362175d",
+    "data_regime_a_fixed_topology/UK/test": "32f38665de0fa1822f5976ffde665bde2df3de0649cef145172a2da5a99f773b",
+    "data_regime_b_contingencies/IEEE24/train": "ac7dff46262f9797df752f9fa2f9ffca1b24e0e483cecc9a5b97a61b8f7b31b7",
+    "data_regime_b_contingencies/IEEE24/test": "93b3a7fdb3aa7c7a004435f1487d5d368f31426a577fbf45aa40cf446330196f",
+    "data_regime_b_contingencies/IEEE39/train": "05afd4e18a1ccfdf7f7bc900e5ad7e95d6bbb63da4a7d173d2c753f48a6bf364",
+    "data_regime_b_contingencies/IEEE39/test": "7b6ffed2c4b5362be53557f7e06eaf7a0a652bbcdfe35f46030333c4a922d274",
+    "data_regime_b_contingencies/IEEE118/train": "11e0140eb3983a0ec1f3cbdaf8988fba4f70a66899c4a8469c8ece1a34886267",
+    "data_regime_b_contingencies/IEEE118/test": "c1d1fbc4ef0ee1a58f34ee427ec1eb1cd371dc365ac6a924ca41fc7eb1fb521b",
+    "data_regime_b_contingencies/UK/train": "df03e8de0d2d91739e544e0e0a46656f2667f0c279c2e3a9ebbbcd097936b716",
+    "data_regime_b_contingencies/UK/test": "297c84e9b93fff63196beef52f1f9d306d70427b6656726494cd1b6861ed213d"
+  },
+  "zero_fraction": {
+    "multi": {
+      "degree": 0.1149084363569014,
+      "laplacian": 0.11391701779568153
+    },
+    "simple": {
+      "degree": 0.15603486595360472,
+      "laplacian": 0.15507142195675327
+    },
+    "reactance": 0.11600839622787118
+  },
+  "reactance": 3.583743958443517,
+  "git_commit": "1762b20458d78866f5d95230e12fb6b32904042b",
+  "provisional": true
+}

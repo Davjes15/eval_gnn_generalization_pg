@@ -11,6 +11,7 @@ from disagreeing shards are refused instead of silently merged.
 from __future__ import annotations
 
 import math
+import json
 import os
 import sys
 import tempfile
@@ -143,8 +144,18 @@ def test_topology_inputs_must_agree():
         check("the shards' DC table is read for the agreement check",
               len(dc) == 1, str(len(dc)))
         c = _topo_dir(tmp, "c", 0.9)
+        for directory, mode in ((a, "pair"), (c, "reference")):
+            with open(os.path.join(directory, "summary.json"), "w") as f:
+                json.dump({"mmd_graph": "multi", "mmd_bandwidth_mode": mode}, f)
         _expect_exit(lambda: topology_inputs([a, c]),
                      "a differing MMD matrix is refused")
+        try:
+            topology_inputs([a, c])
+        except SystemExit as exc:
+            message = str(exc)
+            check("mismatch names both directories and their bandwidth modes",
+                  a in message and c in message and "bandwidth_mode=pair" in message
+                  and "bandwidth_mode=reference" in message)
         d = _topo_dir(tmp, "d", 0.7, dc_value=0.5)
         _expect_exit(lambda: topology_inputs([a, d]),
                      "a differing DC baseline is refused")

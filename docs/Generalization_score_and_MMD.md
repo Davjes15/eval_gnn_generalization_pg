@@ -130,27 +130,47 @@ grid pairs and all three descriptors:
 So the bias never affects a cross-grid comparison, but the *within*-grid MMD floor
 reported anywhere is an artifact of the estimator, not a real distance.
 
-### 2.2 The bandwidth is refit per pair
+### 2.2 One shared ruler per descriptor and graph mode
 
-The Gaussian bandwidth is chosen by the median heuristic **on each pair
-separately**. That keeps every pair well-scaled (and fixed the earlier degenerate
-`sqrt(2)` saturation, D9), but it means two cells of an MMD matrix are computed
-under different kernels. The matrix is a table of pairwise distances, not a set of
-values on a single common scale, and differences between cells should be read as
-ordinal.
+Implemented in `mmd_bandwidth.py` (Decision 27): pool **all train and test descriptors
+from all four grids of Regime A and Regime B together**, retaining repeated rows and
+excluding validation. For each descriptor, take the exact median of the **nonzero
+pairwise squared Euclidean distances**. Distances are computed in chunks, without
+subsampling. The kernel is `k(a,b) = exp(-||a-b||² / m)`; the stored `m` is a squared
+bandwidth, so `gamma = 1/m`. If every distance is zero, computation raises instead of
+inventing a width.
 
-> **Update 2026-10-21 (decided, not yet implemented):** the per-pair refit is being replaced by
-> **one shared median bandwidth per descriptor, computed once over Regime A and Regime B together**.
-> The reason: the g-score's `Δ_MMD = max − min` compares cells, so it needs one ruler. The per-pair
-> width also falls back silently to 1.0 when the median is zero, which happens for every UK-train pair.
-> Every number in this document still uses the per-pair bandwidth. Reasoning and measured effect:
-> Decision 27 in [`PowerGraph_to_ENGAGE_design_decisions.md`](PowerGraph_to_ENGAGE_design_decisions.md).
+Degree and Laplacian each have a separate width **per graph mode**. The default and
+the only mode reported is **`multi`**, counting every circuit (Decision 31). `simple`
+and its own widths exist solely for legacy reproduction. Reactance has one width,
+independent of graph mode. All comparisons within a mode use the same ruler: both
+regimes, all 16 train/test pairs, the four pooled OOD distances, validation, reports,
+EDA, and extra datasets such as the optional blocked Regime A.
 
-> **Update 2026-10-21 (decided, not yet implemented):** the MMD graph will count every parallel
-> circuit (`--mmd_graph multi`, the default; Decision 31). Today `mmd_utils.pyg_to_networkx`
-> merges parallel circuits into one edge, so the degree and Laplacian descriptors miss most UK
-> outages (98 of 99 single-circuit outages leave the merged graph unchanged). The merged `simple`
-> graph is kept only to reproduce the committed tables, and each graph mode has its own shared width.
+The g-score's `Δ_MMD = max − min` compares cells, so it must not mix per-pair kernels.
+The old heuristic was dominated by each training grid's spread; UK rows even fell
+back to the arbitrary `m=1` when the median was zero. The library default remains
+`bandwidth="pair"` for reproduction, now with a warning on that fallback. CLI callers
+default to `--mmd_bandwidth reference`, with **no silent fallback** if the ruler is
+missing or stale.
+
+`configs/mmd_bandwidth.json` records both modes, counts, zero-distance fractions,
+train/test SHA-256 fingerprints and the generating commit. Reference folders must
+match their fingerprints; an unlisted dataset deliberately reuses the same ruler
+and logs that choice. Recompute the ruler only after regenerating the replication
+datasets, not for each comparison. The checked-in ruler is **provisional**, computed
+from current pre-P9 data; final numbers require P9. Previously committed CSVs and
+the historical numerical tables below remain **simple/per-pair**, not new reference
+results. The median remains a heuristic and depends on the pooled datasets (L12).
+
+`mmd_report.py` also reports `mmd2_degree`, `mmd2_laplacian`, `mmd2_reactance` and
+`bandwidth_mode`; MMD² is the squared, nonnegative MMD returned here. With the
+unbiased estimator a negative raw U-statistic is clipped to zero before taking the
+square root, so this is not an unclipped U-statistic. For byte-identical legacy
+CSV reproduction only, `--mmd_graph simple --mmd_bandwidth pair` retains the old
+column schema and writes the added columns to a companion `_details.csv` report.
+Reference reports use a new `_reference` filename and never replace
+the committed legacy CSVs.
 
 ### 2.3 The topological descriptors are blind to the shift that dominates our transfer error
 
