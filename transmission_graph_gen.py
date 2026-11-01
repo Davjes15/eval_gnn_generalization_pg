@@ -13,8 +13,8 @@ WHY THIS STEP EXISTS (design decisions D2, D6, D9, D10, D11)
       lines out of service, set demand, and call `pp.runpp` (AC power flow,
       Newton-Raphson). The fresh `res_bus`/`res_line` are the new labels.
     - D2 (real demand, "Route B"): active demand per bus comes from PowerGraph's
-      `hourlyDemandBusnew` (reactive demand kept at base, mirroring PowerGraph's
-      gendataopf.m).
+      `hourlyDemandBusnew`. The default `--q_mode base` keeps reactive demand at
+      base, mirroring PowerGraph's gendataopf.m; `constant_pf` is optional.
     - D6 (masking): node inputs are masked by bus type via the vendored ENGAGE
       contract (engage_contract.py).
     - D9 (comparability): node features and targets are written in RAW physical
@@ -76,18 +76,35 @@ from transmission_grids import (
 
 # Stable per-grid seed offsets (avoids Python's process-randomized hash()).
 _GRID_SEED_OFFSET = {"IEEE24": 1, "IEEE39": 2, "IEEE118": 3, "UK": 4}
+Q_MODES = ("base", "constant_pf")
 
 
-def _apply_demand(net, demand_col: np.ndarray) -> None:
-    """Set each load's ACTIVE power from a per-bus demand column (MW).
+def _apply_demand(net, demand_col: np.ndarray, q_mode="base") -> int:
+    """Set each load's active power from a per-bus demand column (MW).
 
-    Reactive demand is left at the base-case value, mirroring PowerGraph's
-    gendataopf.m (which only varies PD). `demand_col` is indexed by bus id
-    (row i -> bus i), which is valid because from_mpc yields 0..N-1 bus ids in
-    original order.
+    In `base` mode, reactive demand is left at the case value, matching
+    PowerGraph's gendataopf.m (which only varies PD). In `constant_pf` mode,
+    each nonzero-P load keeps its case Q/P ratio. The caller passes a fresh
+    deepcopy of the case, so the case P and Q values are still present here.
+    `demand_col` is indexed by bus id (row i -> bus i), which is valid because
+    from_mpc yields 0..N-1 bus ids in original order. Returns the number of
+    loads with zero case P (zero in `base` mode).
     """
+    if q_mode not in Q_MODES:
+        raise ValueError(f"Unknown q_mode {q_mode!r}; expected one of {Q_MODES}.")
+
+    zero_case_p = 0
     for load_idx, bus in net.load["bus"].items():
-        net.load.at[load_idx, "p_mw"] = float(demand_col[bus])
+        p_t = float(demand_col[bus])
+        if q_mode == "constant_pf":
+            p_case = float(net.load.at[load_idx, "p_mw"])
+            q_case = float(net.load.at[load_idx, "q_mvar"])
+            if p_case != 0:
+                net.load.at[load_idx, "q_mvar"] = q_case * p_t / p_case
+            else:
+                zero_case_p += 1
+        net.load.at[load_idx, "p_mw"] = p_t
+    return zero_case_p
 
 
 def _sample_contingency(rng, branches, k, outage_types=("line",)):
@@ -164,6 +181,7 @@ def generate_dataset(
     used_t: set[int] | None = None,
     t_range: tuple[int, int] | None = None,
     outage_types=("line",),
+    q_mode: str = "base",
 ):
     """Generate `n_samples` valid (demand, contingency) operating points for `code`.
 
@@ -186,6 +204,10 @@ def generate_dataset(
     """
     base = load_case(code)
     demand = load_hourly_demand(code)
+    zero_case_p = int((base.load["p_mw"] == 0).sum())
+    if q_mode == "constant_pf" and zero_case_p:
+        print(f"[warn] {code}: {zero_case_p} load(s) have p_case = 0; "
+              "their q_mvar stays at the case value")
     branches = branch_table(base)
     n_time = demand.shape[1]
     # k=0 anchors the base topology; higher k spreads the topology distribution.
@@ -218,7 +240,7 @@ def generate_dataset(
         t = int(rng.integers(lo, hi))
         if used_t is not None and t in used_t:
             continue
-        _apply_demand(net, demand[:, t])
+        _apply_demand(net, demand[:, t], q_mode=q_mode)
 
         # 2) contingency -- random N-k, or a harvested PowerGraph-Graph outage set
         if harvested is not None:
@@ -253,7 +275,7 @@ def generate_dataset(
 
         samples.append(_build_sample(net))
         metas.append({"grid": code, "t_idx": t, "k": k, "out_lines": out_lines,
-                      "source": contingency_source})
+                      "source": contingency_source, "q_mode": q_mode})
         if used_t is not None:
             used_t.add(t)
 
@@ -322,6 +344,10 @@ def parse_args():
                    help="comma list of line,trafo,impedance (default: line)")
     p.add_argument("--redispatch", action="store_true",
                    help="use AC OPF (runopp) instead of PF-with-slack (runpp)")
+    p.add_argument("--q_mode", choices=Q_MODES, default="base",
+                   help="base = PowerGraph replication, only P follows demand; "
+                        "constant_pf = each load keeps its case Q/P ratio "
+                        "(Decision 28)")
     p.add_argument("--out_dir", default="data")
     p.add_argument("--seed", type=int, default=12)
     p.add_argument("--max_tries_factor", type=int, default=50)
@@ -355,7 +381,8 @@ def main():
     for code in codes:
         print(f"[{code}] generating "
               f"(train={args.n_train}, val={args.n_val}, test={args.n_test}, "
-              f"max_k={args.max_k}, redispatch={args.redispatch})")
+              f"max_k={args.max_k}, redispatch={args.redispatch}, "
+              f"q_mode={args.q_mode})")
         # One RNG per grid, seeded deterministically (stable across processes).
         rng = np.random.default_rng(args.seed * 100 + _GRID_SEED_OFFSET.get(code, 0))
         blocked = args.time_split == "blocked"
@@ -377,6 +404,7 @@ def main():
                 used_t=used_t,
                 t_range=windows[split] if windows else None,
                 outage_types=args.outage_types,
+                q_mode=args.q_mode,
             )
             _save_split(args.out_dir, code, split, samples, metas)
 

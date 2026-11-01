@@ -54,10 +54,13 @@ Three dataset directories exist and they are not interchangeable.
 | `data_full` | B (transfer) | k <= 2, random time sampling | **superseded** -- shared demand snapshots across splits (A5) |
 | `data_regime_b_contingencies` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
 
-What varies across samples in all three is **active** demand only: `_apply_demand` in
-`transmission_graph_gen.py` writes `net.load.p_mw` and leaves `q_mvar` at the case's base
-value, mirroring PowerGraph's `gendataopf.m` (limitation L6 in
-[`Audit_response.md`](Audit_response.md)). `k <= 2` means random N-1/N-2 outages of in-service
+`transmission_graph_gen.py --q_mode {base, constant_pf}` selects how reactive
+demand changes. `base` is the default and is what all committed data uses: only
+active demand changes and each load's `q_mvar` stays at its case value, matching
+PowerGraph's `gendataopf.m` (limitation L6 in [`Audit_response.md`](Audit_response.md)).
+`constant_pf` scales each load's Q with its P to keep its case Q/P ratio. The
+`q_mode` column records the choice in each `dataset_src.csv`; older files without
+that column mean `base`. `k <= 2` means random N-1/N-2 outages of in-service
 **lines** only -- no transformer outages, no generator outages, no busbar splits, no switching
 actions, and a draw that islands the network is rejected and resampled rather than modelled
 (L9). `data_regime_b_contingencies` also changes the split from `data_regime_a_fixed_topology`: it differs from Regime A in the
@@ -72,6 +75,11 @@ Regeneration commands:
 python transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
 
+# Optional blocked Regime A (not used in the paper)
+python transmission_graph_gen.py --grid all --max_k 0 --time_split blocked \
+    --n_train 800 --n_val 100 --n_test 100 --out_dir <folder>
+python validate.py --data_dir <folder> --regime a --expect_blocked
+
 # Regime B -- random N-1/N-2 line outages, blocked temporal split (A5)
 python transmission_graph_gen.py --grid all --max_k 2 \
     --time_split blocked \
@@ -79,9 +87,10 @@ python transmission_graph_gen.py --grid all --max_k 2 \
 ```
 
 Every split directory carries a `dataset_src.csv` with one row per sample:
-`grid, t_idx, k, out_lines, source`. That file *is* the provenance -- it lets
-anyone re-derive which demand snapshot and which outaged lines produced each
-graph, and it is what makes the split-hygiene claim checkable rather than asserted.
+`grid, t_idx, k, out_lines, source, q_mode`. That file *is* the provenance -- it
+lets anyone re-derive which demand snapshot, outaged lines and Q mode produced
+each graph, and it is what makes the split-hygiene claim checkable rather than
+asserted.
 The **tensors are not in the repository** (40 MB + 39 MB of `.pt`; `data_full` is a
 symlink to a working directory), but all 24 provenance files are, under
 `docs/provenance/<dataset>_<grid>_<split>.csv`, so the sampling can be audited

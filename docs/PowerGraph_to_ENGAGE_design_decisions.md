@@ -49,7 +49,7 @@ active-demand variation at fixed base-case reactive demand (limitation L6 in
 [`Audit_response.md`](Audit_response.md)).
 
 
-**Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode is planned for other experiments. See Decision 28.
+**Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode (`--q_mode constant_pf`) is available for other experiments. See Decision 28.
 
 **Note on ENGAGE synthetic data:** it is **not** "one value per bus per hour for a year." That description applies to PowerGraph's demand time series. ENGAGE synthetic data is a fixed count of independent random snapshots (`n_train/n_val/n_test`), with no chronology.
 
@@ -546,7 +546,7 @@ recomputation over artifacts that already exist.
 ---
 
 ## Decision 28 — Reactive demand Q stays at the case value by default; constant power factor is an optional mode (review item E16)
-**Status:** decided 2026-10-21; the optional mode is **not yet implemented**. All committed data uses fixed Q.
+**Status:** implemented in code (`--q_mode`); all committed data still uses `base`.
 
 **Decision:** `transmission_graph_gen.py` gets `--q_mode {base, constant_pf}` with **`base` as the default**. `base` is today's behaviour, byte-identical: only `p_mw` follows the demand file, and `q_mvar` stays at the case-file value. All replication datasets and experiments use `base`. `constant_pf` sets `q_t = q_case · p_t / p_case` for each load, keeping each load's own Q/P ratio; if `p_case = 0` the load keeps `q_case` and a warning counts it. The mode is recorded per sample in `dataset_src.csv`. `constant_pf` exists for other researchers' experiments and is not used in our results.
 
@@ -558,7 +558,7 @@ recomputation over artifacts that already exist.
 ---
 
 ## Decision 29 — Regime A keeps PowerGraph's random split; a blocked Regime A is an optional extra dataset (review item E15)
-**Status:** decided 2026-10-21; the blocked Regime A dataset has **not been generated**.
+**Status:** the blocked option is implemented and validated (`--regime a --expect_blocked`); the dataset has not been generated.
 
 **Decision:** `data_regime_a_fixed_topology` stays as it is: fixed topology, `--unique_demand`, **random** train/val/test split. It is the PowerGraph-replication dataset. A blocked Regime A (`--max_k 0 --time_split blocked`, same sizes, one-day gaps) is supported as an **additional** dataset in its own folder. It never replaces `data_regime_a_fixed_topology`, and the published within-grid results do not use it. It uses the shared MMD width of Decision 27, without recomputing it.
 
