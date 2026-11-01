@@ -62,6 +62,7 @@ from models import MODELS
 from mmd_utils import evaluate_mmd, resolve_mmd_bandwidth
 from normalization import MODES, Scaler
 from training_utils import (
+    atomic_torch_save,
     evaluate,
     get_device,
     gscore_row,
@@ -71,6 +72,8 @@ from training_utils import (
     train,
 )
 from transmission_grids import get_transmission_grid_codes
+
+RESUME_EVERY = 5
 
 
 def load_arch_config(path, model_names, allow_default=False):
@@ -128,12 +131,21 @@ def _fit(model, device, train_ds, val_ds, epochs, cfg, batch_size,
     if skip_existing and ckpt is not None and os.path.exists(ckpt):
         model.load_state_dict(torch.load(ckpt, map_location=device))
         print(f"    reusing {ckpt}")
+        resume = f"{ckpt}.resume"
+        if os.path.exists(resume):
+            os.remove(resume)
         return model
+    resume = f"{ckpt}.resume" if ckpt is not None else None
+    if resume is not None and not skip_existing and os.path.exists(resume):
+        os.remove(resume)
     tl, vl = make_loaders(train_ds, val_ds, batch_size=batch_size)
     train(model, device, tl, vl, epochs=epochs,
-          learning_rate=cfg.get("learning_rate", 1e-3))
+          learning_rate=cfg.get("learning_rate", 1e-3),
+          resume_path=resume, save_every=RESUME_EVERY)
     if ckpt is not None:
-        torch.save(model.state_dict(), ckpt)
+        atomic_torch_save(model.state_dict(), ckpt)
+        if os.path.exists(resume):
+            os.remove(resume)
     return model
 
 

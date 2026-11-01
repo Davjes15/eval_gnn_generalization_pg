@@ -205,6 +205,21 @@ with `--experiment cross` / `--experiment ood` on `data_regime_b_contingencies` 
 resumable: an interrupted arm restarts at the first missing checkpoint rather than
 from the beginning.
 
+Training checkpoints are atomically replaced. While a model is training,
+`<ckpt>.resume` stores its epoch-boundary state every five completed epochs;
+relaunching with `--skip_existing` resumes from that state, and the resume file is
+removed after the final `.pt` is written. `launch_campaign.py` shards within and
+cross jobs by model and seed, and OOD jobs by model, seed, and held-out grid. It
+retries failed jobs, writes `DONE.json` only when the summary and arm CSV exist,
+and appends start/finish/fail events to its campaign ledger. `--status` reports
+marker counts. Merge its result directories with `gather_results.py --seed_shards`.
+
+```bash
+python launch_campaign.py --data_a data_regime_a_fixed_topology \
+    --data_b data_regime_b_contingencies --out results_v3 \
+    --ckpt ckpt_v3 --logs logs_v3 --pool 7
+```
+
 Two representations are supported and both are reported: `--normalize pu_zscore`
 is the final protocol (A2), `--normalize none` is the raw-unit ablation that
 reproduces every pre-A2 artifact bit-identically. All metrics are computed after

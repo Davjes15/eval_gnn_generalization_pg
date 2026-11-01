@@ -27,6 +27,7 @@ ATTRIBUTION
 from __future__ import annotations
 
 import os
+import random
 
 import numpy as np
 import torch
@@ -49,6 +50,23 @@ def load_grid_dataset(data_dir: str, grid: str, split: str):
             f"{path} not found. Generate it with transmission_graph_gen.py (Step 3)."
         )
     return torch.load(path, weights_only=False)
+
+
+def atomic_torch_save(obj, path):
+    """Write a torch object without exposing a partially written target."""
+    tmp_path = f"{path}.tmp.{os.getpid()}"
+    try:
+        with open(tmp_path, "wb") as fh:
+            torch.save(obj, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.remove(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def weighted_mse_loss(pred, target, eps=1e-8):
@@ -123,7 +141,7 @@ def all_metrics(y_true, y_pred):
 
 
 def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-3,
-          patience=50, log_every=0, grad_clip=None):
+          patience=50, log_every=0, grad_clip=None, resume_path=None, save_every=5):
     """Train with early stopping on validation loss; restore best weights.
 
     ``grad_clip`` caps the global gradient norm before each optimizer step.
@@ -131,7 +149,40 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_val, best_weights, wait = np.inf, None, 0
-    for epoch in range(epochs):
+    start_epoch = 0
+    resume_rng = None
+    if resume_path is not None:
+        if save_every < 1:
+            raise ValueError("save_every must be a positive integer when resuming")
+        if os.path.exists(resume_path):
+            checkpoint = torch.load(
+                resume_path, weights_only=False, map_location=device
+            )
+            expected_meta = {
+                "learning_rate": learning_rate,
+                "patience": patience,
+                "grad_clip": grad_clip,
+            }
+            if checkpoint.get("meta") != expected_meta:
+                raise ValueError(
+                    f"resume metadata mismatch for {resume_path}: "
+                    f"saved {checkpoint.get('meta')!r}, expected {expected_meta!r}"
+                )
+            model.load_state_dict(checkpoint["model"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            best_val = checkpoint["best_val"]
+            best_weights = checkpoint["best_weights"]
+            wait = checkpoint["wait"]
+            start_epoch = checkpoint["epoch"]
+            resume_rng = checkpoint
+            print(f"    resuming {resume_path} at epoch {start_epoch}")
+
+    if resume_rng is not None:
+        np.random.set_state(resume_rng["numpy_rng"])
+        random.setstate(resume_rng["python_rng"])
+        torch.set_rng_state(resume_rng["torch_rng"].cpu())
+
+    for epoch in range(start_epoch, epochs):
         model.train()
         for batch in loader_train:
             batch = batch.to(device)
@@ -160,6 +211,24 @@ def train(model, device, loader_train, loader_val, epochs=200, learning_rate=1e-
                 break
         if log_every and (epoch + 1) % log_every == 0:
             print(f"    epoch {epoch+1:4d}  val {val:.6f}")
+        if resume_path is not None and (epoch + 1) % save_every == 0:
+            atomic_torch_save({
+                "version": 1,
+                "epoch": epoch + 1,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "best_val": best_val,
+                "best_weights": best_weights,
+                "wait": wait,
+                "torch_rng": torch.get_rng_state(),
+                "numpy_rng": np.random.get_state(),
+                "python_rng": random.getstate(),
+                "meta": {
+                    "learning_rate": learning_rate,
+                    "patience": patience,
+                    "grad_clip": grad_clip,
+                },
+            }, resume_path)
 
     if best_weights is not None:
         model.load_state_dict(best_weights)
