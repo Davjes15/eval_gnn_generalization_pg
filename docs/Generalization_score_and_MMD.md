@@ -1,5 +1,15 @@
 # The g-score and the grid-distance it is built on
 
+## Circuit-counting MMD graph
+
+Decision 31 is implemented (code): the default `multi` graph keeps one undirected
+edge per in-service circuit, retaining repeated bus pairs from PyG's bidirectional
+edge index. Degree counts incident circuits; the normalized Laplacian uses bus-pair
+weights equal to circuit multiplicity. Losing one parallel circuit reduces its
+weight rather than disconnecting the buses. `simple` follows ENGAGE's merged-graph
+convention and is available only for reproduction, not reporting. Electrical MMD
+still reads every circuit's edge attributes.
+
 Audit items **A6** (the g-score is an affine function of mean and spread) and **A7**
 (what the MMD estimator and descriptors actually measure). Both are stated here as
 protocol-level observations, because both change how the numbers in

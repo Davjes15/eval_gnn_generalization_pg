@@ -44,28 +44,46 @@ WHAT THESE DESCRIPTORS CAN AND CANNOT SEE
     `reactance_histogram` is provided as an electrical descriptor alongside them.
 
 REFERENCES
+    Decision 31: multi counts every circuit, including parallel branches.
+    simple reproduces ENGAGE's PyG to_networkx convention only.
     Gretton et al., "A Kernel Two-Sample Test", JMLR 2012 (MMD + median heuristic).
     O'Bray et al. (ggme), "Evaluating Graph Generative Models with ... MMD".
 """
 from __future__ import annotations
 
+from collections import Counter
+
 import numpy as np
 import networkx as nx
 
 
-def pyg_to_networkx(data) -> nx.Graph:
-    """Undirected simple graph from a PyG Data object's edge_index."""
-    g = nx.Graph()
+def pyg_to_networkx(data, graph_mode="multi") -> nx.Graph:
+    """Undirected graph, retaining one edge per circuit in multi mode."""
+    if graph_mode not in {"multi", "simple"}:
+        raise ValueError(f"Invalid graph_mode: {graph_mode}")
+    g = nx.MultiGraph() if graph_mode == "multi" else nx.Graph()
     n = int(data.x.shape[0])
     g.add_nodes_from(range(n))
     ei = data.edge_index.cpu().numpy()
-    g.add_edges_from(zip(ei[0].tolist(), ei[1].tolist()))
+    if graph_mode == "multi":
+        src, dst = ei
+        if np.any(src == dst):
+            raise ValueError("Self-loops are not circuits")
+        forward = Counter(zip(src[src < dst], dst[src < dst]))
+        reverse = Counter(zip(dst[dst < src], src[dst < src]))
+        if forward != reverse:
+            raise ValueError("Unpaired circuit directions")
+        g.add_edges_from(zip(src[src < dst].tolist(), dst[src < dst].tolist()))
+    else:
+        g.add_edges_from(zip(ei[0].tolist(), ei[1].tolist()))
     return g
 
 
 def degree_histogram(g: nx.Graph, n_bins: int = 20, max_degree: int = 20) -> np.ndarray:
     """Density histogram of node degrees over a fixed [0, max_degree] range."""
     degs = np.array([d for _, d in g.degree()], dtype=float)
+    if np.any(degs > max_degree):
+        raise ValueError(f"Degree exceeds max_degree={max_degree}")
     hist, _ = np.histogram(degs, bins=n_bins, range=(0, max_degree), density=True)
     return hist
 
@@ -75,7 +93,15 @@ def laplacian_spectrum_histogram(g: nx.Graph, n_bins: int = 40) -> np.ndarray:
     (the spectrum of the normalised Laplacian always lies in [0, 2])."""
     if g.number_of_nodes() == 0:
         return np.zeros(n_bins)
-    ev = nx.normalized_laplacian_spectrum(g)
+    if g.is_multigraph():
+        weighted = nx.Graph()
+        weighted.add_nodes_from(g.nodes())
+        for u, v in g.edges():
+            weight = weighted[u][v]["weight"] + 1 if weighted.has_edge(u, v) else 1
+            weighted.add_edge(u, v, weight=weight)
+        ev = nx.normalized_laplacian_spectrum(weighted, weight="weight")
+    else:
+        ev = nx.normalized_laplacian_spectrum(g)
     hist, _ = np.histogram(ev, bins=n_bins, range=(0.0, 2.0), density=True)
     return hist
 
@@ -147,11 +173,11 @@ def mmd(descr_a: np.ndarray, descr_b: np.ndarray, unbiased: bool = False) -> flo
     return float(np.sqrt(max(mmd2, 0.0)))
 
 
-def evaluate_mmd(dataset_a, dataset_b, unbiased: bool = False):
+def evaluate_mmd(dataset_a, dataset_b, unbiased: bool = False, graph_mode="multi"):
     """Return (mmd_degree, mmd_laplacian) between two PyG datasets (distributions
     of graphs). Each dataset is a list of PyG Data objects."""
-    ga = [pyg_to_networkx(d) for d in dataset_a]
-    gb = [pyg_to_networkx(d) for d in dataset_b]
+    ga = [pyg_to_networkx(d, graph_mode) for d in dataset_a]
+    gb = [pyg_to_networkx(d, graph_mode) for d in dataset_b]
     md = mmd(_descriptors(ga, "degree"), _descriptors(gb, "degree"), unbiased)
     ml = mmd(_descriptors(ga, "laplacian"), _descriptors(gb, "laplacian"), unbiased)
     return md, ml
@@ -159,6 +185,8 @@ def evaluate_mmd(dataset_a, dataset_b, unbiased: bool = False):
 
 def evaluate_mmd_electrical(dataset_a, dataset_b, unbiased: bool = False) -> float:
     """MMD between two datasets under the electrical (reactance) descriptor.
+
+    Unchanged by graph_mode: edge_attr already includes every circuit.
 
     Reported alongside the topological distances so a reader can see which shift
     a given grid pair actually represents: two systems can be topologically

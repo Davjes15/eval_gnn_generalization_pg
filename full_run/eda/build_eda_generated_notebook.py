@@ -4,7 +4,14 @@ samples that actually train the models.
 
 Complements EDA_raw_data.ipynb (which profiles the raw inputs BEFORE generation).
 Each step: markdown (what/why) -> code -> markdown (findings & implication)."""
+import argparse
+from pathlib import Path
+
 import nbformat as nbf
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
+args = parser.parse_args()
 
 nb = nbf.v4.new_notebook()
 cells = []
@@ -335,7 +342,7 @@ rng = np.random.default_rng(0)
 sub = {g: [train[g][i] for i in rng.choice(len(train[g]), size=120, replace=False)] for g in GRIDS}
 Dd = np.zeros((4, 4)); Dl = np.zeros((4, 4))
 for i, j in itertools.combinations(range(4), 2):
-    md_ij, ml_ij = evaluate_mmd(sub[GRIDS[i]], sub[GRIDS[j]])
+    md_ij, ml_ij = evaluate_mmd(sub[GRIDS[i]], sub[GRIDS[j]], graph_mode=MMD_GRAPH)
     Dd[i, j] = Dd[j, i] = md_ij; Dl[i, j] = Dl[j, i] = ml_ij
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.6))
@@ -395,12 +402,21 @@ md(r"""
   improvement surfaced by this EDA).
 """)
 
+for cell in cells:
+    if cell.cell_type == "code" and "from mmd_utils import evaluate_mmd" in cell.source:
+        cell.source += f"\nMMD_GRAPH = {args.mmd_graph!r}"
 nb["cells"] = cells
 nb["metadata"] = {
     "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
     "language_info": {"name": "python"},
 }
-out = "/home/ubuntu/full_run/EDA_generated_data.ipynb"
+out = Path(__file__).resolve().parent / "EDA_generated_data.ipynb"
+if out.exists():
+    with out.open() as f:
+        previous = nbf.read(f, as_version=4)
+    for old, new in zip(previous.cells, cells):
+        if "id" in old:
+            new["id"] = old["id"]
 with open(out, "w") as f:
     nbf.write(nb, f)
 print("wrote", out, "with", len(cells), "cells")

@@ -38,6 +38,7 @@ def main():
     p.add_argument("--data_dir", default="data_regime_b_contingencies")
     p.add_argument("--grids", nargs="+", default=list(GRIDS))
     p.add_argument("--out", default="docs/tables")
+    p.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
     args = p.parse_args()
 
     train = {g: load_grid_dataset(args.data_dir, g, "train") for g in args.grids}
@@ -47,7 +48,7 @@ def main():
     for a in args.grids:
         for b in args.grids:
             for unbiased in (False, True):
-                deg, lap = evaluate_mmd(train[a], test[b], unbiased)
+                deg, lap = evaluate_mmd(train[a], test[b], unbiased, args.mmd_graph)
                 rows.append({
                     "train_grid": a, "test_grid": b,
                     "same_grid": a == b,
@@ -55,6 +56,7 @@ def main():
                     "mmd_degree": deg,
                     "mmd_laplacian": lap,
                     "mmd_reactance": evaluate_mmd_electrical(train[a], test[b], unbiased),
+                    **({"mmd_graph": args.mmd_graph} if args.mmd_graph == "multi" else {}),
                 })
             print(f"  {a} -> {b}: " + ", ".join(
                 f"{r['estimator']} deg={r['mmd_degree']:.4f} "
@@ -63,7 +65,10 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     df = pd.DataFrame(rows)
-    path = os.path.join(args.out, f"mmd_{os.path.basename(args.data_dir)}.csv")
+    suffix = "_multigraph" if args.mmd_graph == "multi" else ""
+    path = os.path.join(args.out, f"mmd_{os.path.basename(args.data_dir)}{suffix}.csv")
+    if args.mmd_graph == "multi":
+        print("PROVISIONAL: current data predates P8; final numbers require P9.")
     df.to_csv(path, index=False)
     print(f"\nwrote {len(df)} rows -> {path}")
 

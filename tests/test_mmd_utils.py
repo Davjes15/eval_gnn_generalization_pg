@@ -18,12 +18,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
+import networkx as nx
 import torch
 from torch_geometric.data import Data
 
 from mmd_utils import (_gaussian_gram, _median_bandwidth, degree_histogram,
                        evaluate_mmd, evaluate_mmd_electrical, mmd,
-                       pyg_to_networkx, reactance_histogram)
+                       pyg_to_networkx, reactance_histogram,
+                       laplacian_spectrum_histogram)
 
 FAILURES = []
 
@@ -129,6 +131,59 @@ check("reactance histogram of an edgeless graph is zeros, not NaN",
       bool(np.all(reactance_histogram(
           Data(x=torch.zeros(2, 7), edge_index=torch.zeros(2, 0, dtype=torch.int64),
                edge_attr=torch.zeros(0, 4), y=torch.zeros(2, 4))) == 0)))
+
+print("\nF. circuit-counting graph mode")
+
+
+def circuit_data(edges, n):
+    directed = edges + [(v, u) for u, v in edges]
+    return Data(x=torch.zeros(n, 7),
+                edge_index=torch.tensor(directed, dtype=torch.long).T.reshape(2, -1))
+
+
+parallel = circuit_data([(0, 1), (0, 1), (1, 2)], 3)
+simple = pyg_to_networkx(parallel, "simple")
+multi = pyg_to_networkx(parallel)
+check("simple degrees", list(dict(simple.degree()).values()) == [1, 2, 1])
+check("multi degrees", list(dict(multi.degree()).values()) == [2, 3, 1])
+hand = np.array([[1, -2 / np.sqrt(6), 0],
+                 [-2 / np.sqrt(6), 1, -1 / np.sqrt(3)],
+                 [0, -1 / np.sqrt(3), 1]])
+check("weighted normalized Laplacian equals hand computation",
+      np.allclose(nx.normalized_laplacian_matrix(multi).toarray(), hand))
+check("weighted spectrum equals hand computation",
+      np.allclose(nx.normalized_laplacian_spectrum(multi), np.linalg.eigvalsh(hand)))
+# A three-node weighted path always has spectrum {0, 1, 2}; use four nodes
+# to test that the spectral descriptor can register a parallel-line outage.
+before = circuit_data([(0, 1), (0, 1), (1, 2), (2, 3)], 4)
+after = circuit_data([(0, 1), (1, 2), (2, 3)], 4)
+for mode in ("simple", "multi"):
+    gb, ga = pyg_to_networkx(before, mode), pyg_to_networkx(after, mode)
+    check(f"{mode} remains connected after one parallel outage", nx.is_connected(ga))
+    for fn in (degree_histogram, laplacian_spectrum_histogram):
+        equal = np.array_equal(fn(gb), fn(ga))
+        check(f"{mode} outage {fn.__name__}", equal == (mode == "simple"))
+for fn in (degree_histogram, laplacian_spectrum_histogram):
+    check(f"no parallel circuits: {fn.__name__}", np.array_equal(
+        fn(pyg_to_networkx(after)), fn(pyg_to_networkx(after, "simple"))))
+check("explicit simple mode retains legacy MMD exactly",
+      evaluate_mmd(low, star_ds, graph_mode="simple") ==
+      evaluate_mmd(low, star_ds))
+empty = circuit_data([], 0)
+check("empty Laplacian histogram is zero",
+      np.array_equal(laplacian_spectrum_histogram(pyg_to_networkx(empty)), np.zeros(40)))
+bad = Data(x=torch.zeros(3, 7), edge_index=torch.tensor([[0, 1], [1, 2]]))
+for name, operation in [
+        ("unpaired directions", lambda: pyg_to_networkx(bad)),
+        ("self-loop", lambda: pyg_to_networkx(circuit_data([(0, 0)], 1))),
+        ("invalid mode", lambda: pyg_to_networkx(parallel, "invalid")),
+        ("degree overflow", lambda: degree_histogram(multi, max_degree=2))]:
+    try:
+        operation()
+    except ValueError:
+        check(name + " raises ValueError", True)
+    else:
+        check(name + " raises ValueError", False)
 
 print("\n" + ("ALL CHECKS PASSED" if not FAILURES
               else f"{len(FAILURES)} FAILURE(S): {FAILURES}"))

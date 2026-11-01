@@ -40,6 +40,7 @@ HOW TO RUN
       --out results/analysis
 """
 import argparse
+import json
 import os
 
 import numpy as np
@@ -81,6 +82,12 @@ def topology_inputs(dirs):
     """
     lap = ood_dist = dc = None
     for d in dirs:
+        summary_path = os.path.join(d, "summary.json")
+        if os.path.exists(summary_path):
+            with open(summary_path) as f:
+                mode = json.load(f).get("mmd_graph", "simple")
+        else:
+            mode = "simple"
         this_lap = pd.read_csv(os.path.join(d, "mmd_laplacian.csv"), index_col=0)
         this_dc = pd.read_csv(os.path.join(d, "dc_baseline.csv"))
         this_ood = None
@@ -88,10 +95,12 @@ def topology_inputs(dirs):
         if os.path.exists(path):
             this_ood = pd.read_csv(path)
         if lap is None:
+            first_dir, first_mode = d, mode
             lap, dc, ood_dist = this_lap, this_dc, this_ood
             continue
         if not np.allclose(lap.values, this_lap.values, atol=1e-9):
-            raise SystemExit(f"mmd_laplacian.csv differs in {d}")
+            raise SystemExit(f"mmd_laplacian.csv differs: {first_dir} "
+                             f"(mmd_graph={first_mode}) vs {d} (mmd_graph={mode})")
         if not np.allclose(dc["dc_nrmse"], this_dc["dc_nrmse"], atol=1e-9):
             raise SystemExit(f"dc_baseline.csv differs in {d}")
         if this_ood is not None and ood_dist is None:
