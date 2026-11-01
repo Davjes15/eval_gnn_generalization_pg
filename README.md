@@ -282,6 +282,13 @@ PF-with-slack), `--seed`, `--max_tries_factor`. Each emitted sample:
 `2E` varies with the contingency depth (that variation is what makes MMD/g-score
 meaningful). Contract details + the vendored ENGAGE extractors are in
 `engage_contract.py`.
+
+For random contingencies, `--outage_types` accepts `line`, `trafo`, `impedance`,
+or any comma-separated combination (for example, `--outage_types line,trafo,impedance`).
+The default is `line`: it reproduces the historical sampler's outage choices
+used for the committed datasets with the same seed (the corrected graph contract
+does not reproduce the old UK/IEEE118 graph tensors). Non-default values change
+the sampled contingencies and are available for other researchers' experiments.
 ### Step 4 — The model zoo  ✅ on `main` (developed on `step-4-model-zoo`)
 Six architectures behind one interface (`models.py`): `GCN`, `ARMA_GNN` (ENGAGE)
 and `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph). Every model is genuinely
