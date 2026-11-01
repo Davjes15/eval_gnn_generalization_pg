@@ -59,7 +59,7 @@ import pandas as pd
 import torch
 
 from models import MODELS
-from mmd_utils import evaluate_mmd
+from mmd_utils import evaluate_mmd, resolve_mmd_bandwidth
 from normalization import MODES, Scaler
 from training_utils import (
     evaluate,
@@ -145,13 +145,14 @@ def _load_all(data_dir, grids):
     return out
 
 
-def _mmd_matrix(data, grids, mmd_graph="multi"):
+def _mmd_matrix(data, grids, mmd_graph="multi", bandwidth="pair"):
     """MMD (degree, laplacian) between every train grid and every test grid."""
     deg = pd.DataFrame(index=grids, columns=grids, dtype=float)
     lap = pd.DataFrame(index=grids, columns=grids, dtype=float)
     for a in grids:
         for b in grids:
-            md, ml = evaluate_mmd(data[a]["train"], data[b]["test"], graph_mode=mmd_graph)
+            md, ml = evaluate_mmd(data[a]["train"], data[b]["test"], graph_mode=mmd_graph,
+                                  bandwidth=bandwidth)
             deg.loc[a, b], lap.loc[a, b] = md, ml
     return deg, lap
 
@@ -336,7 +337,7 @@ def compute_cc_aggregate_gscores(cc_records, lap_mmd, dc_rows, model_names, grid
     return rows
 
 
-def ood_distances(data, grids, mmd_graph="multi"):
+def ood_distances(data, grids, mmd_graph="multi", bandwidth="pair"):
     """Per held-out grid, its POOLED topological distance to the training grids.
 
     This is the exact distance the OOD g-score uses. Following ENGAGE's OOD MMD
@@ -353,7 +354,8 @@ def ood_distances(data, grids, mmd_graph="multi"):
     for held in grids:
         train_grids = [g for g in grids if g != held]
         pooled_train = [d for g in train_grids for d in data[g]["train"]]
-        md, ml = evaluate_mmd(pooled_train, data[held]["test"], graph_mode=mmd_graph)
+        md, ml = evaluate_mmd(pooled_train, data[held]["test"], graph_mode=mmd_graph,
+                              bandwidth=bandwidth)
         pooled_lap[held] = float(ml)
         rows.append({"held_out_grid": held,
                      "train_grids": "+".join(train_grids),
@@ -423,6 +425,8 @@ def parse_args():
                         "'both' means cross-context + OOD (Regime B)")
     p.add_argument("--data_dir", default="data")
     p.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
+    p.add_argument("--mmd_bandwidth", choices=["reference", "pair"], default="reference")
+    p.add_argument("--mmd_bandwidth_file", default="configs/mmd_bandwidth.json")
     p.add_argument("--out", default="results")
     p.add_argument("--models", nargs="+", default=list(MODELS.keys()))
     p.add_argument("--grids", nargs="+", default=None,
@@ -497,8 +501,15 @@ def main():
         os.makedirs(save_dir, exist_ok=True)
 
     data = _load_all(args.data_dir, grids)
+    bandwidth = None
+    if not skip_mmd:
+        bandwidth = resolve_mmd_bandwidth(args.mmd_bandwidth, args.mmd_bandwidth_file,
+                                          [args.data_dir], args.mmd_graph)
     summary = {"regime_tag": args.regime_tag, "seeds": seeds,
                "models": args.models, "mmd_graph": args.mmd_graph,
+               "mmd_bandwidth_mode": args.mmd_bandwidth,
+               "mmd_bandwidth_file": args.mmd_bandwidth_file,
+               "mmd_bandwidth_widths": bandwidth if isinstance(bandwidth, dict) else None,
                "experiment": args.experiment, "data_dir": args.data_dir,
                "epochs": args.epochs, "arch_config_path": args.arch_config,
                "arch_config": arch_cfg,
@@ -512,7 +523,7 @@ def main():
         print("\n== MMD skipped (degenerate for a fixed-topology regime) ==")
     else:
         print("\n== MMD (topological distance) ==")
-        deg_mmd, lap_mmd = _mmd_matrix(data, grids, args.mmd_graph)
+        deg_mmd, lap_mmd = _mmd_matrix(data, grids, args.mmd_graph, bandwidth)
         deg_mmd.to_csv(os.path.join(args.out, "mmd_degree.csv"))
         lap_mmd.to_csv(os.path.join(args.out, "mmd_laplacian.csv"))
         print(lap_mmd.round(4).to_string())
@@ -526,7 +537,7 @@ def main():
         if lap_mmd is None:
             raise SystemExit("--only_topology needs the MMD matrix; drop "
                              "--skip_mmd and do not use --experiment within")
-        ood_dist, _ = ood_distances(data, grids, args.mmd_graph)
+        ood_dist, _ = ood_distances(data, grids, args.mmd_graph, bandwidth)
         pd.DataFrame(ood_dist).to_csv(
             os.path.join(args.out, "ood_distance.csv"), index=False)
         print("\n-- OOD topological distance (held-out grid -> POOLED "
@@ -595,7 +606,7 @@ def main():
         if lap_mmd is None:
             print("(OOD g-scores skipped: no MMD matrix)")
         else:
-            ood_dist, pooled_lap = ood_distances(data, grids, args.mmd_graph)
+            ood_dist, pooled_lap = ood_distances(data, grids, args.mmd_graph, bandwidth)
             pd.DataFrame(ood_dist).to_csv(
                 os.path.join(args.out, "ood_distance.csv"), index=False)
             print("\n-- OOD topological distance (held-out grid → POOLED training "
