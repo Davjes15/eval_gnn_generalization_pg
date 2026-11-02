@@ -41,13 +41,24 @@ COLS = ["ac_dp_pct_load", "ac_dq_pct_load", "ac_dp_mean_mw", "ac_dq_mean_mvar",
 
 # The baseline states do not depend on a training grid, so they are reported per
 # data regime: Regime A test splits (fixed topology) and Regime B (N-k).
-REGIME = {"data_regime_a_fixed_topology": "regime_a", "data_regime_b_contingencies": "regime_b"}
+REGIME_PREFIXES = (
+    ("data_regime_a_fixed_topology", "regime_a"),
+    ("data_regime_b_contingencies", "regime_b"),
+)
 STATE = {"truth": "floor", "dc_pf": "dc_pf"}
 
 # Distribution columns for the two residuals the text quotes.
 SPREAD = ["ac_dp_pct_load", "ac_dq_pct_load"]
 # A voided group is the ranking's unit of failure: (arm, model, train grid, seed).
 VOID_KEY = ["arm", "model", "train_grid", "seed"]
+
+
+def regime_label(data_dir):
+    name = os.path.basename(os.path.normpath(str(data_dir)))
+    for prefix, label in REGIME_PREFIXES:
+        if name.startswith(prefix):
+            return label
+    return name
 
 
 def valid_mask(df: pd.DataFrame) -> pd.Series:
@@ -79,7 +90,7 @@ def setting_of(row: pd.Series) -> str:
 def baseline_rows(path: str) -> pd.DataFrame:
     """The floor and DC rows, one per (regime, state), averaged over grids."""
     df = pd.read_csv(path)
-    df["setting"] = df["data_dir"].map(REGIME).fillna(df["data_dir"])
+    df["setting"] = df["data_dir"].map(regime_label)
     df["model"] = df["state"].map(STATE).fillna(df["state"])
     out = aggregate(df, ["setting", "model"])
     out["n_voided"] = 0
