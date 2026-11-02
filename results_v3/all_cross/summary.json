@@ -1,0 +1,85 @@
+{
+  "epochs": 200,
+  "data_dir": "data_regime_b_contingencies_v3",
+  "batch_size": 32,
+  "batch_size_ood": 96,
+  "normalize": "pu_zscore",
+  "seeds": [
+    0,
+    100,
+    300,
+    700,
+    1000
+  ],
+  "models": [
+    "arma_gnn",
+    "gat",
+    "gcn",
+    "gin",
+    "nnconv",
+    "transformer"
+  ],
+  "arch_config": {
+    "arma_gnn": {
+      "num_layers": 8,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gat": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gcn": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "gin": {
+      "num_layers": 3,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "nnconv": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    },
+    "transformer": {
+      "num_layers": 2,
+      "hidden": 128,
+      "learning_rate": 0.001
+    }
+  },
+  "merged_from": [
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_arma_gnn_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_arma_gnn_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_arma_gnn_s1000",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_arma_gnn_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_arma_gnn_s700",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gat_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gat_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gat_s1000",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gat_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gat_s700",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gcn_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gcn_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gcn_s1000",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gcn_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gcn_s700",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gin_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gin_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gin_s1000",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gin_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_gin_s700",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_nnconv_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_nnconv_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_nnconv_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_transformer_s0",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_transformer_s100",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_transformer_s1000",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_transformer_s300",
+    "/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3/cross_transformer_s700"
+  ],
+  "merged_file": "cross_context.csv"
+}
