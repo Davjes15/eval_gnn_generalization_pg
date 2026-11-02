@@ -38,7 +38,7 @@ HOW IT CONNECTS
 HOW TO RUN
     python3 rank_analysis.py --regime_a results_a/within_grid.csv \
         --cross results_tuned/cross_context.csv --ood results_tuned/ood.csv \
-        --out results
+        --out results_v3
 """
 from __future__ import annotations
 

@@ -24,7 +24,7 @@ HOW IT CONNECTS
 HOW TO RUN
     # quick smoke test (few epochs, two models):
     python3 experiments.py --experiment both --models gcn gat --epochs 20 \
-        --data_dir data --out results --allow_default_config
+        --data_dir data_regime_a_fixed_topology_v3 --out results_v3 --allow_default_config
     # fixed-topology control arm (Regime A), 5 seeds, tuned configs:
     python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology_v3 \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
