@@ -1,0 +1,101 @@
+grid,t_idx,k,out_lines,source,q_mode
+IEEE118,30890,0,[],random,base
+IEEE118,31322,0,[],random,base
+IEEE118,31130,2,"['line:99', 'line:159']",random,base
+IEEE118,29056,0,[],random,base
+IEEE118,28213,0,[],random,base
+IEEE118,29895,0,[],random,base
+IEEE118,29007,1,['line:125'],random,base
+IEEE118,31162,0,[],random,base
+IEEE118,28810,2,"['line:111', 'line:150']",random,base
+IEEE118,28994,2,"['line:32', 'line:153']",random,base
+IEEE118,28667,0,[],random,base
+IEEE118,29669,2,"['line:73', 'line:106']",random,base
+IEEE118,30786,0,[],random,base
+IEEE118,28077,0,[],random,base
+IEEE118,29831,0,[],random,base
+IEEE118,28818,0,[],random,base
+IEEE118,31058,0,[],random,base
+IEEE118,29592,0,[],random,base
+IEEE118,28468,1,['line:150'],random,base
+IEEE118,28816,1,['line:90'],random,base
+IEEE118,30895,0,[],random,base
+IEEE118,28781,2,"['line:77', 'line:137']",random,base
+IEEE118,31124,2,"['line:43', 'line:152']",random,base
+IEEE118,30582,1,['line:24'],random,base
+IEEE118,30869,0,[],random,base
+IEEE118,29447,2,"['line:15', 'line:105']",random,base
+IEEE118,29673,0,[],random,base
+IEEE118,29798,0,[],random,base
+IEEE118,30155,0,[],random,base
+IEEE118,28742,2,"['line:42', 'line:67']",random,base
+IEEE118,29198,0,[],random,base
+IEEE118,28055,1,['line:111'],random,base
+IEEE118,28412,1,['line:174'],random,base
+IEEE118,28736,1,['line:71'],random,base
+IEEE118,31416,1,['line:168'],random,base
+IEEE118,28140,2,"['line:99', 'line:170']",random,base
+IEEE118,30502,0,[],random,base
+IEEE118,30943,1,['line:44'],random,base
+IEEE118,30636,2,"['line:44', 'line:160']",random,base
+IEEE118,31212,2,"['line:47', 'line:156']",random,base
+IEEE118,28596,1,['line:169'],random,base
+IEEE118,30430,1,['line:21'],random,base
+IEEE118,28318,1,['line:120'],random,base
+IEEE118,30550,2,"['line:69', 'line:152']",random,base
+IEEE118,30647,2,"['line:124', 'line:153']",random,base
+IEEE118,31122,0,[],random,base
+IEEE118,30592,2,"['line:78', 'line:134']",random,base
+IEEE118,29315,1,['line:15'],random,base
+IEEE118,29116,1,['line:1'],random,base
+IEEE118,28709,2,"['line:87', 'line:109']",random,base
+IEEE118,29140,0,[],random,base
+IEEE118,30439,0,[],random,base
+IEEE118,28161,2,"['line:131', 'line:143']",random,base
+IEEE118,31418,1,['line:147'],random,base
+IEEE118,31161,0,[],random,base
+IEEE118,31357,0,[],random,base
+IEEE118,28353,0,[],random,base
+IEEE118,29541,2,"['line:45', 'line:50']",random,base
+IEEE118,30470,2,"['line:65', 'line:82']",random,base
+IEEE118,30578,2,"['line:105', 'line:138']",random,base
+IEEE118,29066,0,[],random,base
+IEEE118,30058,1,['line:82'],random,base
+IEEE118,29143,0,[],random,base
+IEEE118,29282,1,['line:41'],random,base
+IEEE118,28598,2,"['line:25', 'line:157']",random,base
+IEEE118,28164,2,"['line:32', 'line:84']",random,base
+IEEE118,30073,0,[],random,base
+IEEE118,29119,0,[],random,base
+IEEE118,31035,1,['line:14'],random,base
+IEEE118,28311,0,[],random,base
+IEEE118,29059,0,[],random,base
+IEEE118,30995,0,[],random,base
+IEEE118,31307,1,['line:2'],random,base
+IEEE118,29158,2,"['line:34', 'line:148']",random,base
+IEEE118,29014,0,[],random,base
+IEEE118,29381,2,"['line:107', 'line:114']",random,base
+IEEE118,29346,1,['line:32'],random,base
+IEEE118,30072,2,"['line:75', 'line:141']",random,base
+IEEE118,28761,0,[],random,base
+IEEE118,28671,2,"['line:35', 'line:168']",random,base
+IEEE118,28305,0,[],random,base
+IEEE118,29619,1,['line:140'],random,base
+IEEE118,29888,1,['line:152'],random,base
+IEEE118,30318,2,"['line:109', 'line:156']",random,base
+IEEE118,28580,1,['line:132'],random,base
+IEEE118,28932,0,[],random,base
+IEEE118,31384,0,[],random,base
+IEEE118,30268,0,[],random,base
+IEEE118,30022,2,"['line:61', 'line:79']",random,base
+IEEE118,29511,2,"['line:70', 'line:154']",random,base
+IEEE118,30826,1,['line:133'],random,base
+IEEE118,27992,1,['line:20'],random,base
+IEEE118,30487,2,"['line:40', 'line:151']",random,base
+IEEE118,28226,1,['line:169'],random,base
+IEEE118,28041,0,[],random,base
+IEEE118,29022,1,['line:37'],random,base
+IEEE118,28236,0,[],random,base
+IEEE118,30028,1,['line:71'],random,base
+IEEE118,29335,2,"['line:76', 'line:148']",random,base
+IEEE118,29342,0,[],random,base

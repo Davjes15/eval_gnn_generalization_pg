@@ -1,0 +1,101 @@
+grid,t_idx,k,out_lines,source,q_mode
+IEEE39,33706,0,[],random,base
+IEEE39,32835,1,['line:9'],random,base
+IEEE39,33839,1,['line:25'],random,base
+IEEE39,33956,0,[],random,base
+IEEE39,33999,1,['line:20'],random,base
+IEEE39,34136,0,[],random,base
+IEEE39,32836,2,"['line:4', 'line:33']",random,base
+IEEE39,34070,2,"['line:3', 'line:22']",random,base
+IEEE39,33397,1,['line:24'],random,base
+IEEE39,33499,2,"['line:5', 'line:12']",random,base
+IEEE39,32110,2,"['line:3', 'line:27']",random,base
+IEEE39,32694,0,[],random,base
+IEEE39,33009,2,"['line:7', 'line:20']",random,base
+IEEE39,32624,1,['line:20'],random,base
+IEEE39,32717,0,[],random,base
+IEEE39,34456,2,"['line:9', 'line:30']",random,base
+IEEE39,33756,0,[],random,base
+IEEE39,32913,0,[],random,base
+IEEE39,33979,0,[],random,base
+IEEE39,32348,0,[],random,base
+IEEE39,33778,0,[],random,base
+IEEE39,32638,0,[],random,base
+IEEE39,33162,1,['line:7'],random,base
+IEEE39,34439,0,[],random,base
+IEEE39,31752,0,[],random,base
+IEEE39,32782,2,"['line:3', 'line:32']",random,base
+IEEE39,34717,0,[],random,base
+IEEE39,33593,1,['line:32'],random,base
+IEEE39,33321,2,"['line:8', 'line:9']",random,base
+IEEE39,34950,2,"['line:17', 'line:24']",random,base
+IEEE39,31741,1,['line:30'],random,base
+IEEE39,33204,2,"['line:22', 'line:31']",random,base
+IEEE39,34056,2,"['line:0', 'line:5']",random,base
+IEEE39,31879,0,[],random,base
+IEEE39,32247,1,['line:16'],random,base
+IEEE39,32602,1,['line:25'],random,base
+IEEE39,32124,0,[],random,base
+IEEE39,32069,0,[],random,base
+IEEE39,33879,1,['line:33'],random,base
+IEEE39,34669,0,[],random,base
+IEEE39,33074,2,"['line:15', 'line:25']",random,base
+IEEE39,32793,2,"['line:23', 'line:30']",random,base
+IEEE39,33888,0,[],random,base
+IEEE39,33369,0,[],random,base
+IEEE39,34148,0,[],random,base
+IEEE39,34838,2,"['line:5', 'line:32']",random,base
+IEEE39,33390,1,['line:8'],random,base
+IEEE39,34668,2,"['line:16', 'line:24']",random,base
+IEEE39,32525,2,"['line:3', 'line:10']",random,base
+IEEE39,31762,1,['line:10'],random,base
+IEEE39,32115,0,[],random,base
+IEEE39,34473,0,[],random,base
+IEEE39,32424,0,[],random,base
+IEEE39,34035,2,"['line:1', 'line:6']",random,base
+IEEE39,32407,1,['line:25'],random,base
+IEEE39,34827,1,['line:33'],random,base
+IEEE39,33801,0,[],random,base
+IEEE39,31926,1,['line:9'],random,base
+IEEE39,33320,2,"['line:28', 'line:32']",random,base
+IEEE39,32940,1,['line:25'],random,base
+IEEE39,33975,2,"['line:3', 'line:20']",random,base
+IEEE39,34446,1,['line:3'],random,base
+IEEE39,31955,1,['line:0'],random,base
+IEEE39,32154,0,[],random,base
+IEEE39,34611,1,['line:3'],random,base
+IEEE39,33456,0,[],random,base
+IEEE39,34062,1,['line:28'],random,base
+IEEE39,32783,2,"['line:2', 'line:20']",random,base
+IEEE39,31582,0,[],random,base
+IEEE39,33008,1,['line:28'],random,base
+IEEE39,34740,1,['line:27'],random,base
+IEEE39,33940,2,"['line:4', 'line:22']",random,base
+IEEE39,31776,2,"['line:18', 'line:27']",random,base
+IEEE39,34938,0,[],random,base
+IEEE39,34567,2,"['line:26', 'line:33']",random,base
+IEEE39,34155,0,[],random,base
+IEEE39,34754,2,"['line:1', 'line:22']",random,base
+IEEE39,33765,1,['line:6'],random,base
+IEEE39,33986,2,"['line:27', 'line:33']",random,base
+IEEE39,31956,2,"['line:9', 'line:33']",random,base
+IEEE39,34427,0,[],random,base
+IEEE39,32018,1,['line:18'],random,base
+IEEE39,33424,2,"['line:20', 'line:27']",random,base
+IEEE39,32258,0,[],random,base
+IEEE39,34715,0,[],random,base
+IEEE39,32038,1,['line:24'],random,base
+IEEE39,34043,1,['line:9'],random,base
+IEEE39,34465,0,[],random,base
+IEEE39,31851,1,['line:30'],random,base
+IEEE39,33603,1,['line:25'],random,base
+IEEE39,34708,1,['line:9'],random,base
+IEEE39,33472,1,['line:16'],random,base
+IEEE39,32780,0,[],random,base
+IEEE39,32514,0,[],random,base
+IEEE39,34139,1,['line:18'],random,base
+IEEE39,34034,0,[],random,base
+IEEE39,32030,0,[],random,base
+IEEE39,33035,0,[],random,base
+IEEE39,33014,0,[],random,base
+IEEE39,31746,1,['line:10'],random,base
