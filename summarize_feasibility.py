@@ -42,8 +42,8 @@ COLS = ["ac_dp_pct_load", "ac_dq_pct_load", "ac_dp_mean_mw", "ac_dq_mean_mvar",
 # The baseline states do not depend on a training grid, so they are reported per
 # data regime: Regime A test splits (fixed topology) and Regime B (N-k).
 REGIME_PREFIXES = (
-    ("data_regime_a_fixed_topology_v3", "regime_a"),
-    ("data_regime_b_contingencies_v3", "regime_b"),
+    ("data_regime_a_fixed_topology", "regime_a"),
+    ("data_regime_b_contingencies", "regime_b"),
 )
 STATE = {"truth": "floor", "dc_pf": "dc_pf"}
 
