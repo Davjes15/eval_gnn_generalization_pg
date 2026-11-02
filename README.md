@@ -1,16 +1,16 @@
 # eval_gnn_generalization_pg
 
-## MMD graph mode
-
-MMD uses `--mmd_graph multi`, counting every in-service parallel circuit, with
-the shared reference ruler in `configs/mmd_bandwidth.json`.
-
 Evaluating the **generalization of GNN architectures for the AC power-flow (PF) node task on transmission grids**.
 
 ## Goal
 Measure how well graph neural networks trained for node-level AC power flow generalize to **unseen transmission topologies** (and unseen grids), and benchmark this against [PowerGraph](https://github.com/PowerGraph-Datasets), which only trains and tests *within* a single fixed-topology grid. Generalization is quantified with ENGAGE's **g-score** (NRMSE vs. topological distance via MMD).
 
 Because AC power flow is deterministic physics, the value of a learned surrogate is **amortization/speed** across many cases (contingency screening, planning, real-time what-ifs) and **robustness to topology change** — so the primary axis studied is generalization **across contingencies / topological variations**, with transfer between structurally different grids kept as a scientific stress test.
+
+## MMD graph mode
+
+MMD uses `--mmd_graph multi`, counting every in-service parallel circuit, with
+the shared reference ruler in `configs/mmd_bandwidth.json`.
 
 ## Approach (one clean pipeline)
 ENGAGE's generalization methodology applied to PowerGraph's transmission grids. We reuse:
@@ -189,9 +189,6 @@ published results. Checkpoint archives are published separately:
 Extract the desired archive into the repository root; `eval_checkpoints.py`
 replays the saved models without training. The checkpoint index is
 `results_v3/checkpoint_index.csv`.
-
-## History
-v3 = corrected topology (UK was missing 9/99 branches, IEEE118 2/186 and had edges on wrong buses). Earlier runs (v1 full_run, v2 data_a/data_full_v2 → results/, results_norm/), their docs and the audit are in branch `archive/full-history` and tag `archive-pre-v3`; release v1.0.0 has the pre-fix checkpoints.
 
 ### From a clean machine, in five commands
 The path a new researcher actually needs; each command was run from a fresh clone
@@ -424,19 +421,12 @@ ls results_v3/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.
 
 ## Reproducing the reported benchmark (the final protocol)
 
-The walkthrough above is the generic pipeline. The reported numbers
-([`docs/Results.md`](docs/Results.md) §4 — the raw-unit
-tables in [`docs/Results.md`](docs/Results.md) are
-the superseded ablation) come from this exact
-sequence — the differences from the generic commands (`--time_split blocked`, `--normalize
-pu_zscore`, `--save_models`) are the two audit remediations and the checkpointing
-requirement, and they are what make the results defensible and replayable. The protocol
-itself is specified in
+The reported numbers are in [`docs/Results.md`](docs/Results.md) §4 and come from
+the commands below. The protocol itself is specified in
 [`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md#final-protocol-as-executed);
 the reasoning per decision is in
 [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md)
-(Decisions 20 and 21) and the audit trail in
-[`docs/Results.md`](docs/Results.md).
+(Decisions 20 and 21).
 
 ```bash
 # A. In-distribution control: one fixed topology per grid, each demand snapshot used once
@@ -508,9 +498,9 @@ checkpoint: it runs on the committed result CSVs, and the 12 tables it writes co
 byte-identical to the ones in `results_v3/analysis/`. Verify that first — it is the
 cheapest check that your environment agrees with the published numbers.
 
-`--normalize none` (the default) reproduces the raw-unit ablation instead, bit-identically to
-the earlier `results_v3/` tables. `launch_campaign.py` runs the same campaign sharded across
-cores; every job is resumable with `--skip_existing` because it checkpoints.
+`--normalize none` uses raw physical units, no scaling (not used for the published results).
+`launch_campaign.py` runs the same campaign sharded across cores; every job is
+resumable with `--skip_existing` because it checkpoints.
 
 Two protocol points those commands encode. **`configs/arch_config.json` is frozen**: the
 hyperparameters were selected once, on the Regime A *validation* split (`tune_budget.py`), and
@@ -522,6 +512,9 @@ gives the spread needed to compare an architecture gap against run-to-run noise.
 "best seed" to pick. Reasoning and limits: *Final protocol* in
 [`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md)
 and Decision 25 in [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md).
+
+## History
+v3 = corrected topology (UK was missing 9/99 branches, IEEE118 2/186 and had edges on wrong buses). Earlier runs (v1 full_run, v2 data_a/data_full_v2 → results/, results_norm/), their docs and the audit are in branch `archive/full-history` and tag `archive-pre-v3`; release v1.0.0 has the pre-fix checkpoints.
 
 ## License
 TBD.

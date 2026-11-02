@@ -196,13 +196,13 @@ from the external audit (see the archived audit history).
 | `data_regime_a_fixed_topology_v3` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
 | `data_regime_b_contingencies_v3` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
 
-Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the `same_grid_factor` of the protocol decomposition (`results_v3/analysis/protocol_decomposition.csv`) mixes their effects, together with a change of NRMSE denominator, and is not quoted as a cost (limitations L8, L10). The same-grid result is the preserved ranking (Kendall τ = 0.62, p = 0.004). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined.
-| `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
+Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the earlier `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` mixed their effects, together with a change of NRMSE denominator, and is not quoted as a cost (limitations L8, L10). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined. (in tag `archive-pre-v3`)
+
+The v3 pooled rank test finds that within-grid rank predicts the Regime B diagonal rank (Kendall τ-b = 0.867, permutation p = 0.007; see `docs/Results.md` §4.6).
+| `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the earlier raw physical-unit run (in tag `archive-pre-v3`) |
 
 800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).
-Unseen grids (cross-context and leave-one-grid-out) are scored on their 100-sample test split.
-Scoring all 1 000 samples of each unseen grid is a robustness check, run on the retrained models
-and reported next to the main results, not instead of them (Decision 33, L14).
+Unseen grids (cross-context and leave-one-grid-out) are scored on their 100-sample test split in the published results.
 Every split ships its `dataset_src.csv` (grid, `t_idx`, `k`, outaged branches, contingency
 source), which is what makes the split property checkable rather than asserted.
 
@@ -215,7 +215,7 @@ non-degeneracy, and gate H (no demand snapshot shared between splits, no repeate
 training-split statistics only — fitted per grid (within-grid), on the source grid
 (cross-context), or on the pooled training grids (leave-one-grid-out). Features and targets
 share statistics; predictions are de-normalized before scoring; the DC baseline is never
-scaled. `--normalize none` reproduces the raw-unit ablation bit-identically.
+scaled. `--normalize none` uses raw physical units, no scaling (not used for the published results).
 
 **Training.** Six architectures at frozen equal-budget configurations
 (`configs/arch_config.json`, see [`Model_configurations.md`](Model_configurations.md)),
@@ -245,7 +245,7 @@ non-overlapping jobs: weights are fitted on **train** (800), hyperparameters are
 on **validation** (100), and **test** (100) is read only to report. So the pipeline is two
 distinct passes, and the second is not a redundant repeat of the first:
 
-1. *Selection pass* (`tune_budget.py` on `data_regime_a_fixed_topology_v3`): ~10 candidate configurations per
+1. *Selection pass* (`tune_budget.py` on `data_regime_a_fixed_topology`; pre-fix tuning, in tag `archive-pre-v3`): ~10 candidate configurations per
    architecture, scored by mean best **validation** loss across the four grids, one seed
    plus a tie-break seed — enough to rank candidates. The winner is frozen into
    `configs/arch_config.json` and never changes again.

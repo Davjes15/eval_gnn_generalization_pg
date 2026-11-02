@@ -424,9 +424,9 @@ Every arm is complete. Consolidated files, audited row by row against
 
 | Arm | file | rows | per-architecture |
 |---|---|---:|---|
-| Regime A within-grid | `results_v3/regime_a/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
-| Regime B cross-context | `results_v3/regime_b/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
-| Regime B OOD | `results_v3/regime_b/ood.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime A within-grid | `results_v3/all_within/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime B cross-context | `results_v3/all_cross/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
+| Regime B OOD | `results_v3/all_ood/ood.csv` | 112 | 20 each; `nnconv` 12 |
 
 The audit checks, for every architecture in every arm: the expected row count,
 the expected seed set (`0, 100, 300, 700, 1000`; `0, 100, 300` for `nnconv`), all

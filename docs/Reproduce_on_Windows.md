@@ -239,7 +239,7 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 | `--data_dir` / `--out` | input data folder / output results folder |
 | `--save_models <dir>` | also save every trained model's weights |
 | `--experiment within` | the fixed-topology control arm (use with `data_regime_a_fixed_topology_v3`) |
-| `--normalize` | `none` (raw-unit ablation) or `pu_zscore` (**the protocol**) |
+| `--normalize` | `none` (raw physical units, no scaling; not used for the published results) or `pu_zscore` (**the protocol**) |
 | `--arch_config` | frozen widths/depths/learning rates; always pass `configs\arch_config.json` |
 | `--seeds` | `0 100 300 700 1000` (`0 100 300` for `nnconv`) |
 | `--regime_tag` | `A` or `B`, stamped into the results rows |
@@ -290,7 +290,8 @@ On a multi-core CPU set `$env:OMP_NUM_THREADS = "1"` before launching several jo
 in parallel; multi-threaded jobs run concurrently oversubscribe the cores and
 measurably slow the campaign down.
 
-Each `results\<model>\` folder is self‑contained: `transfer_matrix_<model>.csv`,
+Each per-model invocation writes to its own arm folder under `results_v3\`
+(`within_$m`, `cross_$m`, or `ood_$m`): `transfer_matrix_<model>.csv`,
 `cross_context.csv`, `ood.csv`, `gscore.csv`, `gscore_ood.csv`, the (model‑independent)
 `mmd_degree.csv` / `mmd_laplacian.csv` / `dc_baseline.csv` / `ood_distance.csv`, and
 `summary.json`.
@@ -299,37 +300,27 @@ Each `results\<model>\` folder is self‑contained: `transfer_matrix_<model>.csv
 > `--grids IEEE39` gives only the within‑grid (diagonal) number, not a transfer matrix.
 > The one‑model‑at‑a‑time commands above keep all four grids, which is what you want.
 
-### Merge the per‑model folders into one (for the combined figures)
-After the six runs, combine them into a single `results\` folder so the figure
-script sees every model. Copy‑paste this whole block:
+### Merge the per-model folders
+After the runs, gather the per-model shards into the three published arm folders.
+The commands mirror §5 of [`Reproducibility.md`](Reproducibility.md):
 
 ```powershell
-$dst = "results"; New-Item -ItemType Directory -Force -Path $dst | Out-Null
-# per-model transfer matrices (one file each) + saved copies
-Get-ChildItem results\*\transfer_matrix_*.csv | Copy-Item -Destination $dst -Force
-# model-independent tables: copy once from any model folder (use gcn)
-Copy-Item results\gcn\mmd_degree.csv, results\gcn\mmd_laplacian.csv, results\gcn\dc_baseline.csv, results\gcn\ood_distance.csv $dst -Force
-# stack the per-model rows into single CSVs
-python -c "import pandas as pd,glob,os; [pd.concat([pd.read_csv(f) for f in glob.glob(f'results_v3/*/{n}.csv')],ignore_index=True).to_csv(f'results_v3/{n}.csv',index=False) for n in ['cross_context','ood','gscore','gscore_ood']]"
+python gather_results.py --shards "results_v3/within_*" --file within_grid.csv `
+  --out results_v3/all_within --models gcn arma_gnn gat gin transformer nnconv --seed_shards
+python gather_results.py --shards "results_v3/cross_*" --file cross_context.csv `
+  --out results_v3/all_cross --models gcn arma_gnn gat gin transformer nnconv --seed_shards
+python gather_results.py --shards "results_v3/ood_*" --file ood.csv `
+  --out results_v3/all_ood --models gcn arma_gnn gat gin transformer nnconv --seed_shards
 ```
 
-Now `results\` holds the full multi‑model set, identical in structure to the
-published `results_v3\`.
+The merged arm tables are written to `results_v3/all_within/`,
+`results_v3/all_cross/`, and `results_v3/all_ood/`.
 
 ---
 
-## 11. (Optional) Reproduce the figures
-The figure script resolves its results folder from its first argument. Point it at
-your merged `results\` folder:
-
-```powershell
-python results_v3\make_figures.py (Resolve-Path results)
-```
-
-Figures are written to `results\figures\` (`fig_transfer_matrix.png`,
-`fig_per_quantity.png`, `fig_gnn_vs_dc.png`, `fig_mmd_range.png`,
-`fig_mmd_heatmap.png`, `fig_performance.png`, `fig_generalizability_curve.png`,
-`fig_gscore_ood.png`).
+## 11. Published results
+The published tables and their source files are documented in
+[`Results.md`](Results.md).
 
 ---
 

@@ -58,8 +58,8 @@ Three dataset directories exist and they are not interchangeable.
 | directory | regime | protocol | status |
 |---|---|---|---|
 | `data_regime_a_fixed_topology_v3` | A (within-grid) | k = 0, no contingencies, `--unique_demand` | **final** |
-| `data_full` | B (transfer) | k <= 2, random time sampling | **superseded** -- shared demand snapshots across splits (A5) |
 | `data_regime_b_contingencies_v3` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
+| `data_regime_a_blocked_v3` | A (within-grid) | k = 0, `--time_split blocked` | optional leakage check; not used in published results |
 
 `transmission_graph_gen.py --q_mode {base, constant_pf}` selects how reactive
 demand changes. `base` is the default and is what all committed data uses: only
@@ -116,12 +116,9 @@ Every split directory carries a `dataset_src.csv` with one row per sample:
 lets anyone re-derive which demand snapshot, outaged lines and Q mode produced
 each graph, and it is what makes the split-hygiene claim checkable rather than
 asserted.
-The **tensors are not in the repository** (40 MB + 39 MB of `.pt`; `data_full` is a
-symlink to a working directory), but all 24 provenance files are, under
-`docs/provenance/<dataset>_<grid>_<split>.csv`, so the sampling can be audited
-without the archive. Releasing the tensors and the checkpoints needs a data
-release (e.g. Zenodo), not a git commit; until then the reproduction path is
-regenerate-then-verify, and `docs/provenance/` is what a verification is against.
+The v3 dataset tensors and their per-split `dataset_src.csv` provenance are
+committed in the repository. Regeneration is also supported; it produces a
+fresh draw from the same seeded protocol, not bit-identical tensors.
 
 For `data_regime_b_contingencies_v3` the realised demand-time windows are:
 
@@ -213,10 +210,9 @@ python launch_campaign.py --data_a data_regime_a_fixed_topology_v3 \
     --ckpt ckpt_v3 --logs logs_v3 --pool 7
 ```
 
-Two representations are supported and both are reported: `--normalize pu_zscore`
-is the final protocol (A2), `--normalize none` is the raw-unit ablation that
-reproduces every pre-A2 artifact bit-identically. All metrics are computed after
-de-normalization, in physical units, in both cases.
+Two representations are supported: `--normalize pu_zscore` is the published
+protocol; `--normalize none` uses raw physical units, no scaling (not used for
+the published results). Metrics are computed in physical units in both cases.
 
 ---
 
@@ -230,30 +226,11 @@ de-normalization, in physical units, in both cases.
 | cross-context | `cc_<model>_<train_grid>_s<seed>.pt` | the **training** grid (tested on all four) |
 | leave-one-out | `ood_<model>_heldout_<grid>_s<seed>.pt` | the **held-out** grid (trained on the other three) |
 
-The weights are too large for git (593 MB compressed), so they ship as the
-`ckpt_v3.tar.gz` asset of release `v1.0.0` and the repository carries the
-**index**: one row per file with its relative path, byte size, SHA-256 and
-parameter count. That is enough to name the file behind any results row and to
-verify a downloaded copy. Fetch, verify and unpack the archive with:
-
-```bash
-curl -L -o ckpt_v3.tar.gz \
-  https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_v3.tar.gz
-sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_v3.tar.gz"
-tar -xzf ckpt_v3.tar.gz
-```
-
-Behind a firewall that allows `api.github.com` but not `github.com`, the same
-bytes come from the asset endpoint instead (this is the path the clean-room check
-below used):
-
-```bash
-curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" \
-  -o ckpt_v3.tar.gz \
-  https://api.github.com/repos/Davjes15/eval_gnn_generalization_pg/releases/assets/535605900
-```
-
-A clean clone of `main`, the committed datasets and this archive reproduced the
+The weights are too large for git and ship as separate assets in release
+`v3.0.0`. Their links and SHA-256 values are listed in the README. The repository
+carries the **index**: one row per file with its relative path, byte size,
+SHA-256 and parameter count. A clean clone of `main`, the committed datasets and
+the v3.0.0 assets reproduced the
 committed `results_v3/physics/physics_metrics.csv` rows **exactly** (all 46
 numeric columns, both a `within` and an `ood` slice, relative deviation 0), and
 `checkpoint_index.py` re-derived all 336 SHA-256s and parameter counts.
@@ -324,13 +301,6 @@ for the within-grid and cross-context arms, pooled train splits of the three
 retained grids for an OOD fold -- because a scaler fitted on anything else would
 leak, and a scaler fitted differently would not reproduce the reported number.
 
-**Not every result has a checkpoint.** The pre-A2 raw-unit campaign
-(`results_v3/`) was run before checkpointing was made a requirement, and its ARMA
-checkpoints were deleted because they predated the softplus fix and contained NaN
-tensors (`ckpt_a/PROVENANCE.txt`, `ckpt_b/PROVENANCE.txt`). Those rows reproduce
-from seed only. Everything in the final normalized campaign has weights on disk
-and an index entry (336 checkpoints, all replayed).
-
 **The result tables themselves are in the repository**, so a reviewer can check
 every number without the weights or the tensors: the merged per-run rows
 (`results_v3/all_within/within_grid.csv`, `all_cross/cross_context.csv`,
@@ -345,30 +315,9 @@ analysis commands in §5 on those CSVs
 must reproduce the tables in `docs/Results.md` §4 exactly; that is
 the cheapest end-to-end check of this repository.
 
-**Which branch holds what.** Use **`main`**: it is the consolidation of the
-complete pipeline (`step-8-regime-comparison`) with the exploratory material that
-had only ever lived on `main`, so it is a superset of every branch. `step-1` …
-`step-4` and `step-7` are strict ancestors of `step-8-regime-comparison`, and the
-only commits `step-5`/`step-6` hold that it does not are earlier forms of
-`experiments.py` (OOD g-score, pooled MMD, no-trim CC aggregate) that were all
-forward-propagated, so no code or document is stranded on a step branch; the step
-branches are retained as development history only.
-
-`main` additionally carries the **exploratory raw-unit run**: `results_v3/`
-(its own datasets, checkpoints and result tables) and `docs/figures/`. Documents
-here that cite `results_v3/...` (e.g. the legacy `gscore_smallN.csv`) do so
-deliberately — those numbers predate A1-A8 and are never the reported result.
-
-**Where the artifacts are.** The two generated datasets (`data_regime_a_fixed_topology_v3/`,
-`data_regime_b_contingencies_v3/`, ~79 MB) are **committed**, so the replay above runs against the
-exact tensors the reported numbers came from; the 336 checkpoints are the
-`v1.0.0` release asset above. `dataset_src.csv provenance files` carries the
-SHA-256 and byte size of every committed dataset file and of the archive, so an
-out-of-band copy can be verified. Regeneration (§2-§4) remains supported and
-gives statistically equivalent, not bit-identical, datasets: the generator is
-seeded per grid, but pandapower and PyTorch versions move underneath it. Every
-result table is re-derivable from the committed CSVs alone (§5), with no dataset
-and no checkpoint.
+Earlier runs, datasets, their documentation, and the audit history are preserved
+in branch `archive/full-history` and tag `archive-pre-v3`; release `v1.0.0` has
+the pre-fix checkpoints.
 
 ---
 
@@ -494,9 +443,9 @@ Stated because it cannot be fixed by tooling:
 * **CPU determinism only.** Runs are reproducible on the same platform with the
   pinned versions; torch does not promise bit-identical results across versions or
   hardware, so replay-from-checkpoint is the stronger of the two paths.
-* **Tensors are in git, weights are a release asset.** Both generated datasets are
-  committed and the 336 checkpoints ship as `ckpt_v3.tar.gz` on tag `v1.0.0`
-  (§3), so the published numbers are reproducible to the digit by replay -- a
+* **Tensors are in git, weights are release assets.** Both generated datasets are
+  committed and the checkpoints ship in three assets on release `v3.0.0`
+  (see the download table in `README.md`), so the published numbers are reproducible to the digit by replay -- a
   clean clone plus that archive reproduced the committed `physics_metrics.csv`
   rows exactly. What is *not* in git is the upstream PowerGraph-Node demand and
   case data, needed only to regenerate datasets or to run `--feasibility`.

@@ -144,13 +144,13 @@ result. Powers are divided by `S_base = 100 MVA` and angles converted to radians
 then each of the four quantities is centred and scaled by statistics **fitted on
 training data only** — the training grid's split for within-grid and
 cross-context, the pooled retained grids for an OOD fold, never the unseen grid.
-Unseen grids are scored on their 100-sample test split; an all-1 000-sample robustness check on
-the retrained models is planned (Decision 33, L14).
+Unseen grids are scored on their 100-sample test split in the published results; the
+1 000-sample robustness check is not part of the published campaign.
 Features and targets share the scaler because `inference()` re-injects known
 values taken from `x` into the prediction, so the two must live in the same space.
 Predictions are de-normalized before any metric is computed, and the DC baseline
-is never scaled. `--normalize none` is the raw-unit ablation and reproduces the
-pre-A2 artifacts bit-identically. Per-unit alone is a no-op here (all four cases
+is never scaled. `--normalize none` uses raw physical units, no scaling (not used
+for the published results). Per-unit alone is a no-op here (all four cases
 have `sn_mva = 100`); the z-score is what fixes the real defect, voltage magnitude
 contributing ~5e-8 of the training loss. See `docs/Normalization_assessment.md`.
 
@@ -192,8 +192,6 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
     unseen TEST grids (3 points each). NOTE: the default `bounds=2` percentile trim
     assumes many samples; with only 3 points it collapses (std=0, range=0), so the
     pooled no-trim variant `gscore_cc_aggregate.csv` is the appropriate reading.
-    (The exploratory run's `results_v3/gscore_smallN.csv` was the earlier
-    form of that variant; the current pipeline does not emit it.)
   - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
     grids (one point per grid → up to 4 points), where the topological distance is
     the **pooled** Laplacian-MMD from each held-out grid to the **mixture** of its
@@ -313,7 +311,7 @@ bash launch_campaign.py 7 within cross ood     # 7 = pool size
 ```
 or a single arm by hand:
 ```bash
-python3 experiments.py --experiment both --data_dir data_regime_b_contingencies_v3 --out results \
+python3 experiments.py --experiment both --data_dir data_regime_b_contingencies_v3 --out results_v3 \
     --epochs 200 --normalize pu_zscore --arch_config configs/arch_config.json \
     --seeds 0 100 300 700 1000 --save_models models
 ```
@@ -411,10 +409,8 @@ Relevant CLI flags:
 ---
 
 ## 8. Known caveats (observed in the full run)
-- `arma_gnn` OOD held-out UK produced NaN in the **inherited-config run**, which
-  turned out to be the negative-edge-weight bug, not an intrinsic instability;
-  fixed in Decision 16 and no longer observed. Kept here because the superseded
-  tables in `results_v3/` still show it.
+- One v3 GCN run (seed 1000, IEEE39→IEEE118) is non-finite; the failure mechanism
+  and affected predictions are documented in `docs/Results.md` §4bis.
 - `gin`/`nnconv`/`transformer` transfer *from* IEEE118 to small grids is unstable
   (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
   scale as much as structure (L4).
@@ -423,10 +419,9 @@ Relevant CLI flags:
   the NRMSE denominator as well, so it is not quoted as a cost (L8, L10). The same-grid
   evidence is the rank correlation.
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
-  P/Q/θ alongside V rather than the aggregate alone. Under `--normalize none` this
-  was not only a reading hazard but a training defect — V carried ~5e-8 of the
-  loss, so every architecture lost to the constant `V ≡ 1.0` in-distribution. The
-  `pu_zscore` protocol is what removes it (audit item A2).
+  P/Q/θ alongside V rather than the aggregate alone. The pre-fix design-stage
+  measurements explaining the normalization choice are retained in
+  `docs/Normalization_assessment.md`.
 - Two of the four target columns per bus are re-injected ground truth, so the
   four-column aggregate partly scores the inputs. Use the predicted-entry-only
   columns from `eval_checkpoints.py` for any statement about model quality.

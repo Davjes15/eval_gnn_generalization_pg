@@ -75,7 +75,7 @@ One estimator caveat this check exposed, now stated in §7 of the results doc: o
 by its own range) on both sides of the comparison, *not* Equation 3 restricted to
 three columns. Those are different numbers — for DC on Regime A, 0.084 for the
 mean-of-quantities versus 0.018 for pooled Equation 3 (`dc_nrmse_PVtheta` in
-`results_v3/analysis/dc_baseline_regime_*.csv`). The mean-of-quantities version is
+`results_v3/dc_baseline_regime_a.csv`). The mean-of-quantities version is
 dominated by voltage magnitude, because V's own range is tiny. The comparison is
 apples-to-apples (a unit test enforces the same estimator on both sides) but the
 ratios must be read as "V-dominated", and the pooled Equation 3 version cannot be

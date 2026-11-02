@@ -154,7 +154,7 @@ Source: `results_v3/analysis/dc_comparison.csv`; columns `arm`, `model`, `quanti
 
 ### 4.5 G-scores
 
-G-scores use complete-seed means, not seed 1000. Incomplete cells have no
+G-scores are means over complete seeds. Incomplete cells have no
 g-score: omitting failed test points would reward a model for failing on harder
 cases. The `gscore.csv` per-training-grid table is untrimmed; the former small-N
 trim would collapse three unseen points and distort the mean and standard
