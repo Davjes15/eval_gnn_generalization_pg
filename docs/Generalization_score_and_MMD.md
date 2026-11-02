@@ -1,238 +1,40 @@
-# The g-score and the grid-distance it is built on
+# Generalization score and multigraph MMD
 
-## Circuit-counting MMD graph
+The generalization score summarizes prediction error relative to a
+distributional distance between training and test grids. For each model, the
+pipeline fits the error-versus-distance relation on the available grid
+transfers; the slope and intercept are reported as diagnostics, not as a
+standalone guarantee of performance on arbitrary networks.
 
-Decision 31 is implemented (code): the default `multi` graph keeps one undirected
-edge per in-service circuit, retaining repeated bus pairs from PyG's bidirectional
-edge index. Degree counts incident circuits; the normalized Laplacian uses bus-pair
-weights equal to circuit multiplicity. Losing one parallel circuit reduces its
-weight rather than disconnecting the buses. `simple` follows ENGAGE's merged-graph
-convention and is available only for reproduction, not reporting. Electrical MMD
-still reads every circuit's edge attributes.
+## Graph representation
 
-Audit items **A6** (the g-score is an affine function of mean and spread) and **A7**
-(what the MMD estimator and descriptors actually measure). Both are stated here as
-protocol-level observations, because both change how the numbers in
-`docs/Regime_comparison_results.md` should be read.
+The MMD descriptor counts each in-service circuit, so parallel lines remain
+distinct. This is important because removing one of two parallel circuits
+changes the electrical topology even when the bus-pair connectivity is
+unchanged. The default graph mode is `multi`; the published results use the
+shared reference bandwidth ruler in `configs/mmd_bandwidth.json`.
 
-Nothing in this document required retraining. The code it describes is
-`training_utils.get_generalization_score`, `mmd_utils.py` and `mmd_report.py`; the
-table it reports is `docs/tables/mmd_data_regime_b_contingencies.csv`.
-
----
-
-## 1. A6 -- with one dataset, the MMD term cannot reorder architectures
-
-ENGAGE's generalization score, as implemented:
-
-```python
-score = mean_nrmse + alpha * std_nrmse * log(mmd_range + 1) / mmd_range
-```
-
-where `mmd_range` is the spread of the topological distances across the test grids
-of an arm, and `mean_nrmse` / `std_nrmse` are that model's mean and standard
-deviation of error over the same grids (no percentile trim, `bounds=0`; Decision 13).
-The distances are Laplacian MMDs under the **biased** estimator throughout, that
-being what every committed `mmd_laplacian.csv` / `ood_distance.csv` holds (§2.1).
-
-The decisive point is that **`mmd_range` is a property of the data, not of the
-model.** Every architecture in an arm is evaluated on the same set of grids, so
-every architecture gets the same distance spread. In our runs it is a single
-constant repeated down the column:
-
-Raw-unit campaign, `results/analysis/` (biased Laplacian MMD on `data_regime_b_contingencies`):
-
-| arm | `mmd_range` | `log(Δ+1)/Δ` | so the score is |
-|---|---|---|---|
-| cross-context (aggregated over train grids) | 0.516485 | 0.80621 | `g = μ + 0.806 σ` |
-| leave-one-grid-out (OOD) | 0.352837 | 0.85651 | `g = μ + 0.857 σ` |
-| cross-context, per train grid (`gscore.csv`) | 0.0 | -- (`Δ = 0`) | `g = μ` exactly |
-
-The normalized campaign reported in
-[`Normalization_results.md`](Normalization_results.md) §4.4 has slightly
-different distances, hence slightly different constants; the structure of the
-argument is identical:
-
-| arm | `mmd_range` | `log(Δ+1)/Δ` | so the score is |
-|---|---|---|---|
-| cross-context (`results_norm/analysis/gscore_cc_aggregate.csv`) | 0.521637 | 0.80475 | `g = μ + 0.805 σ` |
-| leave-one-grid-out (`results_norm/analysis/gscore_ood.csv`) | 0.349052 | 0.85776 | `g = μ + 0.858 σ` |
-
-Verified against the committed artifacts rather than asserted: over all 33
-cross-context and 28 OOD rows in `results/analysis/`, the largest deviation between
-the stored `g_score` and `μ + cσ` with the constants above is **1.0e-4** and
-**3.5e-5** respectively -- i.e. the identity holds to rounding. In the normalized
-campaign it holds to **1.0e-7** over the 28 cross-context rows with `Δ > 0` and
-**1.3e-7** over the 28 OOD rows (`results_norm/analysis/`; the `dc_pf` rows have
-`Δ = 0` and are excluded, see below). Ranking
-the six architectures by `g_score` and by `mean_nrmse` gives **Kendall τ = 1.0 in
-both arms**: the MMD machinery does not move a single position. (Those six
-per-model averages are over 5 seeds each except nnconv, which ran 3 -- limitation
-L2 -- so nnconv's mean, spread and rank rest on a 40 % smaller sample than every
-other architecture's, here and in every pooled table.)
-
-**Consequence.** With a *fixed* dataset the g-score is a monotone re-expression of
-"mean plus about 0.85 standard deviations". It is a legitimate risk-averse summary
--- it prefers a model that is uniformly mediocre over one that is excellent on
-three grids and catastrophic on the fourth, which is the right preference for a
-security-screening application -- but it carries **no topological information about
-the architecture**. The MMD term only becomes informative when comparing
-*protocols or dataset designs* (where `Δ` differs between the things being
-compared), not when comparing architectures on one benchmark.
-
-ENGAGE never claims otherwise. But the natural reading of "use the g-score to
-choose an architecture" is that the distance term is doing work, and here it
-provably is not. We report the g-score for comparability with ENGAGE, and report
-`μ` and `σ` separately as the primary numbers.
-
-Related and already correct in the results doc: the `dc_pf` rows have
-`mmd_range = 0`, so their g-score equals their mean and is not comparable with the
-GNN rows on the same column.
-
----
-
-## 2. A7 -- what the distance measures, stated plainly
-
-### 2.1 The estimator is biased, and is now named as one
-
-`mmd_utils.mmd` averages the three Gram matrices in full, diagonals included, so it
-is the **biased V-statistic**, not the unbiased U-statistic. The previous docstring
-called it "unbiased-ish", which was wrong. `mmd(..., unbiased=True)` now provides
-the U-statistic (within-sample diagonals dropped).
-
-The default remains the biased form, deliberately: every committed result CSV was
-produced with it, and silently changing published numbers is worse than naming the
-estimator correctly. Concretely, **biased** is what
-`results_norm/topology/mmd_degree.csv`, `mmd_laplacian.csv` and
-`ood_distance.csv` hold, and therefore what the `mmd_range` and every g-score in
-`results_norm/analysis/` and in `results/analysis/` are built from; the only
-committed table holding both is `docs/tables/mmd_data_regime_b_contingencies.csv`, which carries
-an `estimator` column with a `biased` and an `unbiased` row for each of the 16
-grid pairs and all three descriptors:
-
-* different-grid pairs: the two estimators agree to ~0.005 (IEEE24 -> IEEE39
-  degree MMD **1.0579 biased vs 1.0558 unbiased**; UK -> IEEE24 degree 0.2763 vs
-  0.2762; the mean over different-grid pairs is 0.899 / 0.960 / 1.014 biased and
-  0.897 / 0.958 / 1.011 unbiased for degree / Laplacian / reactance). No
-  cross-grid statement in either document depends on the choice.
-* same-grid pairs: the bias is most or all of the value, i.e. the diagonal is an
-  **estimator artefact**. IEEE39 -> IEEE39 degree is 0.0713 biased and
-  **0.0000** unbiased; IEEE24 -> IEEE24 is 0.0856 biased against 0.0387 unbiased
-  on degree and 0.0671 against **0.0000** on the Laplacian. Averaged over the
-  four same-grid pairs the drop is 0.061 -> 0.010 (degree), 0.055 -> 0.0004
-  (Laplacian) and 0.067 -> 0.010 (reactance). What is left under the unbiased
-  estimator is a train-split vs test-split difference within one grid (the two
-  splits carry different N-k topologies), not a distance between grids; the exact
-  0.0 cells are the U-statistic going negative, since `mmd_utils.mmd` returns
-  `sqrt(max(mmd2, 0))`, i.e. the two splits are not distinguishable at this
-  sample size.
-
-So the bias never affects a cross-grid comparison, but the *within*-grid MMD floor
-reported anywhere is an artifact of the estimator, not a real distance.
-
-### 2.2 One shared ruler per descriptor and graph mode
-
-Implemented in `mmd_bandwidth.py` (Decision 27): pool **all train and test descriptors
-from all four grids of Regime A and Regime B together**, retaining repeated rows and
-excluding validation. For each descriptor, take the exact median of the **nonzero
-pairwise squared Euclidean distances**. Distances are computed in chunks, without
-subsampling. The kernel is `k(a,b) = exp(-||a-b||² / m)`; the stored `m` is a squared
-bandwidth, so `gamma = 1/m`. If every distance is zero, computation raises instead of
-inventing a width.
-
-Degree and Laplacian each have a separate width **per graph mode**. The default and
-the only mode reported is **`multi`**, counting every circuit (Decision 31). `simple`
-and its own widths exist solely for legacy reproduction. Reactance has one width,
-independent of graph mode. All comparisons within a mode use the same ruler: both
-regimes, all 16 train/test pairs, the four pooled OOD distances, validation, reports,
-EDA, and extra datasets such as the optional blocked Regime A.
-
-The g-score's `Δ_MMD = max − min` compares cells, so it must not mix per-pair kernels.
-The old heuristic was dominated by each training grid's spread; UK rows even fell
-back to the arbitrary `m=1` when the median was zero. The library default remains
-`bandwidth="pair"` for reproduction, now with a warning on that fallback. CLI callers
-default to `--mmd_bandwidth reference`, with **no silent fallback** if the ruler is
-missing or stale.
-
-`configs/mmd_bandwidth.json` records both modes, counts, zero-distance fractions,
-train/test SHA-256 fingerprints and the generating commit. Reference folders must
-match their fingerprints; an unlisted dataset deliberately reuses the same ruler
-and logs that choice. Recompute the ruler only after regenerating the replication
-datasets, not for each comparison. The checked-in ruler is **provisional**, computed
-from current pre-P9 data; final numbers require P9. Previously committed CSVs and
-the historical numerical tables below remain **simple/per-pair**, not new reference
-results. The median remains a heuristic and depends on the pooled datasets (L12).
-
-`mmd_report.py` also reports `mmd2_degree`, `mmd2_laplacian`, `mmd2_reactance` and
-`bandwidth_mode`; MMD² is the squared, nonnegative MMD returned here. With the
-unbiased estimator a negative raw U-statistic is clipped to zero before taking the
-square root, so this is not an unclipped U-statistic. For byte-identical legacy
-CSV reproduction only, `--mmd_graph simple --mmd_bandwidth pair` retains the old
-column schema and writes the added columns to a companion `_details.csv` report.
-Reference reports use a new `_reference` filename and never replace
-the committed legacy CSVs.
-
-### 2.3 The topological descriptors are blind to the shift that dominates our transfer error
-
-The degree histogram and the normalised-Laplacian spectral histogram are functions
-of connectivity only. They are invariant to how much power a system carries -- and
-our four cases differ by ~20x in nominal load (2,850 / 6,254 / 3,733 / 56,326 MW,
-see `docs/Normalization_assessment.md`). A distance that cannot see the dominant
-distribution shift is a weak covariate for a generalization score.
-
-We therefore added an **electrical descriptor**: a density histogram of
-`log10(x_pu)` over the in-service branches (`mmd_utils.reactance_histogram`). It is
-reported alongside the topological ones, not instead of them, and
-`tests/test_mmd_utils.py` pins the complementarity: a 100x impedance change with
-identical topology gives degree/Laplacian MMD of 0.0 and reactance MMD of 1.12,
-while a ring-vs-star change at identical impedance gives the reverse.
-
-On the real data (`docs/tables/mmd_data_regime_b_contingencies.csv`, `data_regime_b_contingencies`, train split
-vs test split), with the **biased** estimator that every result CSV uses and the
-**unbiased** one alongside it:
-
-| estimator | | degree | Laplacian | reactance |
-|---|---|---:|---:|---:|
-| biased | mean over same-grid pairs | 0.061 | 0.055 | 0.067 |
-| biased | mean over different-grid pairs | 0.899 | 0.960 | 1.014 |
-| unbiased | mean over same-grid pairs | 0.010 | 0.0004 | 0.010 |
-| unbiased | mean over different-grid pairs | 0.897 | 0.958 | 1.011 |
-
-The gap between the diagonal and the off-diagonal is what makes the arm labels
-meaningful, and it is present under all three descriptors -- our "unseen grid" is
-genuinely far from the training grids however the distance is measured.
-
-The committed degree matrix is not evidence of a per-pair disagreement. Its UK -> IEEE24
-value (0.276) is an artifact (review item E1): the UK training descriptors have a median
-pairwise distance of 0, so the per-pair bandwidth fell back to `gamma = 1`. With a shared
-bandwidth that pair's degree MMD is about 0.98 on `data_regime_b_contingencies`, so it is not
-the closest pair by degree (Decision 27). The disagreement between topological and electrical
-descriptors is shown by the 100x-impedance test in `tests/test_mmd_utils.py` (identical
-topology, degree/Laplacian MMD 0.0, reactance MMD 1.12). This is the concrete reason the
-g-score's distance axis should not be treated as a measure of how hard a transfer is.
-
----
-
-## 3. Reproduce
+The report can be regenerated with:
 
 ```bash
-# grid-distance tables under all three descriptors and both estimators
-python mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables
-
-# the A6 identity and the rank equivalence, from the committed artifacts
-python - <<'PY'
-import pandas as pd, numpy as np
-from scipy.stats import kendalltau
-for f, c in (("results/analysis/gscore_cc_aggregate.csv", 0.80621),
-             ("results/analysis/gscore_ood.csv", 0.85651)):
-    df = pd.read_csv(f)
-    df = df[df.model != "dc_pf"]
-    print(f, "max |g - (mu + c*sigma)| =",
-          float((df.g_score - (df.mean_nrmse + c * df.std_nrmse)).abs().max()))
-    m = df.groupby("model")[["mean_nrmse", "g_score"]].mean()
-    print("  tau(rank by mean, rank by g) =",
-          kendalltau(m.mean_nrmse.rank(), m.g_score.rank()).statistic)
-PY
-
-python tests/test_mmd_utils.py
+python mmd_report.py --data_dir data_regime_b_contingencies_v3 \
+  --out results_v3/mmd_report --mmd_graph multi --mmd_bandwidth reference
 ```
+
+## Published outputs
+
+The per-grid descriptor distances are in
+`results_v3/mmd_report/mmd_data_regime_b_contingencies_v3_multigraph_reference.csv`.
+The topology matrices and pooled distances used downstream are in
+`results_v3/topology/mmd_degree.csv`,
+`results_v3/topology/mmd_laplacian.csv`, and
+`results_v3/topology/ood_distance.csv`. The seed-level scores are
+`results_v3/analysis/gscore.csv`,
+`results_v3/analysis/gscore_cc_aggregate.csv`, and
+`results_v3/analysis/gscore_ood.csv`; summary results are in
+[`Results.md`](Results.md).
+
+The shared ruler fixes the descriptor scale across comparisons. A score must
+therefore be interpreted together with its finite-row count, error mean and
+standard deviation. Those counts are retained in the score CSVs; non-finite
+transfers are not silently converted into successful results.

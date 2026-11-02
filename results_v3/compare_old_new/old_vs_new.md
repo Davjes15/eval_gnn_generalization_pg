@@ -1,6 +1,8 @@
 # Old vs new (v3) results
 
-Old: `/home/ubuntu/repos/eval_gnn_generalization_pg/results_norm`; new: `/home/ubuntu/repos/eval_gnn_generalization_pg/results_v3`. NRMSE is aggregate pu_zscore NRMSE; Kendall tau-b compares the old and new model orderings (6 models; NaN models dropped).
+## Comparison to results_norm, preserved in tag `archive-pre-v3`
+
+Old results are retained in the archive tag; new results are under `results_v3/`. NRMSE is aggregate pu_zscore NRMSE; Kendall tau-b compares the old and new model orderings (6 models; NaN models dropped).
 
 ## 1. Per arm and architecture (overall ranking from rank_analysis)
 
