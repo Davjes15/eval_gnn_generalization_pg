@@ -21,8 +21,8 @@ WHY
     published numbers) or excluding Q entirely.
 
 HOW TO RUN
-    python3 recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology \
-        --out results/analysis/dc_baseline_regime_a.csv
+    python3 recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology_v3 \
+        --out results_v3/analysis/dc_baseline_regime_a.csv
 """
 import argparse
 

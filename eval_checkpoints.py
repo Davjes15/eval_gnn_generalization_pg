@@ -26,8 +26,8 @@ SCALER
     before any metric, and the physical targets are read from `y_raw`.
 
 USAGE
-    python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology \
-        --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm/physics \
+    python eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 \
+        --data_b data_regime_b_contingencies_v3 --normalize pu_zscore --out results_v3/physics \
         --feasibility
 """
 from __future__ import annotations
@@ -131,9 +131,10 @@ def _predict(model, device, dataset, batch_size, scaler):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--ckpt_root", default="ckpt_norm")
-    p.add_argument("--data_a", default="data_regime_a_fixed_topology", help="data for the within arm")
-    p.add_argument("--data_b", default="data_regime_b_contingencies",
+    p.add_argument("--ckpt_root", default="ckpt_v3")
+    p.add_argument("--data_a", default="data_regime_a_fixed_topology_v3",
+                   help="data for the within arm")
+    p.add_argument("--data_b", default="data_regime_b_contingencies_v3",
                    help="data for the cross-context and OOD arms")
     p.add_argument("--normalize", default="pu_zscore",
                    help="the mode the checkpoints were trained with")
@@ -145,7 +146,7 @@ def main():
                         "(held-out grid for the ood arm); every grid in the "
                         "data directory is still loaded, because the ood "
                         "scaler and the cross-context test set need them")
-    p.add_argument("--out", default="results_norm/physics",
+    p.add_argument("--out", default="results_v3/physics",
                    help="output directory for physics_metrics.csv")
     p.add_argument("--feasibility", action="store_true",
                    help="also score the AC power-balance residual and "

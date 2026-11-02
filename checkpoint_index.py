@@ -13,7 +13,7 @@ Filename conventions produced by experiments.py:
     ood_<model>_heldout_<grid>_s<seed>.pt     leave-one-grid-out arm (held-out grid)
 
 Usage:
-    python checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
+    python checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
 """
 import argparse
 import hashlib
@@ -91,8 +91,8 @@ def build(ckpt_root: str, with_params: bool = True) -> pd.DataFrame:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--ckpt_root", default="ckpt_norm")
-    p.add_argument("--out", default="docs/tables/checkpoint_index.csv")
+    p.add_argument("--ckpt_root", default="ckpt_v3")
+    p.add_argument("--out", default="results_v3/checkpoint_index.csv")
     p.add_argument("--no_params", action="store_true",
                    help="skip loading each file (faster, leaves n_params = -1)")
     a = p.parse_args()

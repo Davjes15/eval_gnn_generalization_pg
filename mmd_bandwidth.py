@@ -1,7 +1,7 @@
 """Compute the shared Gaussian ruler after data generation, before experiments.
 
-    python mmd_bandwidth.py --data_dirs data_regime_a_fixed_topology \
-        data_regime_b_contingencies --out configs/mmd_bandwidth.json --provisional
+    python mmd_bandwidth.py --data_dirs data_regime_a_fixed_topology_v3 \
+        data_regime_b_contingencies_v3 --out configs/mmd_bandwidth.json
 
 All train/test rows contribute with their multiplicity. Validation is excluded.
 """

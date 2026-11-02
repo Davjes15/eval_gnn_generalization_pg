@@ -24,9 +24,9 @@ by 2x), the two residuals the text quotes also carry a median and a max; the
 median is what should be read as typical.
 
     python summarize_feasibility.py \
-        --physics results_norm/physics/physics_metrics.csv \
-        --baselines results_norm/physics/dc_feasibility.csv \
-        --out docs/tables/ac_feasibility_norm.csv
+        --physics results_v3/physics/physics_metrics.csv \
+        --baselines results_v3/physics/dc_feasibility.csv \
+        --out results_v3/analysis/ac_feasibility_norm.csv
 """
 import argparse
 import os
@@ -42,8 +42,8 @@ COLS = ["ac_dp_pct_load", "ac_dq_pct_load", "ac_dp_mean_mw", "ac_dq_mean_mvar",
 # The baseline states do not depend on a training grid, so they are reported per
 # data regime: Regime A test splits (fixed topology) and Regime B (N-k).
 REGIME_PREFIXES = (
-    ("data_regime_a_fixed_topology", "regime_a"),
-    ("data_regime_b_contingencies", "regime_b"),
+    ("data_regime_a_fixed_topology_v3", "regime_a"),
+    ("data_regime_b_contingencies_v3", "regime_b"),
 )
 STATE = {"truth": "floor", "dc_pf": "dc_pf"}
 
@@ -99,12 +99,12 @@ def baseline_rows(path: str) -> pd.DataFrame:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--physics", default="results_norm/physics/"
+    p.add_argument("--physics", default="results_v3/physics/"
                                         "physics_metrics.csv")
-    p.add_argument("--baselines", default="results_norm/physics/"
+    p.add_argument("--baselines", default="results_v3/physics/"
                                           "dc_feasibility.csv",
                    help="dc_feasibility.py output; skipped if absent")
-    p.add_argument("--out", default="docs/tables/ac_feasibility_norm.csv")
+    p.add_argument("--out", default="results_v3/analysis/ac_feasibility_norm.csv")
     args = p.parse_args()
 
     df = pd.read_csv(args.physics)
