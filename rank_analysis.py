@@ -28,17 +28,17 @@ HOW IT CONNECTS
     results_a/within_grid.csv          (Regime A, Step 5)
     results_tuned/cross_context.csv    (Regime B CC + the same-grid diagonal, Step 6)
     results_tuned/ood.csv              (Regime B OOD, Step 6)
-        -> results/rank_correlation.csv   (tau-b / rho per grid, seed, metric)
-        -> results/rank_correlation_pooled.csv (tau between the pooled leaderboards)
-        -> results/protocol_decomposition.csv  (protocol step vs unseen-grid step)
-        -> results/rank_permutation_test.csv (exact null for the mean tau)
-        -> results/ranking_table.csv      (mean +/- sd error, mean rank, modal rank)
-        -> results/bump_chart_<metric>.png
+        -> results_v3/rank_correlation.csv   (tau-b / rho per grid, seed, metric)
+        -> results_v3/rank_correlation_pooled.csv (tau between the pooled leaderboards)
+        -> results_v3/protocol_decomposition.csv  (protocol step vs unseen-grid step)
+        -> results_v3/rank_permutation_test.csv (exact null for the mean tau)
+        -> results_v3/ranking_table.csv      (mean +/- sd error, mean rank, modal rank)
+        -> results_v3/bump_chart_<metric>.png
 
 HOW TO RUN
     python3 rank_analysis.py --regime_a results_a/within_grid.csv \
         --cross results_tuned/cross_context.csv --ood results_tuned/ood.csv \
-        --out results
+        --out results_v3
 """
 from __future__ import annotations
 

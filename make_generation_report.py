@@ -5,13 +5,12 @@ PURPOSE
     dataset directory carries its own evidence: split sizes, distinct demand
     snapshots, the topology distribution, the outage distribution, and the
     range of each target quantity. Optionally puts a reference regime's target
-    ranges next to it, which is how we check that the fixed-topology control arm
-    (`data_regime_a_fixed_topology/`) covers comparable physics to the topology-varying arm
-    (`full_run/data/`) rather than a much narrower slice of it.
+    ranges next to it.
 
 HOW TO RUN
-    python3 make_generation_report.py --data_dir data_regime_a_fixed_topology \
-        --reference_dir full_run/data --out data_regime_a_fixed_topology/GENERATION_REPORT.md
+    python3 make_generation_report.py --data_dir data_regime_a_fixed_topology_v3 \
+        --reference_dir data_regime_b_contingencies_v3 \
+        --out data_regime_a_fixed_topology_v3/GENERATION_REPORT.md
 """
 from __future__ import annotations
 

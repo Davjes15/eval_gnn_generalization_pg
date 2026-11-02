@@ -46,7 +46,7 @@ for t in hours:
 `q_mvar` at the case's base value, which is what `gendataopf.m` does too (it varies PD only). So
 every "operating-point" or "demand variation" statement in this document and in the results means
 active-demand variation at fixed base-case reactive demand (limitation L6 in
-[`Audit_response.md`](Audit_response.md)).
+the archived audit history).
 
 
 **Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode (`--q_mode constant_pf`) is available for other experiments. See Decision 28.
@@ -188,7 +188,7 @@ Then filter (drop non-converged / islanded / voltage-violating / overloaded) and
 - N-1/N-k contingency analysis is standard transmission practice, so the perturbed states are physically credible, and removing lines genuinely changes degree/Laplacian descriptors → a real spread of topological distances for the MMD/g-score.
 - **Connectivity/tuning:** reject islanding (or handle islands) and retune disconnection probabilities for meshed transmission (islands less easily than radial distribution); use a range of contingency depths so descriptors spread and `mmd_range` is non-degenerate.
 
-**What was actually executed (narrower than this spec):** the final `data_regime_b_contingencies` campaign drew
+**What was actually executed (narrower than this spec):** the final `data_regime_b_contingencies_v3` campaign drew
 random N-1/N-2 outages of in-service **lines** only — the optional generator outages sketched
 above were never run, and there are no transformer outages, no busbar splits and no switching
 actions. A draw that islands the network is discarded and resampled rather than modelled. Every
@@ -234,7 +234,8 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
 *Superseded in form, not in reasoning:* the current pipeline emits the no-trim
 reading as the pooled `gscore_cc_aggregate.csv` (ENGAGE Table-3 format, one row
-per model); `gscore_smallN.csv` survives only in the legacy `full_run/results/`.
+per model); the earlier `gscore_smallN.csv` is preserved in `full_run/results/`
+(in tag `archive-pre-v3`).
 
 **Decision (OOD g-score — `compute_ood_gscores`, `gscore_ood.csv`):** the cross-context g-score is *per training grid* and therefore has only the 3 unseen TEST grids as points (the degeneracy above). We additionally compute an **OOD g-score** *per model* over the **held-out grids** of the leave-one-grid-out experiment: one point per held-out grid (up to 4 points). No percentile trim (`bounds=0`); NaN cells (e.g. a diverged ARMA split) are dropped. This is the **better-posed** g-score at N=4 (more points, no trim collapse) and is the flavour most aligned with the study's operational question — *generalize to a genuinely new grid after training on several*. ENGAGE itself reports a g-score for both its cross-context and OOD experiments; we had initially reported OOD only as per-grid NRMSE, and this decision closes that gap. The choice of the distance x-axis is fixed by Decision 14.
 
@@ -279,7 +280,7 @@ per model); `gscore_smallN.csv` survives only in the legacy `full_run/results/`.
 **Decision:** keep `NNConv` in the comparison, run it at seeds `[0, 100, 300]` instead of `[0, 100, 300, 700, 1000]`, and disclose the reduced replication wherever its numbers appear.
 
 **Consequence to state with every NNConv number:** it contributes 12 rows per arm where the other
-five contribute 20 (48 vs 80 in the cross-context arm; `results_norm/all_within/within_grid.csv`,
+five contribute 20 (48 vs 80 in the cross-context arm; `results_v3/all_within/within_grid.csv`,
 `all_cross/cross_context.csv`, `all_ood/ood.csv`). That affects every pooled mean and every
 ranking NNConv appears in, and it is why only 12 of 20 (grid, seed) cells are complete for the
 rank correlation — the three shared seeds are the only ones carrying all six architectures. This
@@ -292,14 +293,14 @@ is a deliberate, approved compute trade-off (limitation L2), not a missing run.
 ---
 
 ## Decision 18 — Checkpoints for four architectures; ARMA and NNConv reproduce from the recorded seed
-**Decision:** `ckpt_a/` and `ckpt_b/` hold trained weights for `gcn`, `gat`, `gin` and `transformer` (one file per grid × seed). **`arma_gnn` and `nnconv` have no checkpoints** and are reproduced by re-running the documented command at the recorded seed; every result row carries `model`, `num_layers`, `hidden`, `learning_rate` and `seed`, and the seeds are fixed.
+**Decision:** `ckpt_a/` and `ckpt_b/` held trained weights for `gcn`, `gat`, `gin` and `transformer` (one file per grid × seed). **`arma_gnn` and `nnconv` had no checkpoints** and were reproduced by re-running the documented command at the recorded seed; every result row carried `model`, `num_layers`, `hidden`, `learning_rate` and `seed`, and the seeds were fixed. (in tag `archive-pre-v3`)
 
-**Why:** their arms were launched without `--save_models`, so only metric rows were written. The stale ARMA checkpoints that *did* exist were from the pre-fix definition of Decision 16 and **many of their tensors were NaN**, so they were **deleted** (220 MB) rather than kept — NaN weights sitting next to valid ones invite a superseded checkpoint into a result, and they held no information the result CSVs do not. A `PROVENANCE.txt` is left in each emptied directory. **Known consequence:** `--skip_existing` requires `--save_models`, so an interrupted ARMA or NNConv arm restarts from its first grid.
+**Why:** their arms were launched without `--save_models`, so only metric rows were written. The stale ARMA checkpoints that *did* exist were from the pre-fix definition of Decision 16 and **many of their tensors were NaN**, so they were **deleted** (220 MB) rather than kept — NaN weights sitting next to valid ones invite a superseded checkpoint into a result, and they held no information the result CSVs do not. A `PROVENANCE.txt` was left in each emptied directory. **Known consequence:** `--skip_existing` required `--save_models`, so an interrupted ARMA or NNConv arm restarted from its first grid. (in tag `archive-pre-v3`)
 
 ---
 
-## Decision 19 — The inherited-config `full_run/results/` tables are superseded, not deleted
-**Decision:** every headline number — rankings, g-score, per-quantity P/Q/V/θ, DC-baseline comparison — is recomputed from the **tuned-configuration** runs (`results_a/`, `results_tuned/`). The earlier `full_run/results/` tables were produced under the **inherited** ENGAGE configuration (before the equal-budget sweep of Decision 15) and are retained only as the historical run, marked in `RUN_METADATA.txt`, and never mixed into a tuned table.
+## Decision 19 — The inherited-config `full_run/results/` tables were superseded
+**Decision:** in the earlier campaign, headline numbers — rankings, g-score, per-quantity P/Q/V/θ, DC-baseline comparison — were recomputed from the **tuned-configuration** runs (`results_a/`, `results_tuned/`). The earlier `full_run/results/` tables were produced under the **inherited** ENGAGE configuration (before the equal-budget sweep of Decision 15) and retained only as historical results, never mixed into a tuned table. This describes the archived campaign, not the published v3 results. (in tag `archive-pre-v3`)
 
 **Why:** the two sets differ in depth, width and learning rate per architecture, so a table that mixed them would compare architectures at unequal budgets — precisely the confound the sweep exists to remove.
 
@@ -311,7 +312,7 @@ is a deliberate, approved compute trade-off (limitation L2), not a missing run.
 
 | mode | meaning | role |
 |---|---|---|
-| `none` | raw physical units | the protocol every pre-existing artifact was produced with; kept as the **default** so those rows stay bit-identically reproducible, and reported as an ablation |
+| `none` | raw physical units, no scaling (not used for the published results) | optional comparison mode |
 | `pu` | powers ÷ `sn_mva`, angles → radians | engineering per-unit only; documented, not used for headline results |
 | `pu_zscore` | per-unit, then per-quantity z-score with **training-split statistics** | **the benchmark protocol** for all final results |
 
@@ -323,13 +324,14 @@ scaled with the *same* statistics, which is what keeps the known-value re-inject
 computed, so every reported number stays in physical units, and the DC baseline is never
 scaled at all.
 
-**Why:** the defect is not primarily the cross-grid magnitude gap the audit pointed at — it
+**Why:** the defect is not primarily the cross-grid magnitude gap the earlier review pointed at — it
 is *inside each sample*. In raw units the four target quantities differ by up to ten orders
 of magnitude in the loss, so the fraction of the training loss attributable to voltage
 magnitude is ≈ 5·10⁻⁸ on IEEE24 and ≈ 1·10⁻¹¹ on UK: voltage is effectively not optimized.
-That is exactly what the raw-unit results show — every architecture is worse than the
-constant predictor `V ≡ 1.0` p.u. even in-distribution. A 15-epoch control on IEEE24/`gcn`
-moves voltage NRMSE from 2.97 to 0.021 with no loss on P, Q or θ.
+That is exactly what the raw physical-unit results from `full_run/results/` showed —
+every architecture was worse than the constant predictor `V ≡ 1.0` p.u. even
+in-distribution. A 15-epoch control on IEEE24/`gcn` moved voltage NRMSE from 2.97
+to 0.021 with no loss on P, Q or θ. (in tag `archive-pre-v3`)
 
 **Field grounding:** ENGAGE does not scale node features, and gets away with it because its
 SimBench LV/MV feeders have MW injections of the same order as `vm_pu ≈ 1`; our
@@ -347,37 +349,37 @@ choice, but the transfer claim must then read "generalization to an unseen *syst
 ---
 
 ## Decision 21 — Regime B is regenerated with a blocked temporal split (audit item A5)
-**Decision:** the final varying-topology datasets (`data_regime_b_contingencies`) are generated with
+**Decision:** the final varying-topology datasets (`data_regime_b_contingencies_v3`) are generated with
 `transmission_graph_gen.py --time_split blocked`, which gives train, validation and test
 **disjoint contiguous windows of the demand year**, separated by a one-day gap
 (`--time_gap 96` steps at 15-minute resolution), and draws each demand snapshot at most
 once. Validation gate H (`validate.py --regime b --expect_blocked`) asserts the resulting
 properties, and `tests/test_split_hygiene.py` asserts that the gate actually catches a
-leaky dataset. `data_full` is retained as provenance for the superseded results, never
-mixed into a final table.
+leaky dataset. The earlier `data_full` dataset was provenance for the superseded
+results, never mixed into a final table. (in tag `archive-pre-v3`)
 
-**Why:** the original Regime B data drew every split's snapshots uniformly from the whole
+**Why:** the original Regime B dataset `data_full` (in tag `archive-pre-v3`) drew every split's snapshots uniformly from the whole
 year, so splits shared demand snapshots outright (4/3/1/0 shared snapshots across the four
 grids). Uniqueness alone is still too weak, because consecutive 15-minute snapshots are
 near-duplicates: a test point drawn one step after a training point is not an independent
 operating condition. Blocking in time is the standard remedy for temporally correlated
-data and is what makes "unseen operating conditions" defensible. Regime A (`data_regime_a_fixed_topology`) was
+data and is what makes "unseen operating conditions" defensible. Regime A (`data_regime_a_fixed_topology_v3`) was
 already generated with `--unique_demand` and is unaffected, which is why only Regime B is
 regenerated.
 
-**What the Regime A → Regime B step therefore bundles:** `data_regime_b_contingencies` differs from `data_regime_a_fixed_topology` in
+**What the Regime A → Regime B step therefore bundles:** `data_regime_b_contingencies_v3` differs from `data_regime_a_fixed_topology_v3` in
 *two* ways at once — the blocked temporal split above and the line-contingency topologies of
 Decision 10. The `same_grid_factor` of the protocol decomposition
 (`results_norm/analysis/protocol_decomposition.csv`) mixes their effects and the NRMSE
 denominator, so it is not quoted as a cost (limitations L8, L10; Decision 30); separating them would
 need a split-only and a contingency-only dataset with a retrained campaign on each, which was
-declined.
+declined. (in tag `archive-pre-v3`)
 
 **Sequencing consequence (why this came before training):** A5 changes the Regime B data, so
 the cross-context and OOD arms had to be trained *after* regeneration, not before —
 otherwise the same six architectures would have been trained twice on those two arms.
 
-**Update 2026-10-21 (review of E1/E2/E15/E16):** "Regime A is unaffected" holds for exact repeats only. `data_regime_a_fixed_topology` is unique but randomly split, so neighbouring 15-minute snapshots can sit in train and test (measured: 4–9% of test samples have a training sample within 15 min, 11–26% within 1 h). This is kept on purpose because it is PowerGraph's protocol; see Decision 29.
+**Update 2026-10-21 (review of E1/E2/E15/E16):** "Regime A is unaffected" holds for exact repeats only. `data_regime_a_fixed_topology_v3` is unique but randomly split, so neighbouring 15-minute snapshots can sit in train and test (measured: 4–9% of test samples have a training sample within 15 min, 11–26% within 1 h). This is kept on purpose because it is PowerGraph's protocol; see Decision 29.
 
 ---
 
@@ -399,12 +401,13 @@ hides, which is why the violation and false-secure rates are reported rather tha
 
 ## Decision 23 — Reproducibility is an artifact, not a claim (audit item A4)
 **Decision:** `docs/Reproducibility.md` is the single entry point: pinned versions,
-generation and training commands, `docs/provenance/*.csv` (all 24 `dataset_src.csv` files),
-the realised blocked windows per grid, and `checkpoint_index.py` → `docs/tables/checkpoint_index.csv`
-mapping every results row to a weight file by path, size, SHA-256 and parameter count. The tuning
-CSVs the configuration tables cite are committed. Two things are stated rather than fixed: the
-tensors and weights are too large for git and need a data release, and regeneration is a *fresh draw
-from the same protocol*, so it reproduces the protocol, not the numbers.
+generation and training commands, per-split `dataset_src.csv` provenance in the v3
+dataset folders, the realised blocked windows per grid, and `checkpoint_index.py` →
+`results_v3/checkpoint_index.csv` mapping each result row to a weight file by path,
+size, SHA-256 and parameter count. The tuning CSVs cited by the configuration
+tables are committed. The datasets are committed and the checkpoints are distributed
+in release `v3.0.0`; regeneration is a *fresh draw from the same protocol*, so it
+reproduces the protocol, not the numbers.
 
 **Why:** the repository is pushed as an explicit file list, so citations to uncommitted artifacts had
 accumulated silently — the selection tables referenced tuning CSVs that were not in the repo, and
@@ -414,9 +417,8 @@ dead reference is indistinguishable from a fabricated one to a reader, which is 
 ## Decision 24 — The g-score is reported as a risk-averse summary, not as a distance-aware ranking; MMD gains an electrical descriptor (audit items A6, A7)
 **Decision:** `μ` and `σ` are the primary transfer numbers and the g-score accompanies them for
 ENGAGE comparability, with the degeneracy stated: `Δ_MMD` is a property of the data, so within an arm
-it is one constant and `g = μ + 0.806σ` (cross-context) or `μ + 0.857σ` (OOD) in the raw-unit
-campaign, `μ + 0.805σ` and `μ + 0.858σ` in the normalized one — verified against all
-committed rows to 1e-4, with rank-by-g ≡ rank-by-mean (τ = 1.0). For the distance itself, `mmd()` is
+it is one constant. In the published v3 results, `g = μ + 0.883520σ` for cross-context
+and `g = μ + 0.896278σ` for OOD. For the distance itself, `mmd()` is
 named as the biased V-statistic (with `unbiased=True` available), the per-pair median bandwidth is
 stated, and `mmd_utils.reactance_histogram` adds a `log10(x_pu)` electrical descriptor alongside the
 degree and Laplacian ones. Full write-up: `docs/Generalization_score_and_MMD.md`.
@@ -428,7 +430,7 @@ security screening. And a purely topological distance is blind to the ~20× load
 our cases (an identical topology with 100x impedances has degree/Laplacian MMD 0.0, `tests/test_mmd_utils.py`),
 so an electrical complement is needed before any distance is used as a covariate.
 
-**Update 2026-10-21 (review of E1/E2/E15/E16):** the per-pair median bandwidth stated above is replaced by one shared bandwidth (Decision 27). The UK → IEEE24 degree MMD of 0.276 quoted above is an artifact of the zero-median fallback (E1); with a shared bandwidth it is about 0.98 on `data_regime_b_contingencies`, so that pair is **not** the closest by degree. The electrical-descriptor argument stands; it is better supported by the reactance MMD itself than by that pair.
+**Update 2026-10-21 (review of E1/E2/E15/E16):** the per-pair median bandwidth stated above was replaced by one shared bandwidth (Decision 27). The UK → IEEE24 degree MMD of 0.276 quoted above was an artifact of the zero-median fallback (E1); the comparison on `data_regime_b_contingencies` was not the published v3 reference value, so the pairwise claim is not used for v3. The electrical-descriptor argument stands; the published v3 distances are in `docs/Results.md` §4.6. (in tag `archive-pre-v3`)
 
 ---
 
@@ -440,7 +442,8 @@ architecture by mean best **validation** loss across the four grids at one seed 
 seed, and freezes the winner in `configs/arch_config.json`. Pass 2 (`experiments.py`) re-trains
 that one configuration at seeds 0/100/300/700/1000 (NNConv 0/100/300) and scores on **test**;
 those are the reported numbers. The same frozen configuration goes into all three arms —
-within-grid, cross-context and OOD — and Regime B is never re-tuned.
+within-grid, cross-context and OOD — and Regime B is never re-tuned. Tuning used the pre-fix data
+(in tag `archive-pre-v3`).
 
 **Why:** the selection pass's own scores are optimistically biased, having been selected on the
 validation set, and exist at one seed with no spread, so reporting the search's winner as the
@@ -503,7 +506,7 @@ first implementation screened lines only.
 `pu_zscore` (finding B4) and lifting NNConv from 3 to 5 seeds are the only two items that need
 GPU-hours, and both change *how well* the models were trained rather than *what is claimed* about
 transfer. They are therefore declined and recorded as accepted limitations L1 and L2 in
-`docs/Audit_response.md`, with the concrete consequence of each spelled out, rather than left for a
+`docs/the archived audit history`, with the concrete consequence of each spelled out, rather than left for a
 later reviewer to rediscover. Everything else — the non-finite policy, the g-score trim, the
 protocol/grid decomposition, the pooled-vs-cell rank reporting and the run metadata — is a
 recomputation over artifacts that already exist.
@@ -511,19 +514,19 @@ recomputation over artifacts that already exist.
 ---
 
 ## Decision 27 — One shared MMD bandwidth for every comparison, in both regimes (review items E1, E2, E9)
-**Status:** implemented in `mmd_utils.py` and `mmd_bandwidth.py`, with the shared ruler in `configs/mmd_bandwidth.json`. The current ruler is provisional; P9 recomputes it after regenerating both datasets. Every previously committed MMD and g-score in `results*/` and `docs/tables/` still uses the per-pair bandwidth.
+**Status:** implemented in `mmd_utils.py` and `mmd_bandwidth.py`, with the shared ruler in `configs/mmd_bandwidth.json`. The current ruler is the v3 tables use the multigraph estimator and the shared reference ruler.
 
 **Decision:** the Gaussian kernel `k(a,b) = exp(-||a-b||^2 / m)` uses **one width `m` per descriptor and graph mode** (degree and Laplacian; reactance has one mode-independent width). It is computed **once** as the median of the non-zero pairwise squared distances between all train and test descriptors of all four grids, pooling **Regime A and Regime B together**, and is stored in a file with a fingerprint of the data it was computed from. Every MMD in the repo uses that width: the 16 cross-context pairs, the 4 pooled OOD distances, `validate.py`, `mmd_report.py`, the EDA notebook, and any extra dataset (for example the optional blocked Regime A, Decision 29), which reuses the stored width instead of recomputing it. The per-pair mode is kept only to reproduce the committed numbers. If all reference distances are zero, the code raises an error instead of falling back to 1.0. The width is recomputed only when the replication datasets are regenerated.
 
 **Why:**
 - **MMD is a distance only under a fixed kernel.** The g-score uses `Δ_MMD = max − min` over pairs, i.e. it compares cells, so all cells must be measured with the same ruler. ENGAGE also uses one σ for all test cases of an experiment.
 - **The per-pair width was really the training grid's own spread.** It pools 800 train + 100 test descriptors, so each row of the matrix gets its own ruler. UK: 99.5% of its train descriptor pairs are identical → median 0 → silent `gamma=1` fallback (E1). IEEE118 degree: median 0.0003 → `gamma≈3500`.
-- **Measured effect on `data_regime_b_contingencies`** (shared width from `data_regime_b_contingencies` alone; the final A+B width will differ slightly):
+- **Measured effect on `data_regime_b_contingencies`** (shared width from `data_regime_b_contingencies` alone; the final A+B width will differ slightly; in tag `archive-pre-v3`):
   - Degree: the off-diagonal ranking under per-pair vs shared is essentially unrelated (Spearman 0.09). UK → IEEE24 goes from 0.276 to 0.977.
   - Laplacian (g-score axis): the ranking mostly holds (Spearman 0.91), but cross-context `Δ_MMD` goes 0.522 → 0.321 (σ weight `log(Δ+1)/Δ` 0.805 → 0.867) and OOD goes 0.349 → 0.295 (0.858 → 0.876).
   - Architecture rankings inside an arm do not change, because `Δ_MMD` is one constant per arm (Decision 24). The g values and any comparison with ENGAGE do change.
 - **Why one width for A and B together:** MMD values from Regime A, Regime B and any extra dataset (Decision 29) are read side by side, so they need the same ruler. Pooling both covers the full range of topologies we evaluate.
-- **Why the median:** a width that is too small makes every pair of different grids hit the ceiling √2 (the v2 failure); one that is too large makes every MMD go to 0. With the median, a typical pair gets similarity `e^-1 ≈ 0.37`, the middle of the kernel's range. The median needs no tuning, is not pulled by a few very distant pairs (unlike the mean), and gives the same value every run. It is a heuristic, not an optimum: on `data_regime_b_contingencies`, halving or doubling the width keeps the degree ranking (Spearman 0.94 / 1.00) and mostly keeps the Laplacian ranking (0.92 / 0.73). So the paper reports ×0.5 and ×2 sensitivity rows.
+- **Why the median:** a width that is too small makes every pair of different grids hit the ceiling √2 (the v2 failure); one that is too large makes every MMD go to 0. With the median, a typical pair gets similarity `e^-1 ≈ 0.37`, the middle of the kernel's range. The median needs no tuning, is not pulled by a few very distant pairs (unlike the mean), and gives the same value every run. It is a heuristic, not an optimum: on `data_regime_b_contingencies`, halving or doubling the width keeps the degree ranking (Spearman 0.94 / 1.00) and mostly keeps the Laplacian ranking (0.92 / 0.73). So the earlier analysis reported ×0.5 and ×2 sensitivity rows. (in tag `archive-pre-v3`)
 - **Why not ENGAGE's σ values:** ENGAGE swept σ and picked the value that best captured similarity on its SimBench distribution grids and its descriptors (200-bin Laplacian, degree histogram normalised to sum 1): CC degree 1e1, CC Laplacian 1e-2, OOD degree 1e2, OOD Laplacian 1e-2. These were tuned to other grids and other descriptors. On our grids, degree with γ = 100 sits close to the √2 ceiling (1.2–1.4). They are reported as an ENGAGE-compatibility row, not as the headline.
 
 **Why we keep our own implementation instead of ggme (E9):**
@@ -560,11 +563,11 @@ recomputation over artifacts that already exist.
 ## Decision 29 — Regime A keeps PowerGraph's random split; a blocked Regime A is an optional extra dataset (review item E15)
 **Status:** the blocked option is implemented and validated (`--regime a --expect_blocked`); the dataset has not been generated.
 
-**Decision:** `data_regime_a_fixed_topology` stays as it is: fixed topology, `--unique_demand`, **random** train/val/test split. It is the PowerGraph-replication dataset. A blocked Regime A (`--max_k 0 --time_split blocked`, same sizes, one-day gaps) is supported as an **additional** dataset in its own folder. It never replaces `data_regime_a_fixed_topology`, and the published within-grid results do not use it. It uses the shared MMD width of Decision 27, without recomputing it.
+**Decision:** `data_regime_a_fixed_topology_v3` stays as it is: fixed topology, `--unique_demand`, **random** train/val/test split. It is the PowerGraph-replication dataset. A blocked Regime A (`--max_k 0 --time_split blocked`, same sizes, one-day gaps) is supported as an **additional** dataset in its own folder. It never replaces `data_regime_a_fixed_topology_v3`, and the published within-grid results do not use it. It uses the shared MMD width of Decision 27, without recomputing it.
 
 **Why:**
-- PowerGraph's paper only gives the 85/5/10 ratio. PowerGraph-Node's code (`code/gendata.py`, `get_dataloader`) shuffles all samples with `torch.randperm` (seed 2). Its MATLAB generator solves every 15-minute column of the year. So PowerGraph's within-grid protocol is a random split over neighbouring snapshots, and the random `data_regime_a_fixed_topology` matches it (it is stricter: unique snapshots, 1 000 of 35 040).
-- **The cost (a limitation, not a bug):** neighbouring snapshots can fall in train and test (4–9% of `data_regime_a_fixed_topology` test samples have a training sample within 15 min, 11–26% within 1 h), so within-grid scores may be optimistic. This is not measured.
+- PowerGraph's paper only gives the 85/5/10 ratio. PowerGraph-Node's code (`code/gendata.py`, `get_dataloader`) shuffles all samples with `torch.randperm` (seed 2). Its MATLAB generator solves every 15-minute column of the year. So PowerGraph's within-grid protocol is a random split over neighbouring snapshots, and the random `data_regime_a_fixed_topology_v3` matches it (it is stricter: unique snapshots, 1 000 of 35 040).
+- **The cost (a limitation, not a bug):** neighbouring snapshots can fall in train and test (4–9% of `data_regime_a_fixed_topology_v3` test samples have a training sample within 15 min, 11–26% within 1 h), so within-grid scores may be optimistic. This is not measured.
 - **Why offer the blocked version:** it gives other researchers a temporal-leakage control, and it is the "split-only" dataset that would separate the split effect from the outage effect in the Regime A → B step (C6, L8). The current paper does not use it, so L8 still stands.
 
 ## Decision 30 — NRMSE keeps the paper's formula; no fixed-denominator NRMSE, and the same-grid Regime A → B ratio is not quoted as a cost (review item E8)
@@ -579,7 +582,7 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 - **Reverses:** the earlier review proposal to add `nrmse_fixed` (prompt P5).
 
 ## Decision 31 — The MMD graph counts every parallel circuit (`multi`, default); the merged `simple` graph is kept only to reproduce committed numbers (review item E3)
-**Status:** implemented (code). Every previously committed MMD and g-score still uses the simple graph; final recomputation requires P9.
+**Status:** implemented (code). Every previously committed MMD and g-score still uses the simple graph; the published v3 results use this multigraph definition.
 
 **Decision:** `mmd_utils` builds each sample's graph with **one edge per in-service circuit** (`graph_mode="multi"`). The degree of a bus is the number of circuits that end at it, and the Laplacian spectrum is computed on the graph weighted by the number of circuits between each pair of buses. Every caller (`experiments.py`, `mmd_report.py`, `validate.py`, the EDA notebook) gets `--mmd_graph {multi,simple}` with **`multi` as the default**, and only `multi` is reported. `simple` (today's `nx.Graph`, which merges parallel circuits like ENGAGE's PyG `to_networkx`) is kept only to reproduce the committed CSVs. The reactance descriptor does not change: it already reads the features of every circuit.
 
@@ -593,7 +596,7 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
   | IEEE118 | 186 | 179 | 7 | 14 of 186 |
   | UK | 99 | 50 | 49 | 98 of 99 |
 
-  On the committed `data_regime_b_contingencies`, 561 of 563 UK N-1/N-2 training samples have the same simple graph as the intact grid. This is also why the UK median distance is 0 (E1).
+  On the committed `data_regime_b_contingencies`, 561 of 563 UK N-1/N-2 training samples have the same simple graph as the intact grid. This is also why the UK median distance is 0 (E1). (in tag `archive-pre-v3`)
 - **Why not delete the edge when one parallel circuit is out:** the two buses stay connected through the remaining circuit and power still flows between them. Deleting the edge would show a cut that does not exist and could show a bus as islanded, overstating the change. Weight 2 → 1 is the faithful representation.
 - **The MMD now describes the graph the models see:** after the branch-contract fix, `edge_index` contains both directions of every circuit, so the GNNs already see parallel circuits as separate edges.
 - **Why only `multi` is reported:** two versions would invite comparing numbers measured on different graphs, and the simple graph would report almost no topology shift for UK's outages.
@@ -611,23 +614,23 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 
 **Why:**
 - **It measures what the study changes.** The degree histogram only counts lines per bus: one line outage moves two buses by one bin. The normalised-Laplacian spectrum reflects the whole network (loops, bottlenecks, how well connected it is), and its eigenvalues can move when any line goes out.
-- **On the committed tables it is the coherent descriptor.** The degree matrix is distorted by the zero-width fallback (E1): the UK row reads 0.28–0.47 while the UK column reads 1.21–1.23. The Laplacian matrix places UK far from every grid in both directions (1.00–1.25). On the pooled OOD distances, the Laplacian puts UK farthest (0.97 vs 0.62–0.67), consistent with UK being the hardest held-out grid; degree puts IEEE118 farthest (1.09). This agreement with the errors is supporting evidence only, since it looks at the results.
+- **On the earlier simple-graph tables it was the coherent descriptor.** The degree matrix was distorted by the zero-width fallback (E1): the UK row read 0.28–0.47 while the UK column read 1.21–1.23. The Laplacian matrix placed UK far from every grid in both directions (1.00–1.25). On the pooled OOD distances, the Laplacian put UK farthest (0.97 vs 0.62–0.67), consistent with UK being the hardest held-out grid; degree put IEEE118 farthest (1.09). This agreement with the errors is supporting evidence only, since it looks at the results. (in tag `archive-pre-v3`)
 - **ENGAGE comparability is no longer a reason for degree.** ENGAGE's paper reports degree "without loss of generality" and says the results generally hold for the Laplacian; its code computes both. Our MMD already differs from ENGAGE's in width, MMD vs MMD² and graph convention (L12, L13), so its numbers are not comparable either way.
-- **Cost:** under a shared width (`data_regime_b_contingencies`), the degree ranking is more stable to halving/doubling the width (Spearman 0.94 / 1.00) than the Laplacian (0.92 / 0.73), so the paper reports the ×0.5 and ×2 width rows (Decision 27).
+- **Cost:** under a shared width (`data_regime_b_contingencies`), the degree ranking was more stable to halving/doubling the width (Spearman 0.94 / 1.00) than the Laplacian (0.92 / 0.73), so the earlier analysis reported the ×0.5 and ×2 width rows (Decision 27). (in tag `archive-pre-v3`)
 - **Scope:** the descriptor does not affect NRMSE or the Kendall τ rank-transfer results, which are the paper's main claim; it only changes `Δ_MMD` and the σ weight of the g-score, which is the same for every model in an arm.
 
 ---
 
-## Decision 33 — Unseen grids keep their 100-sample test split for the main results; all 1 000 unseen samples are scored as a robustness check after retraining (review item E7)
-**Status:** decided 2026-10-21; not yet implemented or run (review prompt P6, after the P9 retraining).
+## Decision 33 — Unseen grids use the 100-sample test split; the 1 000-sample robustness check is not part of the published results
+**Status:** the v3 campaign is complete; the published protocol is documented in `docs/Results.md`.
 
-**Decision:** the published cross-context and leave-one-grid-out numbers keep scoring each unseen grid on its 100-sample test split (`experiments.py` `run_cross_context` and `run_ood`, `eval_checkpoints._test_sets`). After the models are retrained on the regenerated data (P9), the retrained checkpoints are also scored on all 1 000 samples (train + val + test) of every grid the model never saw. That result is reported next to the main results as a robustness check, not instead of them. Same-grid cells keep the test split, because the model trained on that grid's other samples.
+**Decision:** Published cross-context and leave-one-grid-out numbers use each unseen grid’s 100-sample test split; same-grid cells use their test split.
 
 **Why:**
 - **The 100-sample test split covers one part of the year.** In Regime B the split is blocked in time (Decision 21): the test window is the last tenth of the demand year, so an unseen-grid score describes one period and its demand levels.
 - **Every sample of an unseen grid is unseen.** The model never trained on any of that grid's 1 000 samples, so scoring all of them adds evaluation data without leakage.
 - **It tests the paper's claim, not a new one.** The main result is that architecture rankings measured on one grid do not hold on another grid. If the 1 000-sample ranking agrees with the 100-sample one, the claim does not depend on which part of the year was tested; if it does not, the paper has to say so.
-- **Why after retraining:** the published checkpoints (`ckpt_norm.tar.gz`, release v1.0.0) were trained on the graphs before the branch-contract fix (E12, E13), and their UK and IEEE118 results are replaced by the P9 rerun. Scoring them would check rankings that are not in the paper.
+- **Why not included:** the published v3 results use the corrected topology and the 100-sample test split; the additional 1 000-sample robustness check is outside the published campaign.
 - **Why a check, not the headline:** the main protocol, splits and tables stay as defined, so the check changes nothing the reader has already seen.
 - **How the two are compared:** by the Kendall τ between the 100-sample and 1 000-sample architecture rankings in each arm, and by per-quantity RMSE in physical units. Never by a ratio of NRMSEs: the NRMSE denominator is the target range of the scored set, which differs between the two sets (Decision 30, L10).
 - **Caveat:** the 1 000 samples come from one demand time series, so nearby samples are correlated and they are not 1 000 independent tests. Recorded as L14.

@@ -10,8 +10,10 @@ from summarize_feasibility import regime_label
 def main():
     cases = (
         ("data_regime_a_fixed_topology", "regime_a"),
+        ("data_regime_b_contingencies", "regime_b"),
         ("data_regime_a_fixed_topology_v3", "regime_a"),
         ("data_regime_b_contingencies_v3", "regime_b"),
+        ("path/to/data_regime_a_fixed_topology_v3/", "regime_a"),
         ("path/to/data_regime_b_contingencies_v3/", "regime_b"),
         ("custom_dataset", "custom_dataset"),
     )

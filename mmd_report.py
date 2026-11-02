@@ -17,7 +17,7 @@ distance blind to the dominant shift is a weak covariate for a generalization
 score; this table shows how much of the apparent "topological distance" between
 our grids is actually electrical.
 
-    python mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables
+    python mmd_report.py --data_dir data_regime_b_contingencies_v3 --out results_v3/mmd_report
 """
 from __future__ import annotations
 
@@ -35,9 +35,9 @@ GRIDS = ("IEEE24", "IEEE39", "IEEE118", "UK")
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--data_dir", default="data_regime_b_contingencies")
+    p.add_argument("--data_dir", default="data_regime_b_contingencies_v3")
     p.add_argument("--grids", nargs="+", default=list(GRIDS))
-    p.add_argument("--out", default="docs/tables")
+    p.add_argument("--out", default="results_v3/mmd_report")
     p.add_argument("--mmd_graph", choices=["multi", "simple"], default="multi")
     p.add_argument("--mmd_bandwidth", choices=["reference", "pair"], default="reference")
     p.add_argument("--mmd_bandwidth_file", default="configs/mmd_bandwidth.json")

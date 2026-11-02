@@ -1,16 +1,16 @@
 # eval_gnn_generalization_pg
 
-## MMD graph mode
-
-MMD CLIs accept `--mmd_graph {multi,simple}` (default `multi`, counting every
-parallel circuit). `simple` is only for reproducing legacy committed tables.
-
 Evaluating the **generalization of GNN architectures for the AC power-flow (PF) node task on transmission grids**.
 
 ## Goal
 Measure how well graph neural networks trained for node-level AC power flow generalize to **unseen transmission topologies** (and unseen grids), and benchmark this against [PowerGraph](https://github.com/PowerGraph-Datasets), which only trains and tests *within* a single fixed-topology grid. Generalization is quantified with ENGAGE's **g-score** (NRMSE vs. topological distance via MMD).
 
 Because AC power flow is deterministic physics, the value of a learned surrogate is **amortization/speed** across many cases (contingency screening, planning, real-time what-ifs) and **robustness to topology change** — so the primary axis studied is generalization **across contingencies / topological variations**, with transfer between structurally different grids kept as a scientific stress test.
+
+## MMD graph mode
+
+MMD uses `--mmd_graph multi`, counting every in-service parallel circuit, with
+the shared reference ruler in `configs/mmd_bandwidth.json`.
 
 ## Approach (one clean pipeline)
 ENGAGE's generalization methodology applied to PowerGraph's transmission grids. We reuse:
@@ -80,7 +80,7 @@ flowchart TD
     M["models.py<br/>MODELS = gcn, arma_gnn, gat, gin, transformer, nnconv"] --> F
     T["training_utils.py<br/>weighted-MSE loss, NRMSE, DC baseline"] --> F
     X["mmd_utils.py<br/>degree/Laplacian MMD"] --> F
-    F --> R1["results/*.csv<br/>transfer_matrix_*, cross_context, ood,<br/>mmd_*, gscore*, ood_distance, dc_baseline"]
+    F --> R1["results_v3/*.csv<br/>transfer_matrix_*, cross_context, ood,<br/>mmd_*, gscore*, ood_distance, dc_baseline"]
     F --> R2["models/*.pt<br/>cc_&lt;model&gt;_&lt;grid&gt; · ood_&lt;model&gt;_heldout_&lt;grid&gt;"]
     E --> V["validate.py<br/>Step 6: contract/masking/topology/MMD gates"]
 ```
@@ -131,24 +131,27 @@ their true inputs before scoring, so re-injection never leaks into the loss.*
 ```
 eval_gnn_generalization_pg/
 ├── README.md                     # this file — start here
-├── docs/                         # design & experiment documents (the "why")
-│   ├── Pipeline_Report.md        # ← as-built report: flow diagram + run guide
-│   ├── Reproducibility.md        # exact commands, pins, provenance, replay (A4)
-│   ├── Regime_comparison_results.md   # the results: A vs cross-context vs OOD
-│   ├── Model_configurations.md   # tuning evidence + frozen configs
-│   ├── Audit_response.md         # external audit, answered point by point
-│   ├── Normalization_assessment.md    # why pu_zscore (A2), field survey
-│   ├── Normalization_results.md  # normalized vs raw-unit outcome
-│   ├── Generalization_score_and_MMD.md  # g-score degeneracy + grid distances (A6/A7)
-│   ├── Paper_verification.md     # our claims vs the ENGAGE / PowerGraph papers
-│   ├── PowerGraph_to_ENGAGE_design_decisions.md
-│   ├── Experimental_Design_transmission_GNN_generalization.md
-│   ├── Layer2_implementation_plan.md
-│   └── PowerGraph-Node_deep_dive.md
-└── transmission/                 # grid conversion + data generation
+├── configs/                      # frozen model configs and shared MMD ruler
+├── data_regime_a_fixed_topology_v3/
+├── data_regime_a_blocked_v3/     # optional blocked-split check (not published)
+├── data_regime_b_contingencies_v3/
+├── docs/                         # methods, design decisions, and results
+│   ├── Results.md
+│   ├── Reproducibility.md
+│   ├── Reproduce_on_Windows.md
+│   ├── Pipeline_Report.md
+│   └── tables/                   # reference MMD and feasibility tables
+├── results_v3/                   # merged campaign results and analysis tables
+├── tests/                        # script-style validation tests
+├── transmission/                 # grid conversion + data generation
     ├── convert_cases.m           # Step 1: System.m -> .mat (Octave, one-time)
     ├── cases/                     # Step 1 output: IEEE24/IEEE39/IEEE118/UK .mat
     └── README.md                 # per-step instructions for this folder
+├── launch_campaign.py            # restartable multi-process campaign launcher
+├── experiments.py                # training and evaluation driver
+├── eval_checkpoints.py           # physics-aware replay
+├── rank_analysis.py              # ranks, correlations, permutation tests
+└── recompute_tables.py           # derived comparison tables and g-scores
 ```
 
 ## Detailed pipeline report
@@ -172,37 +175,20 @@ power-flow solves do not use the GPU).
 > copy‑paste guide: [`docs/Reproduce_on_Windows.md`](docs/Reproduce_on_Windows.md)
 > (venv, CUDA PyTorch + PyG, data generation, and running one model at a time).
 
-This guide is built up **incrementally, one implementation step per stage**. Each
-stage below is marked with the branch on which it was originally developed; all of
-them are on `main`.
+The v3 datasets are committed and can be used directly. The optional
+`data_regime_a_blocked_v3/` dataset implements Decision 29's blocked time split
+for checking leakage; it is generated and validated but is not used in the
+published results. Checkpoint archives are published separately:
 
-> **`main` is the replication entry point — you do not need any `step-*` branch.**
-> It holds the whole pipeline (grid conversion through the final normalized
-> campaign and the audit remediation), the frozen configurations, the 16 test
-> suites, every result CSV behind the reported tables, and the documentation.
-> The `step-1-…` → `step-8-…` branches are kept only as development history.
->
-> The two generated datasets (`data_regime_a_fixed_topology/`, `data_regime_b_contingencies/`, ~79 MB) **are** committed,
-> so you can train and replay against the exact data the reported numbers came from
-> without regenerating anything. The 336 training checkpoints (`ckpt_norm/`, 593 MB
-> compressed) are too large for Git and ship as a release asset:
->
-> ```bash
-> curl -L -o ckpt_norm.tar.gz \
->   https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_norm.tar.gz
-> sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_norm.tar.gz"
-> tar -xzf ckpt_norm.tar.gz   # -> ckpt_norm/<arm>_<model>/<file>.pt (paths as in
->                             #    docs/tables/checkpoint_index.csv)
-> ```
->
-> Per-file sizes and SHA-256s for all of it are in
-> [`docs/tables/artifact_manifest.csv`](docs/tables/artifact_manifest.csv). With the
-> datasets and that archive, `eval_checkpoints.py` reproduces the reported metrics
-> from *our* weights — no training required (`docs/Reproducibility.md` §3).
->
-> `docs/figures/*.png` and the exploratory `full_run/` tree are from the
-> **superseded raw-unit run** and are retained for provenance only; the reported
-> results live in `results_norm/` and `docs/tables/`.
+| Arm | Release asset | SHA-256 |
+|---|---|---|
+| Within-grid | [ckpt_v3_within.tar.gz](https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v3.0.0/ckpt_v3_within.tar.gz) | `a98370c1569f4bc817a526845a2f2f051a9e6f884f5a86026ba96fdd6dc16845` |
+| Cross-context | [ckpt_v3_cross.tar.gz](https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v3.0.0/ckpt_v3_cross.tar.gz) | `882b3d93cda065385a69bd2aa863dd37bb75f5eba53efc456b09892fc47c97e7` |
+| OOD | [ckpt_v3_ood.tar.gz](https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v3.0.0/ckpt_v3_ood.tar.gz) | `49ffb90775e512b36fe952b4b7075c0b6225dc55a654576949fa057dc0324359` |
+
+Extract the desired archive into the repository root; `eval_checkpoints.py`
+replays the saved models without training. The checkpoint index is
+`results_v3/checkpoint_index.csv`.
 
 ### From a clean machine, in five commands
 The path a new researcher actually needs; each command was run from a fresh clone
@@ -238,7 +224,7 @@ reproduces every reported table byte-for-byte.
   and the optional `numba` speed-up). The per-step `pip install` lines below are
   the historical minimum for that step only.
 
-### Step 1 — Convert the grids  ✅ on `main` (developed on `step-1-grid-conversion`)
+### Step 1 — Convert the grids
 Turns PowerGraph's `System.m` files into committed `.mat` cases. You normally only
 run this once (the `.mat` files are committed, so you can skip straight to Step 2).
 Needs **Octave** only.
@@ -250,7 +236,7 @@ octave --no-gui --eval "cd transmission; convert_cases"
 Full details, expected output, and a verification snippet: see
 [`transmission/README.md`](transmission/README.md).
 
-### Step 2 — Load grids into pandapower  ✅ on `main` (developed on `step-2-grid-loader`)
+### Step 2 — Load grids into pandapower
 Loads the converted `.mat` cases as re-solvable pandapower networks and loads the
 per-bus hourly demand profiles. This is the bridge between Step 1's files and the
 data generator in Step 3.
@@ -268,7 +254,7 @@ UK       buses=  29 loads=  29 gens= 23 ext_grid=1 lines= 86 trafos=  4 converge
 ```
 Key functions (`transmission_grids.py`): `get_transmission_grid_codes()`,
 `load_case(code)`, `load_hourly_demand(code, variant="new")`.
-### Step 3 — Generate the datasets  ✅ on `main` (developed on `step-3-data-generation`)
+### Step 3 — Generate the datasets
 The heart of the pipeline: turns each grid into a **distribution of topologies**
 by sampling N-1/N-k line contingencies + real hourly demand, **re-solving AC
 power flow** (`pp.runpp`), filtering (convergence / connectivity / voltage
@@ -294,7 +280,7 @@ The default is `line`: it reproduces the historical sampler's outage choices
 used for the committed datasets with the same seed (the corrected graph contract
 does not reproduce the old UK/IEEE118 graph tensors). Non-default values change
 the sampled contingencies and are available for other researchers' experiments.
-### Step 4 — The model zoo  ✅ on `main` (developed on `step-4-model-zoo`)
+### Step 4 — The model zoo
 Six architectures behind one interface (`models.py`): `GCN`, `ARMA_GNN` (ENGAGE)
 and `GAT`, `GIN`, `TRANSFORMER`, `NNConv` (PowerGraph). Every model is genuinely
 edge-aware (consumes `edge_attr`) and shares the physics-aware `inference()`
@@ -315,7 +301,7 @@ for n, cls in MODELS.items():
     print(n, tuple(out.shape), torch.isfinite(out).all().item())
 PY
 ```
-### Step 5 — Run the experiments  ✅ on `main` (developed on `step-5-experiments`)
+### Step 5 — Run the experiments
 Trains every architecture and produces the study's outputs: the cross-context
 **transfer matrix** (train on one grid → test on all), **leave-one-grid-out OOD**,
 the **g-score** (NRMSE vs topological distance via MMD), **per-quantity errors
@@ -326,10 +312,10 @@ pip install -r requirements.txt
 python3 experiments.py --experiment both --models gcn gat --epochs 20 \
     --grids IEEE24 IEEE39 --data_dir data --out results
 # full run (all grids + all models), and SAVE the trained models:
-python3 experiments.py --experiment both --data_dir data --out results \
+python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7 \
     --epochs 200 --save_models models
 ```
-Outputs land in `results/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
+Outputs land in `results_v3/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
 (incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
 `gscore.csv` (cross-context g-score) + `gscore_cc_aggregate.csv`, `gscore_ood.csv`
 (OOD g-score — per model over held-out grids; the better-posed one at N=4),
@@ -361,7 +347,7 @@ python3 experiments.py --experiment cross --models gcn --grids IEEE24 IEEE39 \
 > Cross-grid transfer needs ≥2 grids; `--grids IEEE39` alone yields only the
 > within-grid diagonal.
 
-### Step 6 — Validation gates  ✅ on `main` (developed on `step-6-validation`)
+### Step 6 — Validation gates
 Automatic checks that catch the failures that would make the study *invalid*
 (not merely buggy): conversion fidelity, data-contract shapes, masking
 correctness, topology variation, and **MMD non-degeneracy** (the exact bug from
@@ -379,7 +365,7 @@ cross-grid MMD and cross-grid MMD non-constant.
 > its job, not a broken checkout. Restrict it to what you generated with
 > `--grids IEEE24`; gate E only becomes meaningful once two or more grids exist.
 
-### Step 7 — Harvest real contingencies from PowerGraph-Graph  ✅ on `main` (developed on `step-7-harvest-contingencies`)
+### Step 7 — Harvest real contingencies from PowerGraph-Graph
 Optional contingency *source* (design decision D11): instead of random N-k
 outages, drive Step 3 with the **actual outage sets** PowerGraph-Graph simulated.
 We reuse only their *topology* (which lines are out — detected as all-zero rows in
@@ -427,56 +413,49 @@ python3 transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 
 python3 validate.py --data_dir data
 
 # 6. Run the experiments
-python3 experiments.py --experiment both --data_dir data --out results
+python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7
 
 # 7. Read the results
-ls results/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
+ls results_v3/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
 ```
 
 ## Reproducing the reported benchmark (the final protocol)
 
-The walkthrough above is the generic pipeline. The reported numbers
-([`docs/Normalization_results.md`](docs/Normalization_results.md) §4 — the raw-unit
-tables in [`docs/Regime_comparison_results.md`](docs/Regime_comparison_results.md) are
-the superseded ablation) come from this exact
-sequence — the differences from the generic commands (`--time_split blocked`, `--normalize
-pu_zscore`, `--save_models`) are the two audit remediations and the checkpointing
-requirement, and they are what make the results defensible and replayable. The protocol
-itself is specified in
+The reported numbers are in [`docs/Results.md`](docs/Results.md) §4 and come from
+the commands below. The protocol itself is specified in
 [`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md#final-protocol-as-executed);
 the reasoning per decision is in
 [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md)
-(Decisions 20 and 21) and the audit trail in
-[`docs/Audit_response.md`](docs/Audit_response.md).
+(Decisions 20 and 21).
 
 ```bash
 # A. In-distribution control: one fixed topology per grid, each demand snapshot used once
 python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
-python3 validate.py --data_dir data_regime_a_fixed_topology --regime a
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology_v3
+python3 validate.py --data_dir data_regime_a_fixed_topology_v3 --regime a
 
 # B. Varying topology: N-k contingencies, blocked temporal split (no leakage of
 #    neighbouring demand snapshots into the test set)
 python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
-python3 validate.py --data_dir data_regime_b_contingencies --regime b --expect_blocked
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
+python3 validate.py --data_dir data_regime_b_contingencies_v3 --regime b --expect_blocked
 
 # Training: frozen equal-budget configs, train-statistics scaling, checkpoints for replay.
 # Metrics are always reported in physical units (predictions are de-normalized first).
-python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology       --normalize pu_zscore \
+python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology_v3       --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_norm/within --save_models ckpt_norm/within
-python3 experiments.py --experiment cross  --data_dir data_regime_b_contingencies --normalize pu_zscore \
+    --out results_v3/within --save_models ckpt_v3/within
+python3 experiments.py --experiment cross  --data_dir data_regime_b_contingencies_v3 --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_norm/cross --save_models ckpt_norm/cross
-python3 experiments.py --experiment ood    --data_dir data_regime_b_contingencies --normalize pu_zscore \
+    --out results_v3/cross --save_models ckpt_v3/cross
+python3 experiments.py --experiment ood    --data_dir data_regime_b_contingencies_v3 --normalize pu_zscore \
     --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_norm/ood --save_models ckpt_norm/ood
+    --out results_v3/ood --save_models ckpt_v3/ood
 ```
 
 The campaign writes one results CSV and one checkpoint per shard; turning those into the
 reported tables is the last stage. Replay is also the entry point if you downloaded
-`ckpt_norm.tar.gz` instead of training:
+`ckpt_v3.tar.gz` instead of training:
 
 ```bash
 # 1. Merge the per-shard result CSVs into one directory per arm. The exact
@@ -486,42 +465,42 @@ reported tables is the last stage. Replay is also the entry point if you downloa
 
 # 2. Physics-aware replay of the saved models: per-quantity error on the entries the
 #    model genuinely predicts, error tails, voltage-band violations. Minutes, no training.
-python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
-    --normalize pu_zscore --out results_norm/physics
-python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
+python3 eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 \
+    --normalize pu_zscore --out results_v3/physics
+python3 checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
 
 # 3. Is the predicted state a valid operating point at all? Adds the AC power-balance
 #    residual and the branch loading; needs POWERGRAPH_NODE_DIR to rebuild the
 #    post-contingency networks. Add --feasibility to re-run step 2 with those columns.
-python3 dc_feasibility.py --data data_regime_a_fixed_topology data_regime_b_contingencies \
-    --out results_norm/physics/dc_feasibility.csv
-python3 summarize_feasibility.py --physics results_norm/physics/physics_metrics.csv \
-    --baselines results_norm/physics/dc_feasibility.csv \
-    --out docs/tables/ac_feasibility_norm.csv
+python3 dc_feasibility.py --data data_regime_a_fixed_topology_v3 data_regime_b_contingencies_v3 \
+    --out results_v3/physics/dc_feasibility.csv
+python3 summarize_feasibility.py --physics results_v3/physics/physics_metrics.csv \
+    --baselines results_v3/physics/dc_feasibility.csv \
+    --out results_v3/analysis/ac_feasibility_norm.csv
 
 # 4. The reported tables: ranks, rank stability across grids/seeds, g-scores,
 #    per-quantity errors, DC comparison, topology distances.
-python3 rank_analysis.py --regime_a results_norm/all_within/within_grid.csv \
-    --cross results_norm/all_cross/cross_context.csv \
-    --ood results_norm/all_ood/ood.csv --out results_norm/analysis
-python3 recompute_tables.py --within results_norm/all_within/within_grid.csv \
-    --cross results_norm/all_cross/cross_context.csv \
-    --ood results_norm/all_ood/ood.csv \
-    --topology results_norm/topology \
-    --dc_regime_a results_norm/dc_baseline_regime_a.csv \
-    --dc_regime_b results_norm/topology/dc_baseline.csv \
-    --out results_norm/analysis
-python3 mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables
+python3 rank_analysis.py --regime_a results_v3/all_within/within_grid.csv \
+    --cross results_v3/all_cross/cross_context.csv \
+    --ood results_v3/all_ood/ood.csv --out results_v3/analysis
+python3 recompute_tables.py --within results_v3/all_within/within_grid.csv \
+    --cross results_v3/all_cross/cross_context.csv \
+    --ood results_v3/all_ood/ood.csv \
+    --topology results_v3/topology \
+    --dc_regime_a results_v3/dc_baseline_regime_a.csv \
+    --dc_regime_b results_v3/topology/dc_baseline.csv \
+    --out results_v3/analysis
+python3 mmd_report.py --data_dir data_regime_b_contingencies_v3 --out docs/tables
 ```
 
-Apart from `mmd_report.py`, which reads `data_regime_b_contingencies`, step 4 needs no dataset and no
+Apart from `mmd_report.py`, which reads `data_regime_b_contingencies_v3`, step 4 needs no dataset and no
 checkpoint: it runs on the committed result CSVs, and the 12 tables it writes come back
-byte-identical to the ones in `results_norm/analysis/`. Verify that first — it is the
+byte-identical to the ones in `results_v3/analysis/`. Verify that first — it is the
 cheapest check that your environment agrees with the published numbers.
 
-`--normalize none` (the default) reproduces the raw-unit ablation instead, bit-identically to
-the earlier `results/` tables. `launch_normalized.sh` runs the same campaign sharded across
-cores; every job is resumable with `--skip_existing` because it checkpoints.
+`--normalize none` uses raw physical units, no scaling (not used for the published results).
+`launch_campaign.py` runs the same campaign sharded across cores; every job is
+resumable with `--skip_existing` because it checkpoints.
 
 Two protocol points those commands encode. **`configs/arch_config.json` is frozen**: the
 hyperparameters were selected once, on the Regime A *validation* split (`tune_budget.py`), and
@@ -534,19 +513,8 @@ gives the spread needed to compare an architecture gap against run-to-run noise.
 [`docs/Experimental_Design_transmission_GNN_generalization.md`](docs/Experimental_Design_transmission_GNN_generalization.md)
 and Decision 25 in [`docs/PowerGraph_to_ENGAGE_design_decisions.md`](docs/PowerGraph_to_ENGAGE_design_decisions.md).
 
-## Status
-**Steps 1–7 implemented** (grid conversion → loader → data generation → model
-zoo → experiments → validation gates → optional PowerGraph-Graph contingency
-harvesting). The pipeline runs end-to-end.
-
-**The benchmark campaign is complete**: six architectures × {within-grid,
-cross-context, leave-one-grid-out} under the frozen configs and `pu_zscore`, 336
-checkpoints, all replayed for physics-aware metrics. Results and their reading are
-in [`docs/Normalization_results.md`](docs/Normalization_results.md) §4, the tables
-themselves under `results_norm/`, and the audit status in
-[`docs/Audit_response.md`](docs/Audit_response.md).
-See [`docs/Layer2_implementation_plan.md`](docs/Layer2_implementation_plan.md) for
-the full plan and the reasoning behind each step.
+## History
+v3 = corrected topology (UK was missing 9/99 branches, IEEE118 2/186 and had edges on wrong buses). Earlier runs (v1 full_run, v2 data_a/data_full_v2 → results/, results_norm/), their docs and the audit are in branch `archive/full-history` and tag `archive-pre-v3`; release v1.0.0 has the pre-fix checkpoints.
 
 ## License
 TBD.

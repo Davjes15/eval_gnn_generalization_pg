@@ -7,7 +7,7 @@ experiments — including how to run a **single grid** or a **single GNN
 architecture**.
 
 It is a companion to:
-- `docs/Layer2_implementation_plan.md` — the plan and the *why* per step.
+- `docs/the implementation plan` — the plan and the *why* per step.
 - `docs/PowerGraph_to_ENGAGE_design_decisions.md` — the design decisions (D1–D12).
 - `docs/Experimental_Design_transmission_GNN_generalization.md` — research
   questions, experimental setup, methodology, threats to validity.
@@ -27,7 +27,7 @@ reporting per-quantity errors (P, Q, V, θ), a DC-power-flow baseline, and a
 topological-distance-aware g-score (NRMSE vs. MMD).
 
 Three scoping clauses belong with that paragraph rather than in the caveat list at the end
-(limitations L4, L6, L9 in [`Audit_response.md`](Audit_response.md)). The sampled contingencies
+(limitations L4, L6, L9 in the archived audit history). The sampled contingencies
 are random N-1/N-2 outages of in-service **lines** only: no transformer outages, no generator
 outages, no busbar splits, no switching actions, and a draw that islands the network is
 discarded rather than modelled. Only **active** demand varies across samples; reactive demand
@@ -81,7 +81,7 @@ flowchart TD
         C9 --> E5["DC-PF baseline"]
         E2 --> E6["g-score (NRMSE vs MMD)"]
         E4 --> E6
-        E2 --> E7["results/*.csv + summary.json<br/>(+ optional model .pt checkpoints)"]
+        E2 --> E7["results_v3/*.csv + summary.json<br/>(+ optional model .pt checkpoints)"]
         E3 --> E7
         E4 --> E7
         E5 --> E7
@@ -144,13 +144,13 @@ result. Powers are divided by `S_base = 100 MVA` and angles converted to radians
 then each of the four quantities is centred and scaled by statistics **fitted on
 training data only** — the training grid's split for within-grid and
 cross-context, the pooled retained grids for an OOD fold, never the unseen grid.
-Unseen grids are scored on their 100-sample test split; an all-1 000-sample robustness check on
-the retrained models is planned (Decision 33, L14).
+Unseen grids are scored on their 100-sample test split in the published results; the
+1 000-sample robustness check is not part of the published campaign.
 Features and targets share the scaler because `inference()` re-injects known
 values taken from `x` into the prediction, so the two must live in the same space.
 Predictions are de-normalized before any metric is computed, and the DC baseline
-is never scaled. `--normalize none` is the raw-unit ablation and reproduces the
-pre-A2 artifacts bit-identically. Per-unit alone is a no-op here (all four cases
+is never scaled. `--normalize none` uses raw physical units, no scaling (not used
+for the published results). Per-unit alone is a no-op here (all four cases
 have `sn_mva = 100`); the z-score is what fixes the real defect, voltage magnitude
 contributing ~5e-8 of the training loss. See `docs/Normalization_assessment.md`.
 
@@ -192,8 +192,6 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
     unseen TEST grids (3 points each). NOTE: the default `bounds=2` percentile trim
     assumes many samples; with only 3 points it collapses (std=0, range=0), so the
     pooled no-trim variant `gscore_cc_aggregate.csv` is the appropriate reading.
-    (The exploratory run's `full_run/results/gscore_smallN.csv` was the earlier
-    form of that variant; the current pipeline does not emit it.)
   - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
     grids (one point per grid → up to 4 points), where the topological distance is
     the **pooled** Laplacian-MMD from each held-out grid to the **mixture** of its
@@ -220,12 +218,12 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
 | `models.py` | 4 | Six edge-aware GNNs behind one interface | `BasePFGNN`, `GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NN_CONV`, `MODELS` | `Data` batch | `pred (N,4)` |
 | `training_utils.py` | 5 | Training loop + metrics + DC baseline | `train`, `evaluate`, `nrmse_range`, `nrmse_per_quantity`, `test_dc_pf`, `get_generalization_score` | datasets + models | trained model, metrics |
 | `mmd_utils.py` | 5 | Distribution-based MMD | `evaluate_mmd`, `mmd`, `*_histogram` | two datasets | (mmd_degree, mmd_laplacian) |
-| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `compute_ood_gscores`, `ood_distances`, `dc_baseline` | datasets + `MODELS` | `results/*.csv`, `.pt` checkpoints |
+| `experiments.py` | 5 | Orchestrator: CC + OOD + MMD + DC + g-score | `run_cross_context`, `run_ood`, `compute_gscores`, `compute_ood_gscores`, `ood_distances`, `dc_baseline` | datasets + `MODELS` | `results_v3/*.csv`, `.pt` checkpoints |
 | `validate.py` | 6 | Correctness gates | gate A–E, `gate_split_hygiene` (H) | cases + datasets | pass/fail report |
 | `normalization.py` | 5 | Feature/target scaling behind one flag | `Scaler.fit/transform/inverse_targets`, `MODES` | training split | scaler + scaled datasets |
 | `physics_metrics.py` | 5 | Physics-aware reporting layer | `predicted_mask`, `predicted_only_metrics`, `error_tails`, `violation_rates` | preds + truth (physical units) | per-quantity + violation metrics |
-| `eval_checkpoints.py` | 5 | Replay saved weights without retraining | `_scaler_for`, walk of `ckpt_norm/` | checkpoints + datasets | `results_norm/physics/physics_metrics.csv` |
-| `checkpoint_index.py` | 6 | Map every results row to a weight file | `parse_name`, `sha256`, `n_params` | `ckpt_norm/` | `docs/tables/checkpoint_index.csv` |
+| `eval_checkpoints.py` | 5 | Replay saved weights without retraining | `_scaler_for`, walk of `ckpt_v3/` | checkpoints + datasets | `results_v3/physics/physics_metrics.csv` |
+| `checkpoint_index.py` | 6 | Map every results row to a weight file | `parse_name`, `sha256`, `n_params` | `ckpt_v3/` | `results_v3/checkpoint_index.csv` |
 | `mmd_report.py` | 6 | Grid-distance tables, biased + unbiased | — | dataset dir | `docs/tables/mmd_*.csv` |
 
 **Connection summary.** Step 1 is a one-time conversion (outputs are committed).
@@ -290,17 +288,17 @@ transfer arm, and they are generated with different protocols.
 ```bash
 # Regime A -- fixed topology, one demand snapshot per sample
 python3 transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology_v3
 
 # Regime B -- random N-1/N-2 LINE outages, disjoint blocked demand windows (A5)
 python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
 ```
 
 ### 6.3 Validate (required before training)
 ```bash
-python3 validate.py --data_dir data_regime_a_fixed_topology --regime a          # fixed topology: skips gate E
-python3 validate.py --data_dir data_regime_b_contingencies --expect_blocked   # gate H: split hygiene
+python3 validate.py --data_dir data_regime_a_fixed_topology_v3 --regime a          # fixed topology: skips gate E
+python3 validate.py --data_dir data_regime_b_contingencies_v3 --expect_blocked   # gate H: split hygiene
 ```
 
 ### 6.4 Run the experiments
@@ -309,38 +307,38 @@ architectures x 3 arms) through a bounded process pool, each with
 `OMP_NUM_THREADS=1`, `--normalize pu_zscore`, `--save_models` and
 `--skip_existing` so an interrupted campaign resumes:
 ```bash
-bash launch_normalized.sh 7 within cross ood     # 7 = pool size
+bash launch_campaign.py 7 within cross ood     # 7 = pool size
 ```
 or a single arm by hand:
 ```bash
-python3 experiments.py --experiment both --data_dir data_regime_b_contingencies --out results \
+python3 experiments.py --experiment both --data_dir data_regime_b_contingencies_v3 --out results_v3 \
     --epochs 200 --normalize pu_zscore --arch_config configs/arch_config.json \
     --seeds 0 100 300 700 1000 --save_models models
 ```
 NNConv is the exception to that seed list: it ran `--seeds 0 100 300`, a deliberate and approved
 compute trade-off (limitation L2). It therefore contributes 12 rows per arm where the other five
-contribute 20 (48 vs 80 for cross-context; `results_norm/all_*/*.csv`), which affects every
+contribute 20 (48 vs 80 for cross-context; `results_v3/all_*/*.csv`), which affects every
 pooled mean and every ranking it appears in and is why only 12 of 20 (grid, seed) cells are
 complete for the rank correlation. Seeds vary training randomness only — weight init and batch
 order over one generated dataset, with no resampling — so the error bars they produce say
 nothing about variability across demand or contingency draws (L5).
 Then replay the saved weights for the physics-aware report, without retraining:
 ```bash
-python3 eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology \
-    --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm/physics
-python3 checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
+python3 eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 \
+    --data_b data_regime_b_contingencies_v3 --normalize pu_zscore --out results_v3/physics
+python3 checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
 ```
 The campaign runs with `--skip_mmd`, so the model-independent tables (MMD
 matrices, pooled OOD distances, DC baseline) are computed once for the whole
 campaign instead of 18 times in parallel with the training:
 ```bash
-python3 experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies \
-    --out results_norm/topology --regime_tag B --models gcn \
+python3 experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies_v3 \
+    --out results_v3/topology --regime_tag B --models gcn \
     --arch_config configs/arch_config.json
 ```
 The merge / ranking / table chain that consumes all of this is one block in
 `docs/Reproducibility.md` §5.
-Outputs in `results/`: `cross_context.csv`, `ood.csv`, `transfer_matrix_<model>.csv`,
+Outputs in `results_v3/`: `cross_context.csv`, `ood.csv`, `transfer_matrix_<model>.csv`,
 `mmd_degree.csv`, `mmd_laplacian.csv`, `dc_baseline.csv`, `gscore.csv` (cross-context),
 `ood_distance.csv` (held-out→train distances), `gscore_ood.csv` (OOD, better-posed at
 small N), `summary.json`.
@@ -388,7 +386,7 @@ import json, torch
 from models import MODELS
 cfg = json.load(open("configs/arch_config.json"))["configs"]["gat"]
 m = MODELS["gat"](input_dim=7, hidden=cfg["hidden"], num_layers=cfg["num_layers"])
-m.load_state_dict(torch.load("ckpt_norm/cross_gat/cc_gat_IEEE39_s0.pt",
+m.load_state_dict(torch.load("ckpt_v3/cross_gat/cc_gat_IEEE39_s0.pt",
                              map_location="cpu", weights_only=True))
 m.eval()
 ```
@@ -411,22 +409,19 @@ Relevant CLI flags:
 ---
 
 ## 8. Known caveats (observed in the full run)
-- `arma_gnn` OOD held-out UK produced NaN in the **inherited-config run**, which
-  turned out to be the negative-edge-weight bug, not an intrinsic instability;
-  fixed in Decision 16 and no longer observed. Kept here because the superseded
-  tables in `full_run/results/` still show it.
+- One v3 GCN run (seed 1000, IEEE39→IEEE118) is non-finite; the failure mechanism
+  and affected predictions are documented in `docs/Results.md` §4bis.
 - `gin`/`nnconv`/`transformer` transfer *from* IEEE118 to small grids is unstable
   (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
   scale as much as structure (L4).
 - The Regime A → Regime B step changes the temporal split **and** the topology at once, so the
-  `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` mixes the two, and
+  `same_grid_factor` in `results_v3/analysis/protocol_decomposition.csv` mixes the two, and
   the NRMSE denominator as well, so it is not quoted as a cost (L8, L10). The same-grid
   evidence is the rank correlation.
 - Per-quantity V/θ NRMSE can exceed 1 because V has a tiny physical range; read
-  P/Q/θ alongside V rather than the aggregate alone. Under `--normalize none` this
-  was not only a reading hazard but a training defect — V carried ~5e-8 of the
-  loss, so every architecture lost to the constant `V ≡ 1.0` in-distribution. The
-  `pu_zscore` protocol is what removes it (audit item A2).
+  P/Q/θ alongside V rather than the aggregate alone. The pre-fix design-stage
+  measurements explaining the normalization choice are retained in
+  `docs/Normalization_assessment.md`.
 - Two of the four target columns per bus are re-injected ground truth, so the
   four-column aggregate partly scores the inputs. Use the predicted-entry-only
   columns from `eval_checkpoints.py` for any statement about model quality.

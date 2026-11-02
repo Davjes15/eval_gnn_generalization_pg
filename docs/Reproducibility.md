@@ -3,15 +3,9 @@
 ## MMD graph mode
 
 The paper uses the default `--mmd_graph multi`: every in-service circuit counts.
-Use `--mmd_graph simple` only to reproduce legacy committed tables. The electrical
-descriptor is unchanged. Current-data multigraph smoke tables are provisional;
-final numbers require P9 regeneration.
-
 All MMD callers default to `--mmd_bandwidth reference --mmd_bandwidth_file
 configs/mmd_bandwidth.json`. The ruler is shared across both regimes, per
-descriptor and graph mode (reactance is mode-independent). Use **both**
-`--mmd_graph simple --mmd_bandwidth pair` for committed legacy numbers; a
-simple graph with the reference ruler is not the legacy computation.
+descriptor and graph mode (reactance is mode-independent). Use `--mmd_graph multi --mmd_bandwidth reference` for the published tables.
 
 Audit item **A4**. The finding was that the results could not be reproduced from
 the repository: the tuning artifacts the configuration tables cite were not
@@ -63,22 +57,22 @@ Three dataset directories exist and they are not interchangeable.
 
 | directory | regime | protocol | status |
 |---|---|---|---|
-| `data_regime_a_fixed_topology` | A (within-grid) | k = 0, no contingencies, `--unique_demand` | **final** |
-| `data_full` | B (transfer) | k <= 2, random time sampling | **superseded** -- shared demand snapshots across splits (A5) |
-| `data_regime_b_contingencies` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
+| `data_regime_a_fixed_topology_v3` | A (within-grid) | k = 0, no contingencies, `--unique_demand` | **final** |
+| `data_regime_b_contingencies_v3` | B (transfer) | k <= 2, `--time_split blocked` | **final** |
+| `data_regime_a_blocked_v3` | A (within-grid) | k = 0, `--time_split blocked` | optional leakage check; not used in published results |
 
 `transmission_graph_gen.py --q_mode {base, constant_pf}` selects how reactive
 demand changes. `base` is the default and is what all committed data uses: only
 active demand changes and each load's `q_mvar` stays at its case value, matching
-PowerGraph's `gendataopf.m` (limitation L6 in [`Audit_response.md`](Audit_response.md)).
+PowerGraph's `gendataopf.m` (limitation L6 in the archived audit history).
 `constant_pf` scales each load's Q with its P to keep its case Q/P ratio. The
 `q_mode` column records the choice in each `dataset_src.csv`; older files without
 that column mean `base`. `k <= 2` means random N-1/N-2 outages of in-service
 **lines** only -- no transformer outages, no generator outages, no busbar splits, no switching
 actions, and a draw that islands the network is rejected and resampled rather than modelled
-(L9). `data_regime_b_contingencies` also changes the split from `data_regime_a_fixed_topology`: it differs from Regime A in the
+(L9). `data_regime_b_contingencies_v3` also changes the split from `data_regime_a_fixed_topology_v3`: it differs from Regime A in the
 blocked temporal split **and** the contingencies at once, which is why the `same_grid_factor`
-in `results_norm/analysis/protocol_decomposition.csv` is not quoted as a cost: it mixes the two,
+in `results_v3/analysis/protocol_decomposition.csv` is not quoted as a cost: it mixes the two,
 and the NRMSE denominator too (L8, L10).
 
 Regeneration commands:
@@ -86,7 +80,7 @@ Regeneration commands:
 ```bash
 # Regime A -- fixed topology, one demand snapshot per sample
 python transmission_graph_gen.py --grid all --max_k 0 --unique_demand \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology_v3
 
 # Optional blocked Regime A (not used in the paper)
 python transmission_graph_gen.py --grid all --max_k 0 --time_split blocked \
@@ -96,11 +90,11 @@ python validate.py --data_dir <folder> --regime a --expect_blocked
 # Regime B -- random N-1/N-2 line outages, blocked temporal split (A5)
 python transmission_graph_gen.py --grid all --max_k 2 \
     --time_split blocked \
-    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+    --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
 
 # After generating BOTH regimes, before experiments.py or the MMD validation gate:
 python mmd_bandwidth.py \
-    --data_dirs data_regime_a_fixed_topology data_regime_b_contingencies \
+    --data_dirs data_regime_a_fixed_topology_v3 data_regime_b_contingencies_v3 \
     --out configs/mmd_bandwidth.json
 ```
 
@@ -109,8 +103,7 @@ medians in chunks, and records SHA-256 fingerprints. Regenerating any reference
 train/test dataset invalidates the ruler: recompute it before experiments,
 `mmd_report.py`, `validate.py`, or the generated-data EDA. Additional datasets
 (including blocked Regime A) reuse it without refitting. The checked-in JSON has
-`"provisional": true`: it is only a smoke test on current data. P9 must replace it
-after regeneration; `--provisional` is for smoke rulers only.
+The reference ruler is committed in `configs/mmd_bandwidth.json` and is used by the published v3 tables.
 
 Reference reports include MMD and MMD² columns and the bandwidth mode; their
 filenames end in `_reference.csv`. The `simple`/`pair` report intentionally keeps
@@ -123,14 +116,11 @@ Every split directory carries a `dataset_src.csv` with one row per sample:
 lets anyone re-derive which demand snapshot, outaged lines and Q mode produced
 each graph, and it is what makes the split-hygiene claim checkable rather than
 asserted.
-The **tensors are not in the repository** (40 MB + 39 MB of `.pt`; `data_full` is a
-symlink to a working directory), but all 24 provenance files are, under
-`docs/provenance/<dataset>_<grid>_<split>.csv`, so the sampling can be audited
-without the archive. Releasing the tensors and the checkpoints needs a data
-release (e.g. Zenodo), not a git commit; until then the reproduction path is
-regenerate-then-verify, and `docs/provenance/` is what a verification is against.
+The v3 dataset tensors and their per-split `dataset_src.csv` provenance are
+committed in the repository. Regeneration is also supported; it produces a
+fresh draw from the same seeded protocol, not bit-identical tensors.
 
-For `data_regime_b_contingencies` the realised demand-time windows are:
+For `data_regime_b_contingencies_v3` the realised demand-time windows are:
 
 | grid | train `t_idx` | val `t_idx` | test `t_idx` |
 |---|---|---|---|
@@ -148,12 +138,12 @@ sit inside them because samples whose AC solve failed or whose voltages left
 Verify a dataset directory before using it:
 
 ```bash
-python validate.py --data_dir data_regime_b_contingencies --expect_blocked   # gate H = split hygiene
+python validate.py --data_dir data_regime_b_contingencies_v3 --expect_blocked   # gate H = split hygiene
 python tests/test_split_hygiene.py
 ```
 
 Regeneration is not bit-exact: the two commands above resample demand snapshots
-and contingencies, so a regenerated `data_regime_b_contingencies` is a *different draw from the
+and contingencies, so a regenerated `data_regime_b_contingencies_v3` is a *different draw from the
 same protocol*, not the same file. What must be reproduced is the protocol
 (counts, disjoint blocked windows, `k` distribution, convergence) -- which is
 exactly what `validate.py --expect_blocked` checks, and why the realised windows
@@ -185,22 +175,22 @@ architectures under one recipe tuned elsewhere, not six architectures each at it
 The final normalized campaign is one script:
 
 ```bash
-bash launch_normalized.sh 7 within cross ood     # 7 = size of the process pool
+python launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7
 ```
 
 which expands to 18 independent jobs of the form
 
 ```bash
 OMP_NUM_THREADS=1 python -u experiments.py \
-    --experiment within --data_dir data_regime_a_fixed_topology --batch_size 32 \
+    --experiment within --data_dir data_regime_a_fixed_topology_v3 --batch_size 32 \
     --models gcn --seeds 0 100 300 700 1000 --epochs 200 \
     --arch_config configs/arch_config.json \
     --normalize pu_zscore --regime_tag A \
-    --out results_norm/within_gcn --save_models ckpt_norm/within_gcn \
+    --out results_v3/within_gcn --save_models ckpt_v3/within_gcn \
     --skip_existing
 ```
 
-with `--experiment cross` / `--experiment ood` on `data_regime_b_contingencies` (and
+with `--experiment cross` / `--experiment ood` on `data_regime_b_contingencies_v3` (and
 `--batch_size_ood 96`) for the transfer arms. `--skip_existing` makes a job
 resumable: an interrupted arm restarts at the first missing checkpoint rather than
 from the beginning.
@@ -215,15 +205,14 @@ and appends start/finish/fail events to its campaign ledger. `--status` reports
 marker counts. Merge its result directories with `gather_results.py --seed_shards`.
 
 ```bash
-python launch_campaign.py --data_a data_regime_a_fixed_topology \
-    --data_b data_regime_b_contingencies --out results_v3 \
+python launch_campaign.py --data_a data_regime_a_fixed_topology_v3 \
+    --data_b data_regime_b_contingencies_v3 --out results_v3 \
     --ckpt ckpt_v3 --logs logs_v3 --pool 7
 ```
 
-Two representations are supported and both are reported: `--normalize pu_zscore`
-is the final protocol (A2), `--normalize none` is the raw-unit ablation that
-reproduces every pre-A2 artifact bit-identically. All metrics are computed after
-de-normalization, in physical units, in both cases.
+Two representations are supported: `--normalize pu_zscore` is the published
+protocol; `--normalize none` uses raw physical units, no scaling (not used for
+the published results). Metrics are computed in physical units in both cases.
 
 ---
 
@@ -237,47 +226,28 @@ de-normalization, in physical units, in both cases.
 | cross-context | `cc_<model>_<train_grid>_s<seed>.pt` | the **training** grid (tested on all four) |
 | leave-one-out | `ood_<model>_heldout_<grid>_s<seed>.pt` | the **held-out** grid (trained on the other three) |
 
-The weights are too large for git (593 MB compressed), so they ship as the
-`ckpt_norm.tar.gz` asset of release `v1.0.0` and the repository carries the
-**index**: one row per file with its relative path, byte size, SHA-256 and
-parameter count. That is enough to name the file behind any results row and to
-verify a downloaded copy. Fetch, verify and unpack the archive with:
-
-```bash
-curl -L -o ckpt_norm.tar.gz \
-  https://github.com/Davjes15/eval_gnn_generalization_pg/releases/download/v1.0.0/ckpt_norm.tar.gz
-sha256sum -c <<< "b3e6ee9e3dbdadc1b729abbeb51364a4086b49c91ca8f8beb6fb114331ebfcd7  ckpt_norm.tar.gz"
-tar -xzf ckpt_norm.tar.gz
-```
-
-Behind a firewall that allows `api.github.com` but not `github.com`, the same
-bytes come from the asset endpoint instead (this is the path the clean-room check
-below used):
-
-```bash
-curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" \
-  -o ckpt_norm.tar.gz \
-  https://api.github.com/repos/Davjes15/eval_gnn_generalization_pg/releases/assets/535605900
-```
-
-A clean clone of `main`, the committed datasets and this archive reproduced the
-committed `results_norm/physics/physics_metrics.csv` rows **exactly** (all 46
+The weights are too large for git and ship as separate assets in release
+`v3.0.0`. Their links and SHA-256 values are listed in the README. The repository
+carries the **index**: one row per file with its relative path, byte size,
+SHA-256 and parameter count. A clean clone of `main`, the committed datasets and
+the v3.0.0 assets reproduced the
+committed `results_v3/physics/physics_metrics.csv` rows **exactly** (all 46
 numeric columns, both a `within` and an `ood` slice, relative deviation 0), and
 `checkpoint_index.py` re-derived all 336 SHA-256s and parameter counts.
 
 Build and check the index with:
 
 ```bash
-python checkpoint_index.py --ckpt_root ckpt_norm --out docs/tables/checkpoint_index.csv
+python checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
 python tests/test_checkpoint_index.py
 ```
 
 and the physics-aware evaluation replays the whole tree without training anything:
 
 ```bash
-python eval_checkpoints.py --ckpt_root ckpt_norm \
-    --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
-    --normalize pu_zscore --out results_norm/physics
+python eval_checkpoints.py --ckpt_root ckpt_v3 \
+    --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 \
+    --normalize pu_zscore --out results_v3/physics
 ```
 
 Adding `--feasibility` scores the AC power-balance residual and the branch
@@ -289,9 +259,9 @@ generated datasets, because the post-contingency networks are rebuilt from
 
 ```bash
 POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
-python eval_checkpoints.py --ckpt_root ckpt_norm \
-    --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies \
-    --normalize pu_zscore --out results_norm/physics --feasibility
+python eval_checkpoints.py --ckpt_root ckpt_v3 \
+    --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 \
+    --normalize pu_zscore --out results_v3/physics --feasibility
 python tests/test_ac_feasibility.py     # same env var; calibrates the checker
                                         # against pandapower's own solution
 ```
@@ -299,7 +269,7 @@ python tests/test_ac_feasibility.py     # same env var; calibrates the checker
 Every row carries `ac_dp_true_max_mw` and `branch_loading_max_pct_true`, the same
 quantities evaluated on the labels, so a reader can see the reconstruction floor
 and the true thermal state next to the model's numbers. Neither this pass nor any
-other replay writes to `ckpt_norm/`.
+other replay writes to `ckpt_v3/`.
 
 The replay scores unseen grids on their 100-sample test split, as training did. Decision 33 adds
 a robustness pass over all 1 000 samples of each unseen grid, to be run on the retrained
@@ -311,12 +281,12 @@ through the same checker -- and the summary joins them onto the model rows:
 
 ```bash
 POWERGRAPH_NODE_DIR=/path/to/PowerGraph-Node-main/13_Power_system \
-python dc_feasibility.py --data data_regime_a_fixed_topology data_regime_b_contingencies \
-    --out results_norm/physics/dc_feasibility.csv
+python dc_feasibility.py --data data_regime_a_fixed_topology_v3 data_regime_b_contingencies_v3 \
+    --out results_v3/physics/dc_feasibility.csv
 python summarize_feasibility.py \
-    --physics results_norm/physics/physics_metrics.csv \
-    --baselines results_norm/physics/dc_feasibility.csv \
-    --out docs/tables/ac_feasibility_norm.csv
+    --physics results_v3/physics/physics_metrics.csv \
+    --baselines results_v3/physics/dc_feasibility.csv \
+    --out results_v3/analysis/ac_feasibility_norm.csv
 ```
 
 The summary drops any (arm, model, train grid, seed) group in which a checkpoint
@@ -331,51 +301,23 @@ for the within-grid and cross-context arms, pooled train splits of the three
 retained grids for an OOD fold -- because a scaler fitted on anything else would
 leak, and a scaler fitted differently would not reproduce the reported number.
 
-**Not every result has a checkpoint.** The pre-A2 raw-unit campaign
-(`results/`) was run before checkpointing was made a requirement, and its ARMA
-checkpoints were deleted because they predated the softplus fix and contained NaN
-tensors (`ckpt_a/PROVENANCE.txt`, `ckpt_b/PROVENANCE.txt`). Those rows reproduce
-from seed only. Everything in the final normalized campaign has weights on disk
-and an index entry (336 checkpoints, all replayed).
-
 **The result tables themselves are in the repository**, so a reviewer can check
 every number without the weights or the tensors: the merged per-run rows
-(`results_norm/all_within/within_grid.csv`, `all_cross/cross_context.csv`,
+(`results_v3/all_within/within_grid.csv`, `all_cross/cross_context.csv`,
 `all_ood/ood.csv`, each with the `summary.json` that records the protocol the
 shards were merged under), the 672-row physics replay
-(`results_norm/physics/physics_metrics.csv`, with its floor/DC reference rows in
-`results_norm/physics/dc_feasibility.csv`), the topology and DC tables
-(`results_norm/topology/`, `results_norm/dc_baseline_regime_a.csv`) and everything
-derived from them (`results_norm/analysis/`, including `nonfinite_runs.csv` and
+(`results_v3/physics/physics_metrics.csv`, with its floor/DC reference rows in
+`results_v3/physics/dc_feasibility.csv`), the topology and DC tables
+(`results_v3/topology/`, `results_v3/dc_baseline_regime_a.csv`) and everything
+derived from them (`results_v3/analysis/`, including `nonfinite_runs.csv` and
 the exact permutation test `rank_permutation_test.csv`). Re-running the two
 analysis commands in §5 on those CSVs
-must reproduce the tables in `docs/Normalization_results.md` §4 exactly; that is
+must reproduce the tables in `docs/Results.md` §4 exactly; that is
 the cheapest end-to-end check of this repository.
 
-**Which branch holds what.** Use **`main`**: it is the consolidation of the
-complete pipeline (`step-8-regime-comparison`) with the exploratory material that
-had only ever lived on `main`, so it is a superset of every branch. `step-1` …
-`step-4` and `step-7` are strict ancestors of `step-8-regime-comparison`, and the
-only commits `step-5`/`step-6` hold that it does not are earlier forms of
-`experiments.py` (OOD g-score, pooled MMD, no-trim CC aggregate) that were all
-forward-propagated, so no code or document is stranded on a step branch; the step
-branches are retained as development history only.
-
-`main` additionally carries the **exploratory raw-unit run**: `full_run/`
-(its own datasets, checkpoints and result tables) and `docs/figures/`. Documents
-here that cite `full_run/results/...` (e.g. the legacy `gscore_smallN.csv`) do so
-deliberately — those numbers predate A1-A8 and are never the reported result.
-
-**Where the artifacts are.** The two generated datasets (`data_regime_a_fixed_topology/`,
-`data_regime_b_contingencies/`, ~79 MB) are **committed**, so the replay above runs against the
-exact tensors the reported numbers came from; the 336 checkpoints are the
-`v1.0.0` release asset above. `docs/tables/artifact_manifest.csv` carries the
-SHA-256 and byte size of every committed dataset file and of the archive, so an
-out-of-band copy can be verified. Regeneration (§2-§4) remains supported and
-gives statistically equivalent, not bit-identical, datasets: the generator is
-seeded per grid, but pandapower and PyTorch versions move underneath it. Every
-result table is re-derivable from the committed CSVs alone (§5), with no dataset
-and no checkpoint.
+Earlier runs, datasets, their documentation, and the audit history are preserved
+in branch `archive/full-history` and tag `archive-pre-v3`; release `v1.0.0` has
+the pre-fix checkpoints.
 
 ---
 
@@ -413,42 +355,42 @@ six architectures.
 MODELS="gcn arma_gnn gat gin transformer nnconv"
 
 # 1a. consolidate the architectures whose runs were split by seed / held-out grid
-python gather_results.py --shards "results_norm/ood_arma_gnn_s*" --file ood.csv \
-    --out results_norm/ood_arma_gnn_merged --models arma_gnn --seed_shards
-python gather_results.py --shards "results_norm/ood_nnconv_s*" --file ood.csv \
-    --out results_norm/ood_nnconv_merged --models nnconv --seed_shards
+python gather_results.py --shards "results_v3/ood_arma_gnn_s*" --file ood.csv \
+    --out results_v3/ood_arma_gnn_merged --models arma_gnn --seed_shards
+python gather_results.py --shards "results_v3/ood_nnconv_s*" --file ood.csv \
+    --out results_v3/ood_nnconv_merged --models nnconv --seed_shards
 
 # 1b. merge the six architectures into one directory per arm
-python gather_results.py --shards "results_norm/within_*" --file within_grid.csv \
-    --out results_norm/all_within --models $MODELS --seed_shards
-python gather_results.py --shards "results_norm/cross_*" --file cross_context.csv \
-    --out results_norm/all_cross --models $MODELS --seed_shards
-python gather_results.py --shards "results_norm/ood_*merged" "results_norm/ood_g*" \
-    "results_norm/ood_transformer" --file ood.csv \
-    --out results_norm/all_ood --models $MODELS --seed_shards
+python gather_results.py --shards "results_v3/within_*" --file within_grid.csv \
+    --out results_v3/all_within --models $MODELS --seed_shards
+python gather_results.py --shards "results_v3/cross_*" --file cross_context.csv \
+    --out results_v3/all_cross --models $MODELS --seed_shards
+python gather_results.py --shards "results_v3/ood_*merged" "results_v3/ood_g*" \
+    "results_v3/ood_transformer" --file ood.csv \
+    --out results_v3/all_ood --models $MODELS --seed_shards
 
 # 2. the model-independent tables (see below) -- one shared copy
-python experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies \
-    --out results_norm/topology --regime_tag B --models gcn \
+python experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies_v3 \
+    --out results_v3/topology --regime_tag B --models gcn \
     --arch_config configs/arch_config.json
 
 # 3. the DC baseline on the Regime A data (the topology shard covers Regime B)
-python recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology \
-    --out results_norm/dc_baseline_regime_a.csv
+python recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology_v3 \
+    --out results_v3/dc_baseline_regime_a.csv
 
 # 4. ranking and downstream tables
-python rank_analysis.py --regime_a results_norm/all_within/within_grid.csv \
-    --cross results_norm/all_cross/cross_context.csv \
-    --ood results_norm/all_ood/ood.csv \
-    --out results_norm/analysis
-python recompute_tables.py --within results_norm/all_within/within_grid.csv \
-    --cross results_norm/all_cross/cross_context.csv \
-    --ood results_norm/all_ood/ood.csv \
-    --topology results_norm/topology \
-    --dc_regime_a results_norm/dc_baseline_regime_a.csv \
-    --dc_regime_b results_norm/topology/dc_baseline.csv \
-    --out results_norm/analysis
-python mmd_report.py --data_dir data_regime_b_contingencies --out docs/tables   # A7 distances
+python rank_analysis.py --regime_a results_v3/all_within/within_grid.csv \
+    --cross results_v3/all_cross/cross_context.csv \
+    --ood results_v3/all_ood/ood.csv \
+    --out results_v3/analysis
+python recompute_tables.py --within results_v3/all_within/within_grid.csv \
+    --cross results_v3/all_cross/cross_context.csv \
+    --ood results_v3/all_ood/ood.csv \
+    --topology results_v3/topology \
+    --dc_regime_a results_v3/dc_baseline_regime_a.csv \
+    --dc_regime_b results_v3/topology/dc_baseline.csv \
+    --out results_v3/analysis
+python mmd_report.py --data_dir data_regime_b_contingencies_v3 --out docs/tables   # A7 distances
 ```
 
 **Step 4 needs no GPU, no dataset and no checkpoint** (nor does
@@ -460,7 +402,7 @@ reproduces
 `rank_permutation_test.csv`, `recompute_tables.py` reproduces `dc_comparison.csv`,
 `gscore.csv`, `gscore_cc_aggregate.csv`, `gscore_ood.csv`, `per_quantity.csv` and
 `nonfinite_runs.csv`, and `summarize_feasibility.py` reproduces
-`docs/tables/ac_feasibility_norm.csv` — byte-for-byte identical to the committed
+`results_v3/analysis/ac_feasibility_norm.csv` — byte-for-byte identical to the committed
 files in every case.
 
 **Why step 2 exists.** The MMD matrix, the pooled OOD distances and the DC
@@ -501,9 +443,9 @@ Stated because it cannot be fixed by tooling:
 * **CPU determinism only.** Runs are reproducible on the same platform with the
   pinned versions; torch does not promise bit-identical results across versions or
   hardware, so replay-from-checkpoint is the stronger of the two paths.
-* **Tensors are in git, weights are a release asset.** Both generated datasets are
-  committed and the 336 checkpoints ship as `ckpt_norm.tar.gz` on tag `v1.0.0`
-  (§3), so the published numbers are reproducible to the digit by replay -- a
+* **Tensors are in git, weights are release assets.** Both generated datasets are
+  committed and the checkpoints ship in three assets on release `v3.0.0`
+  (see the download table in `README.md`), so the published numbers are reproducible to the digit by replay -- a
   clean clone plus that archive reproduced the committed `physics_metrics.csv`
   rows exactly. What is *not* in git is the upstream PowerGraph-Node demand and
   case data, needed only to regenerate datasets or to run `--feasibility`.

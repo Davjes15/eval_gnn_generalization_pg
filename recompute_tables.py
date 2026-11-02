@@ -8,8 +8,7 @@ contain. Once the shards are merged (`gather_results.py`), those per-shard
 tables are stale: the cross-context aggregate g-score and the OOD g-score are
 per-model, but the tables that RANK models must be computed once over all six.
 Recomputing here also guarantees every headline number comes from the tuned
-configurations (design decision D19); the inherited-config tables in
-`full_run/results/` are never an input.
+configurations; results from other campaigns are never an input.
 
 WHAT IT COMPUTES
   gscore.csv               per (seed, model, train grid), unseen test grids
@@ -23,7 +22,8 @@ WHAT IT COMPUTES
   dc_comparison.csv        per (arm, model, quantity) the GNN error, the DC-PF
                            error on the same grids, and their ratio. The DC
                            table is per ARM, because Regime A and Regime B were
-                           generated separately (`data_regime_a_fixed_topology` vs `data_full`).
+                           generated separately (`data_regime_a_fixed_topology_v3` vs
+                           `data_regime_b_contingencies_v3`).
 
 Topology-only inputs (`mmd_laplacian.csv`, `ood_distance.csv`) are
 model-independent, so any tuned shard's copy is valid; the script checks the
@@ -32,12 +32,12 @@ because the per-shard `dc_baseline.csv` files predate the reactive-power fix
 (see recompute_dc_baseline.py) and are wrong.
 
 HOW TO RUN
-  python3 recompute_tables.py --cross results/regime_b/cross_context.csv \
-      --ood results/regime_b/ood.csv --within results/regime_a/within_grid.csv \
+  python3 recompute_tables.py --cross results_v3/regime_b/cross_context.csv \
+      --ood results_v3/regime_b/ood.csv --within results_v3/regime_a/within_grid.csv \
       --topology results_tuned/gcn \
-      --dc_regime_a results/analysis/dc_baseline_regime_a.csv \
-      --dc_regime_b results/analysis/dc_baseline_regime_b.csv \
-      --out results/analysis
+      --dc_regime_a results_v3/analysis/dc_baseline_regime_a.csv \
+      --dc_regime_b results_v3/analysis/dc_baseline_regime_b.csv \
+      --out results_v3/analysis
 """
 import argparse
 import json
@@ -62,11 +62,12 @@ def parse_args():
                    help="tuned shard dirs holding the model-independent "
                         "mmd_laplacian.csv / ood_distance.csv / dc_baseline.csv")
     p.add_argument("--dc_regime_a", required=True,
-                   help="DC baseline table for the Regime A data (data_regime_a_fixed_topology), "
+                   help="DC baseline table for the Regime A data "
+                        "(data_regime_a_fixed_topology_v3), "
                         "from recompute_dc_baseline.py")
     p.add_argument("--dc_regime_b", required=True,
                    help="DC baseline table for the Regime B data "
-                        "(data_regime_b_contingencies)")
+                        "(data_regime_b_contingencies_v3)")
     p.add_argument("--out", required=True)
     return p.parse_args()
 

@@ -38,7 +38,8 @@ FIXED-TOPOLOGY REGIME (`--regime a`)
 HOW TO RUN
     python3 validate.py                       # conversion checks only
     python3 validate.py --data_dir data       # + data/contract/topology/MMD checks
-    python3 validate.py --data_dir data_regime_a_fixed_topology --regime a   # fixed-topology gates
+    # Fixed-topology gates:
+    python3 validate.py --data_dir data_regime_a_fixed_topology_v3 --regime a
     python3 validate.py --data_dir <folder> --regime a --expect_blocked       # blocked Regime A
 Exit code is non-zero if any gate fails (usable in CI).
 """

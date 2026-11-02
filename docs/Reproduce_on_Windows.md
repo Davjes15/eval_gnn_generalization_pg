@@ -5,16 +5,7 @@ Windows PC with an NVIDIA GPU** and reproduce the study's results. It assumes yo
 have **no environment yet**. Commands are written for **PowerShell** (the default
 Windows terminal, and the integrated terminal in VS Code).
 
-> **Use `main`** — it contains *all* the code (data generation, the 6 models, the
-> experiment driver, the frozen configurations, normalization, the validation
-> gates, the checkpoint-replay tooling, the committed grid files) *and* the
-> documentation and result CSVs. The `step-1-…` → `step-8-…` branches are kept
-> only as development history; `step-8-regime-comparison` is the branch this
-> content was consolidated from, so it is equivalent for the runnable pipeline.
->
-> The full protocol, including which numbers are final and which are superseded,
-> is in `docs/Reproducibility.md`; read that first if you intend to publish
-> anything from a reproduction.
+> Use the current release branch and the v3 datasets/results. The full protocol is in `docs/Reproducibility.md`.
 
 ---
 
@@ -185,7 +176,7 @@ python transmission_graph_gen.py --grid IEEE24 --n_train 30 --n_val 6 --n_test 6
 ```
 
 **Then the full generation — optional now.** Both published datasets are committed
-(`data_regime_a_fixed_topology/`, `data_regime_b_contingencies/`, ~79 MB), so you can skip straight to training or to
+(`data_regime_a_fixed_topology_v3/`, `data_regime_b_contingencies_v3/`, ~79 MB), so you can skip straight to training or to
 the checkpoint replay and still be on the exact tensors behind the reported
 numbers. Regenerate only if you are changing the protocol or checking that the
 generator still produces an equivalent draw. The benchmark needs **two** datasets
@@ -194,10 +185,10 @@ protocols differ:
 
 ```powershell
 # Regime A: fixed topology, one demand snapshot per sample
-python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology_v3
 
 # Regime B: random N-1/N-2 line outages, disjoint blocked demand windows (audit item A5)
-python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
 ```
 
 `--time_split blocked` is not optional for Regime B: without it, train/val/test
@@ -212,7 +203,7 @@ of the committed one: rejected samples (non-convergent AC solve, voltages outsid
 [0.8, 1.2] p.u.) shift the sampling. Reproduce the *protocol* with the validation
 gate below — or use the committed datasets if you want the published draw. The
 exact published numbers come from the saved checkpoints, released as
-`ckpt_norm.tar.gz` on tag `v1.0.0` (`docs/Reproducibility.md` §3).
+`ckpt_v3.tar.gz` on tag `v1.0.0` (`docs/Reproducibility.md` §3).
 
 Each dataset is **4,000 graphs** (1,000 per grid), so the pair is 8,000 and about
 80 MB. Generation is CPU‑bound (the solver), so `numba` matters here; the GPU is
@@ -222,8 +213,8 @@ used later, in training.
 
 ## 9. Validate before trusting anything
 ```powershell
-python validate.py --data_dir data_regime_a_fixed_topology --regime a           # Regime A is fixed-topology by design
-python validate.py --data_dir data_regime_b_contingencies --expect_blocked
+python validate.py --data_dir data_regime_a_fixed_topology_v3 --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_regime_b_contingencies_v3 --expect_blocked
 ```
 
 Expected final line: **`ALL GATES PASSED`** (it checks tensor shapes, bus‑type
@@ -247,8 +238,8 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 | `--epochs` | training epochs (200 for the full run; 20 for quick tests) |
 | `--data_dir` / `--out` | input data folder / output results folder |
 | `--save_models <dir>` | also save every trained model's weights |
-| `--experiment within` | the fixed-topology control arm (use with `data_regime_a_fixed_topology`) |
-| `--normalize` | `none` (raw-unit ablation) or `pu_zscore` (**the protocol**) |
+| `--experiment within` | the fixed-topology control arm (use with `data_regime_a_fixed_topology_v3`) |
+| `--normalize` | `none` (raw physical units, no scaling; not used for the published results) or `pu_zscore` (**the protocol**) |
 | `--arch_config` | frozen widths/depths/learning rates; always pass `configs\arch_config.json` |
 | `--seeds` | `0 100 300 700 1000` (`0 100 300` for `nnconv`) |
 | `--regime_tag` | `A` or `B`, stamped into the results rows |
@@ -257,7 +248,7 @@ The driver is `experiments.py`. It **auto‑detects your GPU** (you'll see
 **Quick smoke test** (2 models, 2 grids, few epochs — a couple of minutes):
 
 ```powershell
-python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data_regime_b_contingencies --out results_smoke --normalize pu_zscore
+python experiments.py --experiment both --models gcn gat --grids IEEE24 IEEE39 --epochs 20 --data_dir data_regime_b_contingencies_v3 --out results_smoke --normalize pu_zscore
 ```
 
 ### Running ONE model at a time (recommended for you)
@@ -272,34 +263,35 @@ $seeds = "0","100","300","700","1000"
 # control arm (Regime A, fixed topology)
 foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
   python experiments.py --experiment within --models $m --epochs 200 `
-    --data_dir data_regime_a_fixed_topology --out results_norm\within_$m --regime_tag A `
+    --data_dir data_regime_a_fixed_topology_v3 --out results_v3\within_$m --regime_tag A `
     --normalize pu_zscore --arch_config $cfg --seeds $seeds `
-    --save_models ckpt_norm\within_$m --skip_existing
+    --save_models ckpt_v3\within_$m --skip_existing
 }
 
 # transfer arms (Regime B, varying topology)
 foreach ($m in "gcn","arma_gnn","gat","gin","transformer") {
   python experiments.py --experiment cross --models $m --epochs 200 `
-    --data_dir data_regime_b_contingencies --out results_norm\cross_$m --regime_tag B `
+    --data_dir data_regime_b_contingencies_v3 --out results_v3\cross_$m --regime_tag B `
     --normalize pu_zscore --arch_config $cfg --seeds $seeds `
-    --save_models ckpt_norm\cross_$m --skip_existing
+    --save_models ckpt_v3\cross_$m --skip_existing
   python experiments.py --experiment ood --models $m --epochs 200 `
-    --data_dir data_regime_b_contingencies --out results_norm\ood_$m --regime_tag B `
+    --data_dir data_regime_b_contingencies_v3 --out results_v3\ood_$m --regime_tag B `
     --batch_size_ood 96 --normalize pu_zscore --arch_config $cfg --seeds $seeds `
-    --save_models ckpt_norm\ood_$m --skip_existing
+    --save_models ckpt_v3\ood_$m --skip_existing
 }
 ```
 
 `nnconv` is run separately with `--seeds 0 100 300` (documented asymmetry; it is
 the most expensive and the highest-variance model). On Linux/macOS the same
-campaign is one command: `bash launch_normalized.sh 7 within cross ood`, which
+campaign is one command: `python launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7`, which
 runs the 18 jobs through a bounded process pool.
 
 On a multi-core CPU set `$env:OMP_NUM_THREADS = "1"` before launching several jobs
 in parallel; multi-threaded jobs run concurrently oversubscribe the cores and
 measurably slow the campaign down.
 
-Each `results\<model>\` folder is self‑contained: `transfer_matrix_<model>.csv`,
+Each per-model invocation writes to its own arm folder under `results_v3\`
+(`within_$m`, `cross_$m`, or `ood_$m`): `transfer_matrix_<model>.csv`,
 `cross_context.csv`, `ood.csv`, `gscore.csv`, `gscore_ood.csv`, the (model‑independent)
 `mmd_degree.csv` / `mmd_laplacian.csv` / `dc_baseline.csv` / `ood_distance.csv`, and
 `summary.json`.
@@ -308,37 +300,27 @@ Each `results\<model>\` folder is self‑contained: `transfer_matrix_<model>.csv
 > `--grids IEEE39` gives only the within‑grid (diagonal) number, not a transfer matrix.
 > The one‑model‑at‑a‑time commands above keep all four grids, which is what you want.
 
-### Merge the per‑model folders into one (for the combined figures)
-After the six runs, combine them into a single `results\` folder so the figure
-script sees every model. Copy‑paste this whole block:
+### Merge the per-model folders
+After the runs, gather the per-model shards into the three published arm folders.
+The commands mirror §5 of [`Reproducibility.md`](Reproducibility.md):
 
 ```powershell
-$dst = "results"; New-Item -ItemType Directory -Force -Path $dst | Out-Null
-# per-model transfer matrices (one file each) + saved copies
-Get-ChildItem results\*\transfer_matrix_*.csv | Copy-Item -Destination $dst -Force
-# model-independent tables: copy once from any model folder (use gcn)
-Copy-Item results\gcn\mmd_degree.csv, results\gcn\mmd_laplacian.csv, results\gcn\dc_baseline.csv, results\gcn\ood_distance.csv $dst -Force
-# stack the per-model rows into single CSVs
-python -c "import pandas as pd,glob,os; [pd.concat([pd.read_csv(f) for f in glob.glob(f'results/*/{n}.csv')],ignore_index=True).to_csv(f'results/{n}.csv',index=False) for n in ['cross_context','ood','gscore','gscore_ood']]"
+python gather_results.py --shards "results_v3/within_*" --file within_grid.csv `
+  --out results_v3/all_within --models gcn arma_gnn gat gin transformer nnconv --seed_shards
+python gather_results.py --shards "results_v3/cross_*" --file cross_context.csv `
+  --out results_v3/all_cross --models gcn arma_gnn gat gin transformer nnconv --seed_shards
+python gather_results.py --shards "results_v3/ood_*" --file ood.csv `
+  --out results_v3/all_ood --models gcn arma_gnn gat gin transformer nnconv --seed_shards
 ```
 
-Now `results\` holds the full multi‑model set, identical in structure to the
-published `full_run\results\`.
+The merged arm tables are written to `results_v3/all_within/`,
+`results_v3/all_cross/`, and `results_v3/all_ood/`.
 
 ---
 
-## 11. (Optional) Reproduce the figures
-The figure script resolves its results folder from its first argument. Point it at
-your merged `results\` folder:
-
-```powershell
-python full_run\results\make_figures.py (Resolve-Path results)
-```
-
-Figures are written to `results\figures\` (`fig_transfer_matrix.png`,
-`fig_per_quantity.png`, `fig_gnn_vs_dc.png`, `fig_mmd_range.png`,
-`fig_mmd_heatmap.png`, `fig_performance.png`, `fig_generalizability_curve.png`,
-`fig_gscore_ood.png`).
+## 11. Published results
+The published tables and their source files are documented in
+[`Results.md`](Results.md).
 
 ---
 
@@ -389,14 +371,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install torch_geometric; pip install -r requirements.txt
 $env:POWERGRAPH_NODE_DIR = "C:\gnn\PowerGraph-Node\13_Power_system"
 python transmission_grids.py
-python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology
-python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies
-python validate.py --data_dir data_regime_a_fixed_topology --regime a           # Regime A is fixed-topology by design
-python validate.py --data_dir data_regime_b_contingencies --expect_blocked
+python transmission_graph_gen.py --grid all --max_k 0 --unique_demand --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_a_fixed_topology_v3
+python transmission_graph_gen.py --grid all --max_k 2 --time_split blocked --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
+python validate.py --data_dir data_regime_a_fixed_topology_v3 --regime a           # Regime A is fixed-topology by design
+python validate.py --data_dir data_regime_b_contingencies_v3 --expect_blocked
 $env:OMP_NUM_THREADS = "1"
-python experiments.py --experiment within --epochs 200 --data_dir data_regime_a_fixed_topology --out results_norm --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_norm --skip_existing
-python experiments.py --experiment both   --epochs 200 --data_dir data_regime_b_contingencies --out results_norm --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_norm --skip_existing
-python eval_checkpoints.py --ckpt_root ckpt_norm --data_a data_regime_a_fixed_topology --data_b data_regime_b_contingencies --normalize pu_zscore --out results_norm\physics
-python rank_analysis.py --results_dir results_norm
-python recompute_tables.py --results_dir results_norm
+python experiments.py --experiment within --epochs 200 --data_dir data_regime_a_fixed_topology_v3 --out results_v3 --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_v3 --skip_existing
+python experiments.py --experiment both   --epochs 200 --data_dir data_regime_b_contingencies_v3 --out results_v3 --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_v3 --skip_existing
+python eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --normalize pu_zscore --out results_v3\physics
+python rank_analysis.py --results_dir results_v3
+python recompute_tables.py --results_dir results_v3
 ```

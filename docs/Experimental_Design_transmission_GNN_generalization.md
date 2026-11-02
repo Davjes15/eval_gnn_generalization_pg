@@ -1,13 +1,13 @@
 # Experimental Design — Generalization of GNN Architectures for Transmission Grids
 
-Status: **design specification** (no experiments run yet). This document defines, for each of the two layers, the **research question**, the **experimental setup**, and the **methodology**. It is the companion to `PowerGraph_to_ENGAGE_design_decisions.md` (which records *why* each choice was made); this file records *what experiment we actually run*.
+This document defines, for each of the two layers, the **research question**, the **experimental setup**, and the **methodology**. It is the companion to `PowerGraph_to_ENGAGE_design_decisions.md` (which records *why* each choice was made); this file records *what experiment we actually run*.
 
 ## Overarching goal
 Study **how well GNN architectures generalize to unseen transmission topologies** for the AC power-flow node task, and benchmark this against PowerGraph, which only ever trains and tests *within* a single fixed-topology grid. Generalization is quantified with ENGAGE's g-score (NRMSE vs. topological distance via MMD).
 
 ### Framing (power-systems motivation — read this first)
 AC power flow is **deterministic physics**: given a grid's full model (topology + impedances + injections) you can just solve it with Newton-Raphson. So the value of a learned GNN surrogate is **not** "predict a grid you could otherwise solve" — it is **(i) amortization/speed** across huge numbers of cases (contingency screening, planning scenarios, real-time what-ifs) and **(ii) staying accurate as topology changes**. Accordingly:
-- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables. As executed, that variation is random N-1/N-2 outages of in-service **lines** only — no transformer or generator outages, no busbar splits or switching actions, and islanding cases are discarded rather than modelled (limitation L9 in [`Audit_response.md`](Audit_response.md)).
+- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables. As executed, that variation is random N-1/N-2 outages of in-service **lines** only — no transformer or generator outages, no busbar splits or switching actions, and islanding cases are discarded rather than modelled (limitation L9 in the archived audit history).
 - **Secondary, scientific stress test:** transfer between structurally very different grids (e.g. IEEE24 → UK). Interesting as a limit test, but it has weak *operational* motivation, so it is reported as a stress test, not the main result.
 
 **What each rung of the ladder actually varies.** The three arms are not a clean topology-only sequence, and the qualifier belongs here rather than in a footnote (limitations L4, L8, L9):
@@ -187,26 +187,26 @@ Caveats: use only their **topology**, then **re-solve AC PF yourself** (step 4) 
 
 This section is the authoritative statement of what the reported benchmark actually does;
 earlier sections record the design as it was planned. The two differences that matter arose
-from the external audit (see [`Audit_response.md`](Audit_response.md)).
+from the external audit (see the archived audit history).
 
 **Datasets.**
 
 | dataset | regime | topology | demand split | role |
 |---|---|---|---|---|
-| `data_regime_a_fixed_topology` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
-| `data_regime_b_contingencies` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
+| `data_regime_a_fixed_topology_v3` | A (fixed topology) | `max_k = 0`, one topology per grid | `--unique_demand` | in-distribution control |
+| `data_regime_b_contingencies_v3` | B (varying topology) | `max_k = 2`, random N-k **line** outages (transformers, generators, busbar splits and switching actions never appear; islanding rejected rather than modelled — limitation L9) | `--time_split blocked` (disjoint contiguous windows, one-day gap); **active** demand only (L6) | cross-context + leave-one-grid-out |
 
-Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the `same_grid_factor` of the protocol decomposition (`results_norm/analysis/protocol_decomposition.csv`) mixes their effects, together with a change of NRMSE denominator, and is not quoted as a cost (limitations L8, L10). The same-grid result is the preserved ranking (Kendall τ = 0.62, p = 0.004). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined.
-| `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the raw-unit ablation only |
+Regime B therefore differs from Regime A in **two** ways at once — the blocked temporal split and the line contingencies — so the earlier `same_grid_factor` in `results_norm/analysis/protocol_decomposition.csv` mixed their effects, together with a change of NRMSE denominator, and is not quoted as a cost (limitations L8, L10). Separating them would need a blocked-split-only and a contingencies-only dataset and a retrained campaign on each, which was declined. (in tag `archive-pre-v3`)
+
+The v3 pooled rank test finds that within-grid rank predicts the Regime B diagonal rank (Kendall τ-b = 0.867, permutation p = 0.007; see `docs/Results.md` §4.6).
+| `data_full` | B, superseded | as above | uniform over the year (splits shared snapshots) | provenance for the earlier raw physical-unit run (in tag `archive-pre-v3`) |
 
 800 / 100 / 100 samples per grid per split, four grids (IEEE24, IEEE39, IEEE118, UK).
-Unseen grids (cross-context and leave-one-grid-out) are scored on their 100-sample test split.
-Scoring all 1 000 samples of each unseen grid is a robustness check, run on the retrained models
-and reported next to the main results, not instead of them (Decision 33, L14).
+Unseen grids (cross-context and leave-one-grid-out) are scored on their 100-sample test split in the published results.
 Every split ships its `dataset_src.csv` (grid, `t_idx`, `k`, outaged branches, contingency
 source), which is what makes the split property checkable rather than asserted.
 
-**Validation gates before training.** `validate.py --data_dir data_regime_b_contingencies --regime b
+**Validation gates before training.** `validate.py --data_dir data_regime_b_contingencies_v3 --regime b
 --expect_blocked` must pass: data contract, bus-type masking, topology variation, MMD
 non-degeneracy, and gate H (no demand snapshot shared between splits, no repeated
 (snapshot, outage) scenario, disjoint contiguous time windows).
@@ -215,14 +215,14 @@ non-degeneracy, and gate H (no demand snapshot shared between splits, no repeate
 training-split statistics only — fitted per grid (within-grid), on the source grid
 (cross-context), or on the pooled training grids (leave-one-grid-out). Features and targets
 share statistics; predictions are de-normalized before scoring; the DC baseline is never
-scaled. `--normalize none` reproduces the raw-unit ablation bit-identically.
+scaled. `--normalize none` uses raw physical units, no scaling (not used for the published results).
 
 **Training.** Six architectures at frozen equal-budget configurations
 (`configs/arch_config.json`, see [`Model_configurations.md`](Model_configurations.md)),
 seeds 0/100/300/700/1000 (NNConv 0/100/300, a deliberate and approved compute trade-off,
 Decision 17 / limitation L2), three arms: within-grid, cross-context, leave-one-grid-out.
 NNConv therefore contributes 12 rows per arm where the other five contribute 20 (48 vs 80 in
-the cross-context arm; `results_norm/all_within/within_grid.csv`,
+the cross-context arm; `results_v3/all_within/within_grid.csv`,
 `all_cross/cross_context.csv`, `all_ood/ood.csv`), which affects every pooled mean and every
 ranking it appears in, and is why the rank correlation has 12 complete (grid, seed) cells of a
 possible 20 — only NNConv's three seeds carry all six architectures. Every final run writes a
@@ -245,7 +245,7 @@ non-overlapping jobs: weights are fitted on **train** (800), hyperparameters are
 on **validation** (100), and **test** (100) is read only to report. So the pipeline is two
 distinct passes, and the second is not a redundant repeat of the first:
 
-1. *Selection pass* (`tune_budget.py` on `data_regime_a_fixed_topology`): ~10 candidate configurations per
+1. *Selection pass* (`tune_budget.py` on `data_regime_a_fixed_topology`; pre-fix tuning, in tag `archive-pre-v3`): ~10 candidate configurations per
    architecture, scored by mean best **validation** loss across the four grids, one seed
    plus a tie-break seed — enough to rank candidates. The winner is frozen into
    `configs/arch_config.json` and never changes again.

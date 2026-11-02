@@ -17,7 +17,7 @@ them is attributable to the architecture rather than to a re-tuning.
 |---|---|
 | Search space | `num_layers ∈ {2, 3, 8}` × `hidden ∈ {32, 64, 128}` × `learning_rate ∈ {1e-3, 3e-4}` |
 | Budget | 10 candidates per architecture — the 9-point depth×width grid at `lr=1e-3`, then the leader re-scored at `lr=3e-4` |
-| Training data | Regime A (`data_regime_a_fixed_topology`, fixed topology), 800 train / 100 val / 100 test per grid |
+| Training data | Regime A (`data_regime_a_fixed_topology_v3`, fixed topology), 800 train / 100 val / 100 test per grid |
 | Score | mean over the four grids of the best **validation** weighted MSE; test splits are never read |
 | Stage-1 seed | 0 |
 | Tie / confirmation seed | 100 |
@@ -331,7 +331,7 @@ gradient explosion at all.
 
 ```bash
 # per-architecture sweep (resumable; trials are cached by their full key)
-python3 tune_budget.py --data_dir data_regime_a_fixed_topology --epochs 200 --models gcn \
+python3 tune_budget.py --data_dir data_regime_a_fixed_topology_v3 --epochs 200 --models gcn \
     --out results_a/gcn --config_out results_a/gcn/arch_config.json --skip_existing
 
 # a slow architecture's remaining trials can be spread over processes ...
@@ -424,9 +424,9 @@ Every arm is complete. Consolidated files, audited row by row against
 
 | Arm | file | rows | per-architecture |
 |---|---|---:|---|
-| Regime A within-grid | `results/regime_a/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
-| Regime B cross-context | `results/regime_b/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
-| Regime B OOD | `results/regime_b/ood.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime A within-grid | `results_v3/all_within/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime B cross-context | `results_v3/all_cross/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
+| Regime B OOD | `results_v3/all_ood/ood.csv` | 112 | 20 each; `nnconv` 12 |
 
 The audit checks, for every architecture in every arm: the expected row count,
 the expected seed set (`0, 100, 300, 700, 1000`; `0, 100, 300` for `nnconv`), all
@@ -440,9 +440,12 @@ Result: **0 non-finite values and 0 configuration mismatches**.
 is a *transfer* failure, not a training failure — finite throughout, consistent
 across all three seeds, and 0.013 NRMSE within IEEE39 in Regime A — and is
 reported as a result in
-[`Regime_comparison_results.md`](Regime_comparison_results.md) §6.
+[`Results.md`](Results.md) §6.
 
 The only non-finite values anywhere in the result tree are in the archived
 pre-fix ARMA directories (`results_a/within_arma_gnn/`, `results_a/arma_stability/`,
 `results_a/arma_lowlr/`, `results_tuned/arma_gnn/`), kept deliberately as the
 evidence for §4.2 and excluded from every analysis input.
+
+
+Tuning ran on the pre-fix data (IEEE118/UK topology before the branch fix); these configurations were reused unchanged for v3.

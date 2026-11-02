@@ -19,20 +19,20 @@ HOW IT CONNECTS
     data/<CODE>/<split>/dataset.pt (Step 3)  +  MODELS (Step 4)
         -> train (training_utils)  -> evaluate (per-quantity + DC baseline)
         -> evaluate_mmd (mmd_utils)  -> g-score (training_utils)
-        -> results/*.csv, results/summary.json
+        -> results_v3/*.csv, results_v3/summary.json
 
 HOW TO RUN
     # quick smoke test (few epochs, two models):
     python3 experiments.py --experiment both --models gcn gat --epochs 20 \
-        --data_dir data --out results --allow_default_config
+        --data_dir data_regime_a_fixed_topology_v3 --out results_v3 --allow_default_config
     # fixed-topology control arm (Regime A), 5 seeds, tuned configs:
-    python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology \
+    python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology_v3 \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-        --normalize pu_zscore --regime_tag A --out results_norm/regime_a
+        --normalize pu_zscore --regime_tag A --out results_v3/regime_a
     # generalization arms (Regime B), same frozen configs:
-    python3 experiments.py --experiment both --data_dir data_regime_b_contingencies \
+    python3 experiments.py --experiment both --data_dir data_regime_b_contingencies_v3 \
         --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-        --normalize pu_zscore --regime_tag B --out results_norm/regime_b
+        --normalize pu_zscore --regime_tag B --out results_v3/regime_b
 
 ARCHITECTURE CONFIGURATION
     `--arch_config` is a JSON file {model: {num_layers, hidden, learning_rate}}

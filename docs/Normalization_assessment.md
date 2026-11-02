@@ -106,7 +106,7 @@ ENGAGE is the exception, and it gets away with it because of §2.1.
 ## 3. Is it technically necessary *here*? Measurements
 
 ### 3.1 The four target dimensions differ by 5-6 orders of magnitude
-`data_regime_a_fixed_topology` train split, per grid (min…max, std):
+`data_regime_a_fixed_topology` train split, per grid (min…max, std; in tag `archive-pre-v3`):
 
 | grid | P [MW] | Q [Mvar] | V [p.u.] | theta [deg] |
 |---|---|---|---|---|
@@ -129,7 +129,7 @@ serious; in this loss the second is ~1e6 times more important. Voltage magnitude
 is not being trained.
 
 ### 3.3 The prediction results match the diagnosis exactly
-Per-quantity NRMSE, `results/analysis/per_quantity.csv` (Regime A, in-distribution):
+Per-quantity NRMSE, `results/analysis/per_quantity.csv` (Regime A, in-distribution; in tag `archive-pre-v3`):
 
 | model | P | Q | V | theta |
 |---|---|---|---|---|
@@ -201,33 +201,20 @@ magnitude at all, and voltage is the quantity a power engineer cares about most.
 
 ---
 
-## 5. Options, cost, and recommendation
+## 5. Options considered and current choice
+
+These normalization options were compared at the design stage; `pu_zscore` is
+the representation used for the published v3 results.
 
 | Option | What it fixes | Cost | Verdict |
 |---|---|---|---|
 | **N0** Do nothing, document | nothing | 0 | Not acceptable: §3.3 is a real defect, and §3.5 invalidates a headline claim. |
 | **N1** p.u. representation only (`/baseMVA`, angles in rad) | convention compliance | full retrain | Necessary-but-insufficient; do it as part of N2, not alone. |
-| **N2** p.u. + per-dimension scaler fitted on the training split, de-normalized reporting (PowerFlowNet / PowerGraph-Node protocol) | §3.2-§3.3 (voltage learnability) | full retrain of 6 archs × 3 arms | **Recommended primary.** It is the field standard and it is the fix that matches the measured failure. |
-| **N3** N2 + per-grid nominal-load base for P/Q | additionally §3.5 (size shift), enables a topology-generalization claim | second full retrain | **Recommended as the OOD-isolating ablation**, not as the primary, because it deviates from both source papers. |
-| **N4** Keep raw-unit results as the ENGAGE-replication headline, add N2 as an ablation on a subset (2 archs × 2 seeds, within + cross-context) | quantifies the effect without a full retrain | hours, not days | **Recommended immediate step**, because it produces the evidence needed to decide whether the full retrain is worth it. |
+| **N2** p.u. + per-dimension scaler fitted on the training split, de-normalized reporting (PowerFlowNet / PowerGraph-Node protocol) | §3.2-§3.3 (voltage learnability) | full retrain of 6 archs × 3 arms | **Used for the published v3 results.** It is the field standard and matches the measured failure. |
+| **N3** N2 + per-grid nominal-load base for P/Q | additionally §3.5 (size shift), enables a topology-generalization claim | second full retrain | Not used for the published results; it deviates from both source papers. |
+| **N4** Keep the earlier raw physical-unit results as the ENGAGE-replication headline, add N2 as a comparison on a subset (2 archs × 2 seeds, within + cross-context) | quantifies the effect without a full retrain | hours, not days | Considered at design stage; not the published protocol. |
 
-### Recommended sequence
-1. **N4 pilot** (cheap): implement N2 behind a flag (`--normalize {none,pu,pu_zscore}`),
-   default `none` so all existing artifacts stay bit-identical and reproducible;
-   run gcn + arma, seeds 0/100, within-grid + cross-context. Deliverable: does
-   per-quantity V NRMSE drop below 1, and does the cross-context ranking change?
-2. If the pilot confirms the mechanism (it should, per §3.2), **N2 full retrain**
-   becomes the primary protocol and the raw-unit run is reported as an ablation
-   showing what unnormalized training does to voltage — a genuine contribution,
-   since ENGAGE's LV setting hides this effect.
-3. **N3** afterwards, only for the OOD arm, to support or retire the
-   topology-generalization wording.
-4. Until 1-3 land, the claims in `docs/Regime_comparison_results.md` must say
-   "generalization to an unseen system" and must not attribute cross-grid
-   degradation to topology alone. Voltage results must be reported as "not
-   learned under the raw-unit protocol", not as an architecture comparison.
-
-Nothing in this document has been implemented; no retraining has started.
+The measurements in this section were design-stage measurements on the pre-fix data; they motivate the normalization choice but are not v3 campaign results.
 
 ## 6. Evidence provenance
 
@@ -239,7 +226,7 @@ Nothing in this document has been implemented; no retraining has started.
   `datasets/PowerFlowData.py`.
 * Measured on our tensors in this session: §3.1, §3.2, §3.4 (`sn_mva`, nominal
   load), §3.5.
-* Read from our own artifacts: §3.3 (`results/analysis/per_quantity.csv`).
+* Read from the earlier campaign artifacts: §3.3 (`results/analysis/per_quantity.csv`; in tag `archive-pre-v3`).
 * **Not** independently verified: the absolute magnitude of SimBench LV/MV bus
   injections (§2.1) — `simbench` cannot be installed here (PyPI is outside the
   session allowlist), so that is an order-of-magnitude argument from the grid

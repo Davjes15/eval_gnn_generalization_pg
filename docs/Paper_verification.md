@@ -68,14 +68,14 @@ audit's criticism A3 (the aggregate mixes MW, Mvar, p.u. and degrees, so voltage
 is invisible in it) is a criticism of **ENGAGE's published metric**, which we
 reproduced faithfully; it is not an implementation error on our side. The remedy
 stands regardless: report the per-quantity table alongside it, which we do (§5 of
-`Regime_comparison_results.md`), and which ENGAGE does not.
+`Results.md`), and which ENGAGE does not.
 
 One estimator caveat this check exposed, now stated in §7 of the results doc: our
 `PVtheta` column is the **mean of the three per-quantity NRMSEs** (each normalised
 by its own range) on both sides of the comparison, *not* Equation 3 restricted to
 three columns. Those are different numbers — for DC on Regime A, 0.084 for the
 mean-of-quantities versus 0.018 for pooled Equation 3 (`dc_nrmse_PVtheta` in
-`results/analysis/dc_baseline_regime_*.csv`). The mean-of-quantities version is
+`results_v3/dc_baseline_regime_a.csv`). The mean-of-quantities version is
 dominated by voltage magnitude, because V's own range is tiny. The comparison is
 apples-to-apples (a unit test enforces the same estimator on both sides) but the
 ratios must be read as "V-dominated", and the pooled Equation 3 version cannot be
