@@ -1,0 +1,12 @@
+gather_within	2555	0
+gather_cross	2472	0
+gather_ood	2675	0
+mmd_report	56553	0
+topology_mmd_and_pooled_ood	52500	0
+checkpoint_index	2689	0
+physics_replay	192890	0
+dc_feasibility	19862	0
+summarize_feasibility	254	0
+recompute_dc_baseline_a	3364	0
+rank_analysis	9915	0
+recompute_tables	3380	0

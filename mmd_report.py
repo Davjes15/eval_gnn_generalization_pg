@@ -81,8 +81,6 @@ def main():
     path = os.path.join(args.out, f"mmd_{os.path.basename(args.data_dir)}{suffix}.csv")
     if os.path.exists(path):
         raise FileExistsError(f"Refusing to overwrite {path}; choose a new --out directory")
-    if args.mmd_graph == "multi":
-        print("PROVISIONAL: current data predates P8; final numbers require P9.")
     if legacy:
         details_path = path.removesuffix(".csv") + "_details.csv"
         if os.path.exists(details_path):
