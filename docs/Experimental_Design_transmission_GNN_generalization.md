@@ -1,12 +1,13 @@
 # Experimental Design — Generalization of GNN Architectures for Transmission Grids
 
+This document defines, for each of the two layers, the **research question**, the **experimental setup**, and the **methodology**. It is the companion to `PowerGraph_to_ENGAGE_design_decisions.md` (which records *why* each choice was made); this file records *what experiment we actually run*.
 
 ## Overarching goal
 Study **how well GNN architectures generalize to unseen transmission topologies** for the AC power-flow node task, and benchmark this against PowerGraph, which only ever trains and tests *within* a single fixed-topology grid. Generalization is quantified with ENGAGE's g-score (NRMSE vs. topological distance via MMD).
 
 ### Framing (power-systems motivation — read this first)
 AC power flow is **deterministic physics**: given a grid's full model (topology + impedances + injections) you can just solve it with Newton-Raphson. So the value of a learned GNN surrogate is **not** "predict a grid you could otherwise solve" — it is **(i) amortization/speed** across huge numbers of cases (contingency screening, planning scenarios, real-time what-ifs) and **(ii) staying accurate as topology changes**. Accordingly:
-- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables. As executed, that variation is random N-1/N-2 outages of in-service **lines** only — no transformer or generator outages, no busbar splits or switching actions, and islanding cases are discarded rather than modelled (limitation L9 in [`Results.md`](Results.md)).
+- **Primary, operationally-motivated axis:** generalization **across contingencies / topological variations** of transmission grids (and to *related* unseen systems). This is the headline claim and is exactly what Layer 2's contingency distribution enables. As executed, that variation is random N-1/N-2 outages of in-service **lines** only — no transformer or generator outages, no busbar splits or switching actions, and islanding cases are discarded rather than modelled (limitation L9 in the archived audit history).
 - **Secondary, scientific stress test:** transfer between structurally very different grids (e.g. IEEE24 → UK). Interesting as a limit test, but it has weak *operational* motivation, so it is reported as a stress test, not the main result.
 
 **What each rung of the ladder actually varies.** The three arms are not a clean topology-only sequence, and the qualifier belongs here rather than in a footnote (limitations L4, L8, L9):
@@ -61,10 +62,10 @@ flowchart TD
 | Models | The GCN (and others) already trained in the PowerGraph-Node pipeline | Full model zoo retrained under ENGAGE's contract |
 | Normalization | **Must be harmonized to per-unit** (else results are invalid) | Per-unit throughout |
 | Primary metric | **Cross-grid NRMSE transfer matrix** | g-score (NRMSE vs MMD) + transfer matrix |
-| g-score | Descriptive with a limited grid count | Reported with a topology distribution and finite-row counts |
+| g-score | Provisional only (ill-posed: 1 topology/grid, few points) | Well-posed (distribution of topologies per grid) |
 | Purpose | De-risk, validate software, get a first honest result | The publishable benchmark |
 
-**Why they are not cleanly separable:** a "pure" Layer 1 (just fix bugs, keep PowerGraph's per-grid max-abs normalization and single-topology MMD) will *run but not be insightful*. Two Layer-2 concerns must be pulled forward into Layer 1 to make it meaningful: (1) **per-unit normalization**, and (2) awareness that the **g-score needs a distribution of topologies**. The v3 contingency data supplies that distribution; results remain limited by the small number of grids.
+**Why they are not cleanly separable:** a "pure" Layer 1 (just fix bugs, keep PowerGraph's per-grid max-abs normalization and single-topology MMD) will *run but not be insightful*. Two Layer-2 concerns must be pulled forward into Layer 1 to make it meaningful: (1) **per-unit normalization**, and (2) awareness that the **g-score needs a distribution of topologies** — which Layer 1 does not have, so its g-score stays provisional.
 
 ---
 
@@ -90,7 +91,7 @@ Sub-questions:
 4. **Topological distance (secondary).** Compute degree- and Laplacian-spectrum MMD between grids, but **fix the two known defects first**:
    - build descriptors so the kernel is not saturated (retune `sigma_degree`, `sigma_laplacian`; the default `sigma_laplacian=1e-2` collapses every pair to √2);
    - compute topology on the **physical one-line graph, not the Ybus pattern with self-loops** (PowerGraph `edge_index = find(Ybus)` includes the diagonal).
-5. **g-score is supplementary.** Report it with finite-row counts and the shared multigraph reference ruler. The small number of grids limits generalization beyond the tested networks; the transfer matrix remains the headline.
+5. **g-score = provisional.** Report it, but flag that with **one topology per grid** and only 3–4 grids the g-score is fit to 3–4 points and is statistically fragile; it is *not* the headline. Use `get_generalization_score_raw` (no percentile trim) given the tiny sample.
 6. **Validity checklist:** confirm (a) normalization harmonized, (b) MMD non-degenerate, (c) mask identical across pairs, (d) no target leakage from the training grid's scaling.
 
 > **Superseded on item 1.** Per-unit conversion turned out to be a *no-op* on these four cases:
@@ -104,7 +105,7 @@ Sub-questions:
 ## Deliverables
 - NRMSE transfer matrix per architecture (the headline).
 - Within-grid vs unseen-grid gap table (benchmark against PowerGraph).
-- MMD/g-score computed with the shared multigraph reference ruler and reported with explicit limitations.
+- Provisional MMD/g-score with explicit caveats.
 - A short validity note stating what Layer 1 can and cannot conclude.
 
 ## Threats to validity (Layer 1)
@@ -186,7 +187,7 @@ Caveats: use only their **topology**, then **re-solve AC PF yourself** (step 4) 
 
 This section is the authoritative statement of what the reported benchmark actually does;
 earlier sections record the design as it was planned. The two differences that matter arose
-from the external audit (see [`Results.md`](Results.md)).
+from the external audit (see the archived audit history).
 
 **Datasets.**
 
@@ -296,5 +297,5 @@ g-score with its small-N caveat; rank correlations with permutation p-values.
 ---
 
 # Summary
-- **Layer 1** answers "does a within-grid-trained GNN transfer to an unseen grid, and by how much?" via a **per-unit-normalized cross-grid NRMSE transfer matrix**. The g-score is supplementary and should be read alongside its finite-row counts and the limited number of test grids.
+- **Layer 1** answers "does a within-grid-trained GNN transfer to an unseen grid, and by how much?" via a **per-unit-normalized cross-grid NRMSE transfer matrix**, reusing existing models. The g-score here is provisional because there is only one topology per grid.
 - **Layer 2** builds the **distribution of topologies** (N-1/N-2 in-service-line outage re-solves in ENGAGE's pandapower pipeline, optionally informed by PowerGraph-Graph; L9) so the **g-score/MMD generalization study becomes well-posed**, and compares the full architecture zoo apples-to-apples against PowerGraph's within-grid benchmark.

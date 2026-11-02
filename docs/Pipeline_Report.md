@@ -7,7 +7,7 @@ experiments — including how to run a **single grid** or a **single GNN
 architecture**.
 
 It is a companion to:
-- `docs/Layer2_implementation_plan.md` — the plan and the *why* per step.
+- `docs/the implementation plan` — the plan and the *why* per step.
 - `docs/PowerGraph_to_ENGAGE_design_decisions.md` — the design decisions (D1–D12).
 - `docs/Experimental_Design_transmission_GNN_generalization.md` — research
   questions, experimental setup, methodology, threats to validity.
@@ -27,7 +27,7 @@ reporting per-quantity errors (P, Q, V, θ), a DC-power-flow baseline, and a
 topological-distance-aware g-score (NRMSE vs. MMD).
 
 Three scoping clauses belong with that paragraph rather than in the caveat list at the end
-(limitations L4, L6, L9 in [`Results.md`](Results.md)). The sampled contingencies
+(limitations L4, L6, L9 in the archived audit history). The sampled contingencies
 are random N-1/N-2 outages of in-service **lines** only: no transformer outages, no generator
 outages, no busbar splits, no switching actions, and a draw that islands the network is
 discarded rather than modelled. Only **active** demand varies across samples; reactive demand
@@ -192,7 +192,8 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
     unseen TEST grids (3 points each). NOTE: the default `bounds=2` percentile trim
     assumes many samples; with only 3 points it collapses (std=0, range=0), so the
     pooled no-trim variant `gscore_cc_aggregate.csv` is the appropriate reading.
-    The current seed-level outputs are committed in `results_v3/analysis/`.
+    (The exploratory run's `results_v3/gscore_smallN.csv` was the earlier
+    form of that variant; the current pipeline does not emit it.)
   - **OOD g-score** (`gscore_ood.csv`), computed *per model* over the held-out
     grids (one point per grid → up to 4 points), where the topological distance is
     the **pooled** Laplacian-MMD from each held-out grid to the **mixture** of its
@@ -225,7 +226,7 @@ the electrical complement (`docs/Generalization_score_and_MMD.md`).
 | `physics_metrics.py` | 5 | Physics-aware reporting layer | `predicted_mask`, `predicted_only_metrics`, `error_tails`, `violation_rates` | preds + truth (physical units) | per-quantity + violation metrics |
 | `eval_checkpoints.py` | 5 | Replay saved weights without retraining | `_scaler_for`, walk of `ckpt_v3/` | checkpoints + datasets | `results_v3/physics/physics_metrics.csv` |
 | `checkpoint_index.py` | 6 | Map every results row to a weight file | `parse_name`, `sha256`, `n_params` | `ckpt_v3/` | `results_v3/checkpoint_index.csv` |
-| `mmd_report.py` | 6 | Grid-distance tables, biased + unbiased | — | dataset dir | `results_v3/mmd_report/mmd_*.csv` |
+| `mmd_report.py` | 6 | Grid-distance tables, biased + unbiased | — | dataset dir | `docs/tables/mmd_*.csv` |
 
 **Connection summary.** Step 1 is a one-time conversion (outputs are committed).
 Step 2 is the only place that touches PowerGraph files. Step 3 is the heart: it
@@ -308,9 +309,7 @@ architectures x 3 arms) through a bounded process pool, each with
 `OMP_NUM_THREADS=1`, `--normalize pu_zscore`, `--save_models` and
 `--skip_existing` so an interrupted campaign resumes:
 ```bash
-python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 \
-    --data_b data_regime_b_contingencies_v3 --out results_v3 \
-    --ckpt ckpt_v3 --logs logs_v3 --pool 7
+bash launch_campaign.py 7 within cross ood     # 7 = pool size
 ```
 or a single arm by hand:
 ```bash
@@ -415,8 +414,7 @@ Relevant CLI flags:
 - `arma_gnn` OOD held-out UK produced NaN in the **inherited-config run**, which
   turned out to be the negative-edge-weight bug, not an intrinsic instability;
   fixed in Decision 16 and no longer observed. Kept here because the superseded
-  v3 contains one non-finite GCN transfer, recorded in
-  `results_v3/analysis/nonfinite_runs.csv`.
+  tables in `results_v3/` still show it.
 - `gin`/`nnconv`/`transformer` transfer *from* IEEE118 to small grids is unstable
   (large NRMSE) — expected for out-of-distribution structural transfer, and the shift is one of
   scale as much as structure (L4).

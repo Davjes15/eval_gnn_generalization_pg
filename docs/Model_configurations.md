@@ -7,9 +7,6 @@ selected them. The machine-readable form is
 carries `num_layers`, `hidden` and `learning_rate` so a table can always be
 traced back to this file.
 
-Tuning used the pre-fix IEEE118 and UK topology; the selected configurations
-were reused unchanged for the corrected v3 campaign.
-
 ## 1. The selection protocol
 
 One configuration per architecture, frozen once and reused in **both** regimes.
@@ -427,9 +424,9 @@ Every arm is complete. Consolidated files, audited row by row against
 
 | Arm | file | rows | per-architecture |
 |---|---|---:|---|
-| Regime A within-grid | `results_v3/all_within/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
-| Regime B cross-context | `results_v3/all_cross/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
-| Regime B OOD | `results_v3/all_ood/ood.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime A within-grid | `results_v3/regime_a/within_grid.csv` | 112 | 20 each; `nnconv` 12 |
+| Regime B cross-context | `results_v3/regime_b/cross_context.csv` | 448 | 80 each; `nnconv` 48 |
+| Regime B OOD | `results_v3/regime_b/ood.csv` | 112 | 20 each; `nnconv` 12 |
 
 The audit checks, for every architecture in every arm: the expected row count,
 the expected seed set (`0, 100, 300, 700, 1000`; `0, 100, 300` for `nnconv`), all
@@ -449,3 +446,6 @@ The only non-finite values anywhere in the result tree are in the archived
 pre-fix ARMA directories (`results_a/within_arma_gnn/`, `results_a/arma_stability/`,
 `results_a/arma_lowlr/`, `results_tuned/arma_gnn/`), kept deliberately as the
 evidence for §4.2 and excluded from every analysis input.
+
+
+Tuning ran on the pre-fix data (IEEE118/UK topology before the branch fix); these configurations were reused unchanged for v3.

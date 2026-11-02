@@ -46,7 +46,7 @@ for t in hours:
 `q_mvar` at the case's base value, which is what `gendataopf.m` does too (it varies PD only). So
 every "operating-point" or "demand variation" statement in this document and in the results means
 active-demand variation at fixed base-case reactive demand (limitation L6 in
-[`Results.md`](Results.md)).
+the archived audit history).
 
 
 **Update 2026-10-21 (review of E1/E2/E15/E16):** fixed reactive demand is kept as the **default** on purpose, so the replication experiments match PowerGraph; an optional constant-power-factor mode (`--q_mode constant_pf`) is available for other experiments. See Decision 28.
@@ -137,11 +137,11 @@ Unified target set: **`GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NNConv`.*
 ---
 
 ## Decision 8 — Two-layer experimental structure
-**Decision:** The final study combines PowerGraph demand data with the ENGAGE-style topology-distribution experiment. The transfer matrix remains the headline comparison; g-scores are reported with finite-row counts and their limited grid sample is stated as a limitation.
+**Decision:** Execute the work in **two layers**: **Layer 1** = correct and sanity-check what `engage_pg` v2 already built (reuse existing PowerGraph-trained models, but harmonize normalization and report a cross-grid NRMSE transfer matrix as the headline; g-score provisional). **Layer 2** = the well-posed generalization study on ENGAGE-format data with a distribution of topologies and the full retrained model zoo.
 
 **Why:**
 - Layer 1 de-risks and yields an honest first result cheaply (the models are already trained), while Layer 2 delivers the publishable benchmark.
-- The layers are **not cleanly separable**: meaningful transfer analysis requires **per-unit normalization** (Decision 9) and a distribution of topologies for MMD and g-score analysis (Decision 10).
+- The layers are **not cleanly separable**: a pure Layer 1 "runs but is not insightful." Two Layer-2 concerns must be pulled into Layer 1 — **per-unit normalization** (Decision 9) and the awareness that the **g-score needs a distribution of topologies** (Decision 10), which Layer 1 lacks (one topology per grid), so Layer 1's g-score stays provisional.
 
 ---
 
@@ -161,7 +161,7 @@ Unified target set: **`GCN`, `ARMA_GNN`, `GAT`, `GIN`, `TRANSFORMER`, `NNConv`.*
 - PowerGraph normalizes features/targets by each grid's **own** max-abs. A model trained on grid A then sees grid B in a *different* unit system → cross-grid NRMSE conflates a scaling mismatch with true generalization and is uninterpretable. Per-unit makes grids physically comparable (this is also why Decision 6 chose ENGAGE's per-unit convention).
 - The v2 Laplacian MMD is degenerate: with `sigma_laplacian=1e-2` the kernel bandwidth is `1/(2·0.01²)=5000`, so every distinct pair collapses to `MMD=√2≈1.41421` and same-grid to 0 — a saturated 0/1 indicator, not a distance. The MMD math (ggme) is untouched; the defect is in the feature/sigma choices in the new custom scripts.
 - PowerGraph's `edge_index = find(Ybus)` includes the diagonal (self-admittance) → degree/Laplacian describe the admittance pattern with self-loops, not the physical network.
-- **Also:** MMD and g-score assume a *distribution of graphs*. The fixed-topology setting has one graph per grid and remains statistically limited; the contingency setting supplies multiple topologies. Interpret g-scores together with their finite counts and transfer errors.
+- **Also:** the MMD/g-score assume a *distribution of graphs*; with one topology per grid each grid is a single point, so the g-score is fit to 3–4 points and is statistically fragile. Report it in Layer 1 only as provisional; it becomes well-posed in Layer 2. Use `get_generalization_score_raw` (no percentile trim) given the tiny sample.
 
 **Update 2026-10-21 (review of E1/E2/E15/E16):** two parts of the reasoning above were corrected. (1) The `5000` figure applies the ENGAGE *paper's* kernel formula `exp(-||x-y||^2/(2σ^2))`; ENGAGE's *code* (ggme `gaussian_kernel`) computes `exp(-σ·||x-y||^2)`, so σ there multiplies the distance and `σ=1e-2` is a wide kernel, not a narrow one. (2) The constant √2 comes from using **one descriptor per grid**: with one point per side, MMD² = 2 − 2k(x,y), which tends to 2 whenever the grids differ. Moving to a distribution of descriptors fixes that on its own. Refitting the bandwidth **per pair** was not needed for the fix and introduced a new problem; it is replaced by one shared bandwidth in Decision 27.
 
@@ -234,7 +234,7 @@ A full run therefore yields 24 cross-context + 24 OOD = 48 checkpoints, each rel
 This is the concrete manifestation of the earlier caveat that the g-score is statistically under-powered with only ~4 grids.
 *Superseded in form, not in reasoning:* the current pipeline emits the no-trim
 reading as the pooled `gscore_cc_aggregate.csv` (ENGAGE Table-3 format, one row
-per model); the current seed-level values are in `results_v3/analysis/gscore_cc_aggregate.csv`.
+per model); `gscore_smallN.csv` survives only in the legacy `results_v3/`.
 
 **Decision (OOD g-score — `compute_ood_gscores`, `gscore_ood.csv`):** the cross-context g-score is *per training grid* and therefore has only the 3 unseen TEST grids as points (the degeneracy above). We additionally compute an **OOD g-score** *per model* over the **held-out grids** of the leave-one-grid-out experiment: one point per held-out grid (up to 4 points). No percentile trim (`bounds=0`); NaN cells (e.g. a diverged ARMA split) are dropped. This is the **better-posed** g-score at N=4 (more points, no trim collapse) and is the flavour most aligned with the study's operational question — *generalize to a genuinely new grid after training on several*. ENGAGE itself reports a g-score for both its cross-context and OOD experiments; we had initially reported OOD only as per-grid NRMSE, and this decision closes that gap. The choice of the distance x-axis is fixed by Decision 14.
 
@@ -298,8 +298,8 @@ is a deliberate, approved compute trade-off (limitation L2), not a missing run.
 
 ---
 
-## Decision 19 — Headline results use the frozen tuned configurations
-**Decision:** rankings, g-score, per-quantity P/Q/V/θ, and DC-baseline comparisons use the published v3 campaign in `results_v3/`, with configurations frozen in `configs/arch_config.json`. Earlier experiments remain in their preserved archive and are not mixed into v3 tables.
+## Decision 19 — The inherited-config `results_v3/` tables are superseded, not deleted
+**Decision:** every headline number — rankings, g-score, per-quantity P/Q/V/θ, DC-baseline comparison — is recomputed from the **tuned-configuration** runs (`results_a/`, `results_tuned/`). The earlier `results_v3/` tables were produced under the **inherited** ENGAGE configuration (before the equal-budget sweep of Decision 15) and are retained only as the historical run, marked in `RUN_METADATA.txt`, and never mixed into a tuned table.
 
 **Why:** the two sets differ in depth, width and learning rate per architecture, so a table that mixed them would compare architectures at unequal budgets — precisely the confound the sweep exists to remove.
 
@@ -503,7 +503,7 @@ first implementation screened lines only.
 `pu_zscore` (finding B4) and lifting NNConv from 3 to 5 seeds are the only two items that need
 GPU-hours, and both change *how well* the models were trained rather than *what is claimed* about
 transfer. They are therefore declined and recorded as accepted limitations L1 and L2 in
-`docs/Results.md`, with the concrete consequence of each spelled out, rather than left for a
+`docs/the archived audit history`, with the concrete consequence of each spelled out, rather than left for a
 later reviewer to rediscover. Everything else — the non-finite policy, the g-score trim, the
 protocol/grid decomposition, the pooled-vs-cell rank reporting and the run metadata — is a
 recomputation over artifacts that already exist.
@@ -511,6 +511,7 @@ recomputation over artifacts that already exist.
 ---
 
 ## Decision 27 — One shared MMD bandwidth for every comparison, in both regimes (review items E1, E2, E9)
+**Status:** implemented in `mmd_utils.py` and `mmd_bandwidth.py`, with the shared ruler in `configs/mmd_bandwidth.json`. The current ruler is the v3 tables use the multigraph estimator and the shared reference ruler.
 
 **Decision:** the Gaussian kernel `k(a,b) = exp(-||a-b||^2 / m)` uses **one width `m` per descriptor and graph mode** (degree and Laplacian; reactance has one mode-independent width). It is computed **once** as the median of the non-zero pairwise squared distances between all train and test descriptors of all four grids, pooling **Regime A and Regime B together**, and is stored in a file with a fingerprint of the data it was computed from. Every MMD in the repo uses that width: the 16 cross-context pairs, the 4 pooled OOD distances, `validate.py`, `mmd_report.py`, the EDA notebook, and any extra dataset (for example the optional blocked Regime A, Decision 29), which reuses the stored width instead of recomputing it. The per-pair mode is kept only to reproduce the committed numbers. If all reference distances are zero, the code raises an error instead of falling back to 1.0. The width is recomputed only when the replication datasets are regenerated.
 
@@ -578,9 +579,9 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 - **Reverses:** the earlier review proposal to add `nrmse_fixed` (prompt P5).
 
 ## Decision 31 — The MMD graph counts every parallel circuit (`multi`, default); the merged `simple` graph is kept only to reproduce committed numbers (review item E3)
-**Status:** implemented and used for the published v3 MMD and g-score tables.
+**Status:** implemented (code). Every previously committed MMD and g-score still uses the simple graph; the published v3 results use this multigraph definition.
 
-**Decision:** `mmd_utils` builds each sample's graph with **one edge per in-service circuit** (`graph_mode="multi"`). The degree of a bus is the number of circuits that end at it, and the Laplacian spectrum is computed on the graph weighted by the number of circuits between each pair of buses. Published results use the multigraph mode so parallel circuits remain represented. The reactance descriptor already reads the features of every circuit.
+**Decision:** `mmd_utils` builds each sample's graph with **one edge per in-service circuit** (`graph_mode="multi"`). The degree of a bus is the number of circuits that end at it, and the Laplacian spectrum is computed on the graph weighted by the number of circuits between each pair of buses. Every caller (`experiments.py`, `mmd_report.py`, `validate.py`, the EDA notebook) gets `--mmd_graph {multi,simple}` with **`multi` as the default**, and only `multi` is reported. `simple` (today's `nx.Graph`, which merges parallel circuits like ENGAGE's PyG `to_networkx`) is kept only to reproduce the committed CSVs. The reactance descriptor does not change: it already reads the features of every circuit.
 
 **Why:**
 - **The paper is about topology change, so the distance must see it.** With the simple graph, an outage of one of two parallel circuits leaves the graph unchanged. Counted from the MATPOWER case files (in-service branches, after the branch-contract fix E12/E13):
@@ -618,9 +619,9 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 ---
 
 ## Decision 33 — Unseen grids keep their 100-sample test split for the main results; all 1 000 unseen samples are scored as a robustness check after retraining (review item E7)
-**Status:** decided 2026-10-21; not yet implemented or run (review prompt P6, after the P9 retraining).
+**Status:** the v3 campaign is complete; the published protocol is documented in `docs/Results.md`.
 
-**Decision:** the published cross-context and leave-one-grid-out numbers keep scoring each unseen grid on its 100-sample test split (`experiments.py` `run_cross_context` and `run_ood`, `eval_checkpoints._test_sets`). After the models are retrained on the regenerated data (P9), the retrained checkpoints are also scored on all 1 000 samples (train + val + test) of every grid the model never saw. That result is reported next to the main results as a robustness check, not instead of them. Same-grid cells keep the test split, because the model trained on that grid's other samples.
+**Decision:** Published cross-context and leave-one-grid-out numbers use each unseen grid’s 100-sample test split; same-grid cells use their test split.
 
 **Why:**
 - **The 100-sample test split covers one part of the year.** In Regime B the split is blocked in time (Decision 21): the test window is the last tenth of the demand year, so an unseen-grid score describes one period and its demand levels.
@@ -664,4 +665,4 @@ Decision: `training_utils.nrmse_range` is unchanged: the RMSE over the evaluated
 ---
 
 ## Summary of the chosen path
-**Two layers.** The final design harmonizes PowerGraph demand data with per-unit normalization, a cross-grid NRMSE transfer matrix, and a topology distribution from N-1/N-2 in-service-line outage re-solves (`pp.runpp`; islanding discarded). The six-architecture campaign uses the ENGAGE-inspired graph-learning and masking approach across all four grids. This provides the basis for cross-grid generalization comparisons on transmission networks.
+**Two layers.** **Layer 1** corrects `engage_pg` v2's Level-2 probe: harmonize to per-unit normalization, fix the MMD defects, and report a **cross-grid NRMSE transfer matrix** (g-score provisional) using the already-trained models. **Layer 2** is the well-posed study: **Level 1 / Route B, all four grids, Octave-based conversion** (done once in-session and committed as `.mat`, validated against a PowerGraph PF solution), a **distribution of topologies via N-1/N-2 in-service-line outage re-solves** (`pp.runpp`, optionally informed by PowerGraph-Graph; no transformer, generator, busbar or switching actions, islanding discarded — L9), the full ENGAGE+PowerGraph model zoo (`GCN, ARMA_GNN, GAT, GIN, TRANSFORMER, NNConv`) under ENGAGE's interface, and ENGAGE masking + per-unit + weighted-MSE throughout. This is the most faithful *and* cleanest way to turn PowerGraph's source transmission data into ENGAGE-format datasets and unlock a well-posed cross-grid generalization study across architectures on transmission grids.
