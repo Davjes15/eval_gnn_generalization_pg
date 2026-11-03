@@ -126,7 +126,9 @@ def branch_table(net) -> pd.DataFrame:
                 sc = row.vk_percent
             else:
                 if row.rft_pu != row.rtf_pu or row.xft_pu != row.xtf_pu:
-                    raise ValueError(f"Asymmetric impedance:{element} cannot use undirected contract")
+                    raise ValueError(
+                        f"Asymmetric impedance:{element} cannot use undirected contract"
+                    )
                 r = row.rft_pu * net.sn_mva / row.sn_mva
                 x = row.xft_pu * net.sn_mva / row.sn_mva
             rows.append((etype, element, f, t, bool(row.in_service),
@@ -166,7 +168,10 @@ def check_graph_matches_net(net, edge_index, n_nodes):
     wanted = Counter(tuple(sorted((pos[u], pos[v]))) for u, v in reference.edges())
     actual = Counter(tuple(sorted(e)) for e in edges[:, ::2].T.tolist())
     if actual != wanted:
-        raise ValueError(f"Graph branches differ from pandapower: missing={wanted - actual}, extra={actual - wanted}")
+        raise ValueError(
+            "Graph branches differ from pandapower: "
+            f"missing={wanted - actual}, extra={actual - wanted}"
+        )
     graph = nx.MultiGraph()
     graph.add_nodes_from(range(n_nodes))
     graph.add_edges_from(edges[:, ::2].T.tolist())

@@ -174,7 +174,8 @@ Key defaults:
 
 There is also an **`--unseen`** flag ("split the dataset into data and unseen data and test on unseen data") — a built-in hook toward generalization testing.
 
-Run examples:
+Run examples from the PowerGraph-Node repository root. `code/train_gnn.py` is a
+PowerGraph-Node path, not a file in this repository:
 ```bash
 python code/train_gnn.py --model_name transformer --datatype node    --dataset_name ieee118
 python code/train_gnn.py --model_name gat         --datatype nodeopf --dataset_name uk

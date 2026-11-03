@@ -203,7 +203,8 @@ of the committed one: rejected samples (non-convergent AC solve, voltages outsid
 [0.8, 1.2] p.u.) shift the sampling. Reproduce the *protocol* with the validation
 gate below — or use the committed datasets if you want the published draw. The
 exact published numbers come from the saved checkpoints, released as
-`ckpt_v3.tar.gz` on tag `v1.0.0` (`docs/Reproducibility.md` §3).
+`ckpt_v3_within.tar.gz`, `ckpt_v3_cross.tar.gz`, and `ckpt_v3_ood.tar.gz` on
+release `v3.0.0`; see the README release table for download links and hashes.
 
 Each dataset is **4,000 graphs** (1,000 per grid), so the pair is 8,000 and about
 80 MB. Generation is CPU‑bound (the solver), so `numba` matters here; the GPU is
@@ -379,6 +380,12 @@ $env:OMP_NUM_THREADS = "1"
 python experiments.py --experiment within --epochs 200 --data_dir data_regime_a_fixed_topology_v3 --out results_v3 --regime_tag A --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --save_models ckpt_v3 --skip_existing
 python experiments.py --experiment both   --epochs 200 --data_dir data_regime_b_contingencies_v3 --out results_v3 --regime_tag B --normalize pu_zscore --arch_config configs\arch_config.json --seeds 0 100 300 700 1000 --batch_size_ood 96 --save_models ckpt_v3 --skip_existing
 python eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --normalize pu_zscore --out results_v3\physics
-python rank_analysis.py --results_dir results_v3
-python recompute_tables.py --results_dir results_v3
+python rank_analysis.py --regime_a results_v3\all_within\within_grid.csv `
+    --cross results_v3\all_cross\cross_context.csv `
+    --ood results_v3\all_ood\ood.csv --out results_v3\analysis
+python recompute_tables.py --within results_v3\all_within\within_grid.csv `
+    --cross results_v3\all_cross\cross_context.csv `
+    --ood results_v3\all_ood\ood.csv --topology results_v3\topology `
+    --dc_regime_a results_v3\dc_baseline_regime_a.csv `
+    --dc_regime_b results_v3\topology\dc_baseline.csv --out results_v3\analysis
 ```
