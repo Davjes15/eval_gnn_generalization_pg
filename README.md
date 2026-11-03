@@ -1,3 +1,5 @@
+> **Historical archive — not the current version.** This branch keeps every earlier run (v1 `full_run/`, v2 `results/`, `results_norm/`), the pre-fix datasets with missing UK/IEEE118 branches, the audit and the earlier findings, exactly as they were before v3. Numbers here are superseded and partly computed on incorrect topology. For the corrected code, data and results use the [`main` branch](https://github.com/Davjes15/eval_gnn_generalization_pg/tree/main) and release [v3.0.0](https://github.com/Davjes15/eval_gnn_generalization_pg/releases/tag/v3.0.0). Tag `archive-pre-v3` points at the same state without this note.
+
 # eval_gnn_generalization_pg
 
 ## MMD graph mode
