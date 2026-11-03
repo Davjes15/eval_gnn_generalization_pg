@@ -46,7 +46,11 @@ def audit(path):
 
 
 def main():
-    folder = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "transmission/cases"
+    folder = (
+        Path(sys.argv[1])
+        if len(sys.argv) > 1
+        else Path(__file__).resolve().parents[1] / "transmission/cases"
+    )
     cases = sorted(folder.glob("*.mat"))
     if not cases:
         print(f"FAIL: no .mat cases in {folder}")

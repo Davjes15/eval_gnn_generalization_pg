@@ -66,7 +66,12 @@ import networkx as nx
 import torch
 from torch_geometric.data import Data
 
-from engage_contract import branch_table, get_node_features, get_edge_features, check_graph_matches_net
+from engage_contract import (
+    branch_table,
+    get_node_features,
+    get_edge_features,
+    check_graph_matches_net,
+)
 from contingency_harvest import harvest_contingencies
 from transmission_grids import (
     get_transmission_grid_codes,
@@ -327,7 +332,9 @@ def _save_split(out_dir: str, code: str, split: str, samples, metas):
 def _outage_types(value):
     types = tuple(value.split(","))
     if not types or any(t not in ("line", "trafo", "impedance") for t in types):
-        raise argparse.ArgumentTypeError("outage_types must be a comma list of line,trafo,impedance")
+        raise argparse.ArgumentTypeError(
+            "outage_types must be a comma list of line,trafo,impedance"
+        )
     return types
 
 

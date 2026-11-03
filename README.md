@@ -80,8 +80,10 @@ flowchart TD
     M["models.py<br/>MODELS = gcn, arma_gnn, gat, gin, transformer, nnconv"] --> F
     T["training_utils.py<br/>weighted-MSE loss, NRMSE, DC baseline"] --> F
     X["mmd_utils.py<br/>degree/Laplacian MMD"] --> F
-    F --> R1["results_v3/*.csv<br/>transfer_matrix_*, cross_context, ood,<br/>mmd_*, gscore*, ood_distance, dc_baseline"]
-    F --> R2["models/*.pt<br/>cc_&lt;model&gt;_&lt;grid&gt; · ood_&lt;model&gt;_heldout_&lt;grid&gt;"]
+    F --> R1["results_v3/&lt;job_id&gt;/<br/>one directory per campaign job"]
+    F --> R2["ckpt_v3/&lt;arm&gt;_&lt;model&gt;/<br/>seed/grid-specific checkpoints"]
+    R1 --> R3["gather_results.py<br/>results_v3/all_within · all_cross · all_ood"]
+    R3 --> R4["reproduce_downstream_v3.sh<br/>analysis, topology, physics, and DC tables"]
     E --> V["validate.py<br/>Step 6: contract/masking/topology/MMD gates"]
 ```
 
@@ -142,6 +144,7 @@ eval_gnn_generalization_pg/
 │   ├── Pipeline_Report.md
 │   └── tables/                   # reference MMD and feasibility tables
 ├── results_v3/                   # merged campaign results and analysis tables
+├── reproduce_downstream_v3.sh    # gather, replay, and downstream workflow
 ├── tests/                        # script-style validation tests
 ├── transmission/                 # grid conversion + data generation
     ├── convert_cases.m           # Step 1: System.m -> .mat (Octave, one-time)
@@ -191,8 +194,9 @@ replays the saved models without training. The checkpoint index is
 `results_v3/checkpoint_index.csv`.
 
 ### From a clean machine, in five commands
-The path a new researcher actually needs; each command was run from a fresh clone
-of this repository (Python 3.10, no prior artifacts) before publication.
+These smoke commands exercise setup and a reduced run. The replication audit
+verified data generation, validation, and a small campaign in a clean worktree;
+GitHub clone commands were not testable from that VM.
 ```bash
 # from the parent folder holding this clone:
 git clone https://github.com/PowerGraph-Datasets/PowerGraph-Node.git # 1. demand profiles
@@ -311,24 +315,27 @@ pip install -r requirements.txt
 # quick smoke test (few epochs, two models, two grids):
 python3 experiments.py --experiment both --models gcn gat --epochs 20 \
     --grids IEEE24 IEEE39 --data_dir data --out results
-# full run (all grids + all models), and SAVE the trained models:
+# full v3 campaign (one result directory per job; see below):
 python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7 \
-    --epochs 200 --save_models models
+    --epochs 200
 ```
-Outputs land in `results_v3/`: `transfer_matrix_<model>.csv`, `cross_context.csv`
-(incl. per-quantity), `mmd_degree.csv`/`mmd_laplacian.csv`, `dc_baseline.csv`,
-`gscore.csv` (cross-context g-score) + `gscore_cc_aggregate.csv`, `gscore_ood.csv`
-(OOD g-score — per model over held-out grids; the better-posed one at N=4),
-`ood.csv`. Supporting code: `training_utils.py` (training loop +
-metrics), `mmd_utils.py` (distribution-based MMD — the correct, non-degenerate
-version).
+Each launcher job writes under `results_v3/<job_id>/` and checkpoints under
+`ckpt_v3/<arm>_<model>/`; it does not directly write aggregate tables. The
+launcher runs one `experiments.py` child per arm/model/seed (and held-out grid
+for OOD), using three NNConv seeds; see
+[`docs/Reproducibility.md`](docs/Reproducibility.md) for the expanded commands
+and the downstream merge.
 
-**Saving / reusing trained models.** Pass `--save_models <dir>` to write every
-trained model's weights, named `cc_<model>_<train_grid>.pt` (cross-context) and
-`ood_<model>_heldout_<grid>.pt` (OOD). Reload one with:
-```python
-import torch; from models import MODELS
-m = MODELS["gat"](input_dim=7); m.load_state_dict(torch.load("models/cc_gat_IEEE39.pt")); m.eval()
+**Saving / reusing trained models.** `launch_campaign.py` writes checkpoints
+under `ckpt_v3/<arm>_<model>/`; names encode the job's grid/fold and seed.
+`checkpoint_index.py` lists the available checkpoint paths, and
+`eval_checkpoints.py` replays them:
+```bash
+python3 checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
+python3 eval_checkpoints.py --ckpt_root ckpt_v3 \
+    --data_a data_regime_a_fixed_topology_v3 \
+    --data_b data_regime_b_contingencies_v3 --normalize pu_zscore \
+    --out results_v3/physics --feasibility
 ```
 
 ### Run only ONE grid or ONE architecture
@@ -406,17 +413,19 @@ export POWERGRAPH_NODE_DIR="$(pwd)/../PowerGraph-Node/13_Power_system"
 #    so you can skip this unless you changed the source cases. Needs Octave.
 #    octave --no-gui --eval "cd transmission; convert_cases"
 
-# 4. Generate the datasets (contingencies + AC power-flow re-solve)
-python3 transmission_graph_gen.py --grid all --n_train 800 --n_val 100 --n_test 100 --out_dir data
+# 4. Generate and validate a reduced throwaway dataset, not the v3 campaign data.
+python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
+    --n_train 60 --n_val 12 --n_test 12 --out_dir data
 
 # 5. (Recommended) validate the generated data before trusting results
-python3 validate.py --data_dir data
+python3 validate.py --data_dir data --regime b --expect_blocked
 
-# 6. Run the experiments
+# 6. The campaign consumes the committed v3 datasets above (or datasets
+#    regenerated with the v3 commands in "Reproducing the reported benchmark").
 python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7
 
-# 7. Read the results
-ls results_v3/         # transfer_matrix_*.csv, gscore.csv, gscore_ood.csv, ood.csv, dc_baseline.csv, ...
+# 7. Merge and rebuild the downstream results
+bash reproduce_downstream_v3.sh
 ```
 
 ## Reproducing the reported benchmark (the final protocol)
@@ -440,67 +449,32 @@ python3 transmission_graph_gen.py --grid all --max_k 2 --time_split blocked \
     --n_train 800 --n_val 100 --n_test 100 --out_dir data_regime_b_contingencies_v3
 python3 validate.py --data_dir data_regime_b_contingencies_v3 --regime b --expect_blocked
 
-# Training: frozen equal-budget configs, train-statistics scaling, checkpoints for replay.
-# Metrics are always reported in physical units (predictions are de-normalized first).
-python3 experiments.py --experiment within --data_dir data_regime_a_fixed_topology_v3       --normalize pu_zscore \
-    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_v3/within --save_models ckpt_v3/within
-python3 experiments.py --experiment cross  --data_dir data_regime_b_contingencies_v3 --normalize pu_zscore \
-    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_v3/cross --save_models ckpt_v3/cross
-python3 experiments.py --experiment ood    --data_dir data_regime_b_contingencies_v3 --normalize pu_zscore \
-    --arch_config configs/arch_config.json --seeds 0 100 300 700 1000 \
-    --out results_v3/ood --save_models ckpt_v3/ood
+# Training uses frozen equal-budget configs and train-statistics scaling.
+# The launcher creates one child job per arm/model/seed[/held-out fold].
+export OMP_NUM_THREADS=1
+python3 launch_campaign.py --data_a data_regime_a_fixed_topology_v3 \
+    --data_b data_regime_b_contingencies_v3 --out results_v3 \
+    --ckpt ckpt_v3 --logs logs_v3 --pool 7 --epochs 200
 ```
 
-The campaign writes one results CSV and one checkpoint per shard; turning those into the
-reported tables is the last stage. Replay is also the entry point if you downloaded
-`ckpt_v3.tar.gz` instead of training:
+Then run the repo-relative downstream workflow (requires `POWERGRAPH_NODE_DIR`
+to point to `PowerGraph-Node/13_Power_system`):
 
 ```bash
-# 1. Merge the per-shard result CSVs into one directory per arm. The exact
-#    gather_results.py invocations for the published shard layout (ARMA and NNConv ran
-#    split by seed) are in docs/Reproducibility.md §5, which also covers the shared
-#    topology/MMD shard and the Regime A DC baseline.
-
-# 2. Physics-aware replay of the saved models: per-quantity error on the entries the
-#    model genuinely predicts, error tails, voltage-band violations. Minutes, no training.
-python3 eval_checkpoints.py --ckpt_root ckpt_v3 --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 \
-    --normalize pu_zscore --out results_v3/physics
-python3 checkpoint_index.py --ckpt_root ckpt_v3 --out results_v3/checkpoint_index.csv
-
-# 3. Is the predicted state a valid operating point at all? Adds the AC power-balance
-#    residual and the branch loading; needs POWERGRAPH_NODE_DIR to rebuild the
-#    post-contingency networks. Add --feasibility to re-run step 2 with those columns.
-python3 dc_feasibility.py --data data_regime_a_fixed_topology_v3 data_regime_b_contingencies_v3 \
-    --out results_v3/physics/dc_feasibility.csv
-python3 summarize_feasibility.py --physics results_v3/physics/physics_metrics.csv \
-    --baselines results_v3/physics/dc_feasibility.csv \
-    --out results_v3/analysis/ac_feasibility_norm.csv
-
-# 4. The reported tables: ranks, rank stability across grids/seeds, g-scores,
-#    per-quantity errors, DC comparison, topology distances.
-python3 rank_analysis.py --regime_a results_v3/all_within/within_grid.csv \
-    --cross results_v3/all_cross/cross_context.csv \
-    --ood results_v3/all_ood/ood.csv --out results_v3/analysis
-python3 recompute_tables.py --within results_v3/all_within/within_grid.csv \
-    --cross results_v3/all_cross/cross_context.csv \
-    --ood results_v3/all_ood/ood.csv \
-    --topology results_v3/topology \
-    --dc_regime_a results_v3/dc_baseline_regime_a.csv \
-    --dc_regime_b results_v3/topology/dc_baseline.csv \
-    --out results_v3/analysis
-python3 mmd_report.py --data_dir data_regime_b_contingencies_v3 --out docs/tables
+export POWERGRAPH_NODE_DIR="../PowerGraph-Node/13_Power_system"
+bash reproduce_downstream_v3.sh
 ```
 
-Apart from `mmd_report.py`, which reads `data_regime_b_contingencies_v3`, step 4 needs no dataset and no
-checkpoint: it runs on the committed result CSVs, and the 12 tables it writes come back
-byte-identical to the ones in `results_v3/analysis/`. Verify that first — it is the
-cheapest check that your environment agrees with the published numbers.
+The per-job folders are not committed; the merged `all_*` arm tables are.
+Therefore the script's gather step requires a campaign run first. Its later
+analysis steps can also run directly on the committed merged CSVs. In the
+replication audit, 14 generated downstream CSVs were byte-identical to the
+committed outputs (maximum numeric difference 0 at tolerance `1e-9`).
 
-`--normalize none` uses raw physical units, no scaling (not used for the published results).
-`launch_campaign.py` runs the same campaign sharded across cores; every job is
-resumable with `--skip_existing` because it checkpoints.
+`--normalize none` uses raw physical units, no scaling (not used for the
+published results). `launch_campaign.py` creates resumable per-job directories;
+the exact flags and expanded child commands are in
+[`docs/Reproducibility.md`](docs/Reproducibility.md).
 
 Two protocol points those commands encode. **`configs/arch_config.json` is frozen**: the
 hyperparameters were selected once, on the Regime A *validation* split (`tune_budget.py`), and

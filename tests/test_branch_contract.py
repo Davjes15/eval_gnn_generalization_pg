@@ -42,8 +42,9 @@ class BranchContract(unittest.TestCase):
 
     def test_unsupported(self):
         net = synthetic()
-        pp.create_transformer3w_from_parameters(net, 10, 20, 40, 10, 10, 10,
-            110, 110, 110, 10, 10, 10, 1, 1, 1, 0, 0)
+        pp.create_transformer3w_from_parameters(
+            net, 10, 20, 40, 10, 10, 10, 110, 110, 110, 10, 10, 10, 1, 1, 1, 0, 0
+        )
         with self.assertRaisesRegex(NotImplementedError, "trafo3w.*1"):
             contract.branch_table(net)
 
@@ -94,9 +95,17 @@ class BranchContract(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "transmission_graph_gen.py").read_text()
         module = ast.parse(source)
         names = {"_sample_contingency", "_outage_types"}
-        subset = ast.Module(body=[n for n in module.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])
+        subset = ast.Module(
+            body=[
+                n
+                for n in module.body
+                if isinstance(n, ast.FunctionDef) and n.name in names
+            ],
+            type_ignores=[],
+        )
         scope = {"argparse": argparse}
         exec(compile(subset, "sampler", "exec"), scope)
+
         def original(rng, n_lines, k):
             if k <= 0:
                 return []
@@ -107,10 +116,20 @@ class BranchContract(unittest.TestCase):
             branches = contract.branch_table(net)
             a, b = np.random.default_rng(1203), np.random.default_rng(1203)
             for k in [0, 1, 2, 5, 999] * 10:
-                expected = [("line", int(net.line.index[i])) for i in original(a, len(net.line), k)]
-                self.assertEqual(scope["_sample_contingency"](b, branches, k, scope["_outage_types"]("line")), expected)
+                expected = [
+                    ("line", int(net.line.index[i]))
+                    for i in original(a, len(net.line), k)
+                ]
+                self.assertEqual(
+                    scope["_sample_contingency"](
+                        b, branches, k, scope["_outage_types"]("line")
+                    ),
+                    expected,
+                )
             self.assertEqual(a.bit_generator.state, b.bit_generator.state)
-        mixed = scope["_sample_contingency"](a, contract.branch_table(synthetic()), 99, ("impedance",))
+        mixed = scope["_sample_contingency"](
+            a, contract.branch_table(synthetic()), 99, ("impedance",)
+        )
         self.assertEqual(mixed, [("impedance", 0)])
         with self.assertRaises(argparse.ArgumentTypeError):
             scope["_outage_types"]("invalid")

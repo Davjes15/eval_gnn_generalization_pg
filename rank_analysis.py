@@ -65,10 +65,12 @@ ARMS = ["regime_b_diagonal", "cross_context", "ood"]
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--regime_a", default="results_a/within_grid.csv")
-    p.add_argument("--cross", default="results_tuned/cross_context.csv")
-    p.add_argument("--ood", default="results_tuned/ood.csv")
-    p.add_argument("--out", default="results")
+    p.add_argument(
+        "--regime_a", default="results_v3/all_within/within_grid.csv"
+    )
+    p.add_argument("--cross", default="results_v3/all_cross/cross_context.csv")
+    p.add_argument("--ood", default="results_v3/all_ood/ood.csv")
+    p.add_argument("--out", default="results_v3/analysis")
     p.add_argument("--metrics", nargs="+", default=METRICS)
     p.add_argument("--bump_metric", default="nrmse",
                    help="metric used for the bump chart")

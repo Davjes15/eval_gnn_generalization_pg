@@ -30,7 +30,7 @@ under:
 
 | package | version | note |
 |---|---|---|
-| Python | 3.10.12 | |
+| Python | 3.10.16 | |
 | torch | 2.13.0+cu130 | CPU execution throughout; no GPU was used |
 | torch_geometric | 2.8.0 | |
 | **pandapower** | **3.5.4** | hard pin -- the DC baseline is version-sensitive (A1) |
@@ -38,6 +38,10 @@ under:
 | scipy | 1.14.1 | |
 | pandas | 2.3.3 | |
 | networkx | 3.4.2 | |
+| numba | 0.68.1 | |
+| mat73 | 0.65 | contingency harvest helper |
+| flake8 | 7.4.1 | style check |
+| pytest | 9.2.0 | test runner |
 
 OS: Linux 5.15, x86_64, 8 cores. `pandapower` is the only pin that affects
 *correctness* rather than convenience: `rundcpp` does not write `res_bus.q_mvar`,
@@ -172,26 +176,41 @@ argument) and were deliberately not re-tuned under `pu_zscore`, so the campaign 
 architectures under one recipe tuned elsewhere, not six architectures each at its own optimum
 (L1).
 
-The final normalized campaign is one script:
+The final normalized campaign is launched with one script:
 
 ```bash
 python launch_campaign.py --data_a data_regime_a_fixed_topology_v3 --data_b data_regime_b_contingencies_v3 --out results_v3 --ckpt ckpt_v3 --logs logs_v3 --pool 7
 ```
 
-which expands to 18 independent jobs of the form
+It expands to **168 independent jobs**: 28 within, 28 cross-context, and 112
+leave-one-grid-out jobs. Each is one `(arm, model, seed[, held-out fold])` tuple.
+The five models other than NNConv use seeds `0 100 300 700 1000`; NNConv uses
+`0 100 300`. For example, these are the real child commands for a within job and
+an OOD fold job (the launcher substitutes the selected model, seed, and fold):
 
 ```bash
-OMP_NUM_THREADS=1 python -u experiments.py \
-    --experiment within --data_dir data_regime_a_fixed_topology_v3 --batch_size 32 \
-    --models gcn --seeds 0 100 300 700 1000 --epochs 200 \
-    --arch_config configs/arch_config.json \
-    --normalize pu_zscore --regime_tag A \
-    --out results_v3/within_gcn --save_models ckpt_v3/within_gcn \
-    --skip_existing
+python -u experiments.py --experiment within \
+    --data_dir data_regime_a_fixed_topology_v3 --models gcn --seeds 0 \
+    --epochs 200 --arch_config configs/arch_config.json --normalize pu_zscore \
+    --skip_mmd --batch_size 32 --regime_tag A \
+    --save_models ckpt_v3/within_gcn --skip_existing \
+    --out results_v3/within_gcn_s0
+
+python -u experiments.py --experiment ood \
+    --data_dir data_regime_b_contingencies_v3 --models gcn --seeds 0 \
+    --epochs 200 --arch_config configs/arch_config.json --normalize pu_zscore \
+    --skip_mmd --batch_size_ood 96 --regime_tag B --held_out IEEE24 \
+    --save_models ckpt_v3/ood_gcn --skip_existing \
+    --out results_v3/ood_gcn_s0_IEEE24
 ```
 
-with `--experiment cross` / `--experiment ood` on `data_regime_b_contingencies_v3` (and
-`--batch_size_ood 96`) for the transfer arms. `--skip_existing` makes a job
+Cross jobs use `--experiment cross`, `--data_dir data_regime_b_contingencies_v3`,
+`--batch_size 32`, `--regime_tag B`, and
+`--out results_v3/cross_<model>_s<seed>`. OOD jobs use
+`--data_dir data_regime_b_contingencies_v3`, `--batch_size_ood 96`,
+`--regime_tag B`, `--held_out <grid>`, and
+`--out results_v3/ood_<model>_s<seed>_<grid>`. Checkpoints are saved under
+`ckpt_v3/<arm>_<model>/`. `--skip_existing` makes a job
 resumable: an interrupted arm restarts at the first missing checkpoint rather than
 from the beginning.
 
@@ -317,93 +336,89 @@ the cheapest end-to-end check of this repository.
 
 Earlier runs, datasets, their documentation, and the audit history are preserved
 in branch `archive/full-history` and tag `archive-pre-v3`; release `v1.0.0` has
-the pre-fix checkpoints.
+the pre-fix checkpoints. The v3 checkpoints are the three split assets on release
+`v3.0.0`, listed in the README.
 
 ---
 
-## 5. Downstream analysis, from the committed artifacts
+## 5. Downstream analysis
 
-The campaign is sharded one process per architecture, so each arm is merged
-first. The two heavy architectures (ARMA, NNConv) are sharded further inside
-their arm -- by seed (`--seeds`) and, in the OOD arm, by held-out grid
-(`--held_out`) -- because a single process walks folds and seeds sequentially and
-would have left cores idle for tens of hours. Sharding is a scheduling change
-only: a seed shard trains the same seeds it would have trained in sequence, and
-an OOD fold shard still pools *all* other grids for training, so a fold's number
-does not depend on how the arm was split (asserted by
-`test_ood_fold_sharding_is_equivalent` in `tests/test_plumbing.py`, which runs
-one arm whole and one fold-per-process and requires identical per-fold NRMSE and
-identical checkpoint names). Each shard writes its own results directory and all
-shards of an arm share one checkpoint directory -- checkpoint names carry model,
-arm, grid/fold and seed, so they cannot collide -- and the glob in step 1 below
-picks up the extra directories without change. `gather_results.py` refuses a
-merge that is not consistent with one frozen protocol (an architecture in two shards, a missing architecture,
-disagreeing seeds/epochs/data_dir/batch size, two configurations for one
-architecture), which is the failure that would silently invalidate the ranking.
+The campaign writes one result directory per job (`results_v3/<job_id>/`) and
+checkpoint files below `ckpt_v3/<arm>_<model>/`. Those per-job result directories
+are **not committed**; the repository commits the merged per-arm
+`results_v3/all_within`, `all_cross`, and `all_ood` CSVs, along with the
+downstream tables. Consequently the gather step below requires a completed
+campaign first. The analysis commands can instead run directly on the committed
+merged CSVs and committed topology/DC tables.
 
-The merge is two-stage, because a seed/fold-sharded architecture is consolidated
-into a single directory first and that directory is then merged with the other
-five as an ordinary shard. `--seed_shards` is required at *both* stages here:
-NNConv carries three seeds where the other five architectures carry five, so
-even the final cross-architecture merge is a merge of shards with different seed
-lists. Under `--seed_shards` a run is identified by model, seed and the arm's
-grid columns, so two architectures sharing a `(seed, grid)` merge cleanly while
-one shard silently redoing another's run is still refused. `MODELS` below is the
-six architectures.
+After a campaign, the three merges are:
 
 ```bash
-MODELS="gcn arma_gnn gat gin transformer nnconv"
+RESULTS_ROOT=results_v3
+CKPT_ROOT=ckpt_v3
+DATA_A=data_regime_a_fixed_topology_v3
+DATA_B=data_regime_b_contingencies_v3
+DOWNSTREAM_ROOT=results_v3
+MODELS=(gcn arma_gnn gat gin transformer nnconv)
 
-# 1a. consolidate the architectures whose runs were split by seed / held-out grid
-python gather_results.py --shards "results_v3/ood_arma_gnn_s*" --file ood.csv \
-    --out results_v3/ood_arma_gnn_merged --models arma_gnn --seed_shards
-python gather_results.py --shards "results_v3/ood_nnconv_s*" --file ood.csv \
-    --out results_v3/ood_nnconv_merged --models nnconv --seed_shards
+python gather_results.py --shards "$RESULTS_ROOT/within_*" --file within_grid.csv \
+    --out "$DOWNSTREAM_ROOT/all_within" --models "${MODELS[@]}" --seed_shards
+python gather_results.py --shards "$RESULTS_ROOT/cross_*" --file cross_context.csv \
+    --out "$DOWNSTREAM_ROOT/all_cross" --models "${MODELS[@]}" --seed_shards
+python gather_results.py --shards "$RESULTS_ROOT/ood_*" --file ood.csv \
+    --out "$DOWNSTREAM_ROOT/all_ood" --models "${MODELS[@]}" --seed_shards
 
-# 1b. merge the six architectures into one directory per arm
-python gather_results.py --shards "results_v3/within_*" --file within_grid.csv \
-    --out results_v3/all_within --models $MODELS --seed_shards
-python gather_results.py --shards "results_v3/cross_*" --file cross_context.csv \
-    --out results_v3/all_cross --models $MODELS --seed_shards
-python gather_results.py --shards "results_v3/ood_*merged" "results_v3/ood_g*" \
-    "results_v3/ood_transformer" --file ood.csv \
-    --out results_v3/all_ood --models $MODELS --seed_shards
+python mmd_report.py --data_dir "$DATA_B" --out "$DOWNSTREAM_ROOT/mmd_report" \
+    --mmd_graph multi --mmd_bandwidth reference \
+    --mmd_bandwidth_file configs/mmd_bandwidth.json
+python experiments.py --only_topology --experiment ood --data_dir "$DATA_B" \
+    --out "$DOWNSTREAM_ROOT/topology" --regime_tag B --models gcn \
+    --arch_config configs/arch_config.json --normalize pu_zscore \
+    --mmd_graph multi --mmd_bandwidth reference \
+    --mmd_bandwidth_file configs/mmd_bandwidth.json
 
-# 2. the model-independent tables (see below) -- one shared copy
-python experiments.py --only_topology --experiment ood --data_dir data_regime_b_contingencies_v3 \
-    --out results_v3/topology --regime_tag B --models gcn \
-    --arch_config configs/arch_config.json
+python checkpoint_index.py --ckpt_root "$CKPT_ROOT" \
+    --out "$DOWNSTREAM_ROOT/checkpoint_index.csv"
+python eval_checkpoints.py --ckpt_root "$CKPT_ROOT" --data_a "$DATA_A" \
+    --data_b "$DATA_B" --normalize pu_zscore \
+    --out "$DOWNSTREAM_ROOT/physics" --feasibility
+python dc_feasibility.py --data "$DATA_A" "$DATA_B" \
+    --out "$DOWNSTREAM_ROOT/physics/dc_feasibility.csv"
+python summarize_feasibility.py \
+    --physics "$DOWNSTREAM_ROOT/physics/physics_metrics.csv" \
+    --baselines "$DOWNSTREAM_ROOT/physics/dc_feasibility.csv" \
+    --out "$DOWNSTREAM_ROOT/analysis/ac_feasibility_norm.csv"
 
-# 3. the DC baseline on the Regime A data (the topology shard covers Regime B)
-python recompute_dc_baseline.py --data_dir data_regime_a_fixed_topology_v3 \
-    --out results_v3/dc_baseline_regime_a.csv
-
-# 4. ranking and downstream tables
-python rank_analysis.py --regime_a results_v3/all_within/within_grid.csv \
-    --cross results_v3/all_cross/cross_context.csv \
-    --ood results_v3/all_ood/ood.csv \
-    --out results_v3/analysis
-python recompute_tables.py --within results_v3/all_within/within_grid.csv \
-    --cross results_v3/all_cross/cross_context.csv \
-    --ood results_v3/all_ood/ood.csv \
-    --topology results_v3/topology \
-    --dc_regime_a results_v3/dc_baseline_regime_a.csv \
-    --dc_regime_b results_v3/topology/dc_baseline.csv \
-    --out results_v3/analysis
-python mmd_report.py --data_dir data_regime_b_contingencies_v3 --out docs/tables   # A7 distances
+python recompute_dc_baseline.py --data_dir "$DATA_A" \
+    --out "$DOWNSTREAM_ROOT/dc_baseline_regime_a.csv"
+python rank_analysis.py --regime_a "$DOWNSTREAM_ROOT/all_within/within_grid.csv" \
+    --cross "$DOWNSTREAM_ROOT/all_cross/cross_context.csv" \
+    --ood "$DOWNSTREAM_ROOT/all_ood/ood.csv" --out "$DOWNSTREAM_ROOT/analysis"
+python recompute_tables.py \
+    --within "$DOWNSTREAM_ROOT/all_within/within_grid.csv" \
+    --cross "$DOWNSTREAM_ROOT/all_cross/cross_context.csv" \
+    --ood "$DOWNSTREAM_ROOT/all_ood/ood.csv" \
+    --topology "$DOWNSTREAM_ROOT/topology" \
+    --dc_regime_a "$DOWNSTREAM_ROOT/dc_baseline_regime_a.csv" \
+    --dc_regime_b "$DOWNSTREAM_ROOT/topology/dc_baseline.csv" \
+    --out "$DOWNSTREAM_ROOT/analysis"
 ```
 
-**Step 4 needs no GPU, no dataset and no checkpoint** (nor does
-`summarize_feasibility.py` in §3, which reads the committed replay CSV). These
-read only committed CSVs, so they are the cheapest independent check of this
-repository, and they are exact: run from a fresh clone, `rank_analysis.py`
-reproduces
-`ranking_table.csv`, `rank_correlation_summary.csv` and
-`rank_permutation_test.csv`, `recompute_tables.py` reproduces `dc_comparison.csv`,
-`gscore.csv`, `gscore_cc_aggregate.csv`, `gscore_ood.csv`, `per_quantity.csv` and
-`nonfinite_runs.csv`, and `summarize_feasibility.py` reproduces
-`results_v3/analysis/ac_feasibility_norm.csv` — byte-for-byte identical to the committed
-files in every case.
+The same sequence, with `run_step` logs and per-step timings, is available as
+`bash reproduce_downstream_v3.sh`. It defaults to `RESULTS_ROOT=results_v3`,
+`CKPT_ROOT=ckpt_v3`, the two v3 datasets, and `DOWNSTREAM_ROOT=results_v3`;
+`POWERGRAPH_NODE_DIR` must be set by the user. Set `DOWNSTREAM_ROOT` to a fresh
+directory to preserve the committed outputs. The script writes the MMD report to
+`$DOWNSTREAM_ROOT/mmd_report`; it does not copy files into `docs/tables`.
+`docs/tables/mmd_data_regime_b_contingencies_v3_multigraph_reference.csv` is the
+checked-in report copy; its SHA-256 matched the generated CSV. To regenerate
+that copy directly, run the same `mmd_report.py` command with `--out docs/tables`.
+
+For an analysis-only check on the committed CSVs, run `rank_analysis.py` and
+`recompute_tables.py` using the committed `results_v3/all_*`, `topology`, and DC
+inputs above; these steps need no campaign shard directories. The audit compared
+14 generated CSVs with the committed outputs at tolerance `1e-9`: all matched,
+with maximum numeric difference 0.
 
 **Why step 2 exists.** The MMD matrix, the pooled OOD distances and the DC
 baseline depend only on the data, not on the architecture, so recomputing them in
@@ -414,13 +429,16 @@ the analysis input is identical to the one an unsharded run would have produced.
 `recompute_tables.py` still cross-checks the shards it is given and refuses to
 merge tables that disagree.
 
-Whole test suite, then the style check (`setup.cfg` holds the settings, so the
-bare command is the check; it exits 0 on a clean tree):
+Whole test suite, then the style check (`setup.cfg` holds the settings):
 
 ```bash
 for t in tests/test_*.py; do python "$t" || echo "FAILED: $t"; done
 python -m flake8 .
 ```
+
+The script loop is the supported test command. `pytest tests/` is not currently
+a supported alternative because some script-style tests run training when
+collected rather than using their lightweight script-mode stubs.
 
 ---
 
