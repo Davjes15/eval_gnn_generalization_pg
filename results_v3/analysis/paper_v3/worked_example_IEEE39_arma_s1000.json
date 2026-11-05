@@ -1,0 +1,71 @@
+{
+ "grid": "IEEE39",
+ "seed": 1000,
+ "sample": 71,
+ "run_median_pct": 12.45846729653083,
+ "sample_pct": 12.347374876507137,
+ "errors_predicted_entries": {
+  "P_MW": {
+   "n_predicted": 1,
+   "mean_abs": 2.4544677734375,
+   "max_abs": 2.4544677734375
+  },
+  "Q_Mvar": {
+   "n_predicted": 10,
+   "mean_abs": 0.5223367810249329,
+   "max_abs": 2.05645751953125
+  },
+  "V_pu": {
+   "n_predicted": 29,
+   "mean_abs": 0.00015763784176670015,
+   "max_abs": 0.00042122602462768555
+  },
+  "theta_deg": {
+   "n_predicted": 38,
+   "mean_abs": 0.05979838967323303,
+   "max_abs": 0.1297626495361328
+  }
+ },
+ "sum_abs_dP_MW": 586.3658601205411,
+ "served_load_MW": 4748.9111328125,
+ "pct_load": 12.347374876507137,
+ "true_state_sum_abs_dP_MW": 0.01829103422602393,
+ "top3_buses_dP_MW": [
+  [
+   9,
+   -84.92756307911117,
+   "P_MW_known"
+  ],
+  [
+   12,
+   55.02248684531759,
+   "P_MW_known"
+  ],
+  [
+   21,
+   37.09979265054103,
+   "P_MW_known"
+  ]
+ ],
+ "top3_bus_theta_err_deg": [
+  -0.010511398315429688,
+  -0.1297626495361328,
+  -0.035614013671875
+ ],
+ "top3_bus_V_err_pu": [
+  -0.00010788440704345703,
+  -0.00030291080474853516,
+  -0.00017404556274414062
+ ],
+ "branch_loading_abs_err_pct": {
+  "mean": 0.9466782853058706,
+  "max": 5.3165009156068095
+ },
+ "n_branches": 46,
+ "true_overloaded": 6,
+ "pred_overloaded": 6,
+ "missed": 0,
+ "false": 0,
+ "share_dP_at_buses_with_known_P": 0.9832682890643066,
+ "n_bus": 39
+}
